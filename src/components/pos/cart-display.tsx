@@ -2,7 +2,6 @@
 
 import type { CartItem, Payment, Product, Sale, RepairJob } from "@/lib/types";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 import { Trash2, TicketPercent, Gift } from "lucide-react";
 import { useState } from "react";
 import { CheckoutDialog } from "./checkout-dialog";
@@ -10,10 +9,12 @@ import { useCurrency } from "@/hooks/use-currency";
 import { ScrollArea } from "../ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
-import { doc, writeBatch, runTransaction } from "firebase/firestore";
+import { doc, runTransaction } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
 import { cn } from "@/lib/utils";
+import { Badge } from "../ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
 type CartDisplayProps = {
   cart: CartItem[];
@@ -34,8 +35,8 @@ function generateSaleId() {
 export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem, onClearCart, repairJobId, onTogglePromo, onToggleGift }: CartDisplayProps) {
   const { firestore, user } = useFirebase();
   const { toast } = useToast();
-  const { format: formatCurrency, convert, getFinalPrice, getSymbol } = useCurrency();
-  const [discount, setDiscount] = useState(0);
+  const { format: formatCurrency, getFinalPrice, getSymbol } = useCurrency();
+  const [discount] = useState(0);
   
   const repairJobRef = useMemoFirebase(() => 
     (repairJobId && firestore && user) ? doc(firestore, 'users', user.uid, 'repair_jobs', repairJobId) : null,
@@ -49,7 +50,11 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
     if (item.isCustom) return item.customPrice || 0;
     const product = allProducts.find(p => p.id === item.productId);
     if (!product) return 0;
-    return (item.isPromo && product.promoPrice) ? product.promoPrice : getFinalPrice(product);
+    
+    // Si es promo, usamos promoPrice. Si no, usamos el precio final calculado (que considera margen o precio fijo)
+    return (item.isPromo && typeof product.promoPrice === 'number' && product.promoPrice > 0) 
+        ? product.promoPrice 
+        : getFinalPrice(product);
   };
   
   const subtotal = cart.reduce((acc, item) => acc + getPrice(item) * item.quantity, 0);
@@ -122,44 +127,127 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
   return (
     <div className="flex flex-col h-full bg-slate-50">
         <div className="p-4 border-b bg-white">
-            <h2 className="text-lg font-semibold">Ticket de Venta</h2>
+            <h2 className="text-lg font-semibold">Carrito de Ventas</h2>
         </div>
       <ScrollArea className="flex-1 bg-white">
         <Table>
             <TableHeader>
                 <TableRow>
-                    <TableHead>PRODUCTO</TableHead>
+                    <TableHead className="w-[50%]">PRODUCTO</TableHead>
                     <TableHead className="text-center">CANT</TableHead>
                     <TableHead className="text-right">TOTAL</TableHead>
-                    <TableHead className="w-[40px]"></TableHead>
+                    <TableHead className="w-[100px] text-right">ACCIONES</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
-                {cart.map((item) => (
-                    <TableRow key={item.productId} className={cn(item.isGift && "bg-green-50")}>
-                        <TableCell className="font-medium text-xs">
-                            {item.name}
-                            {item.isPromo && <Badge variant="outline" className="ml-1 text-[10px]">Oferta</Badge>}
-                        </TableCell>
-                        <TableCell className="text-center">
-                            <input type="number" value={item.quantity} onChange={(e) => onUpdateQuantity(item.productId, parseInt(e.target.value) || 0)} className="w-10 border rounded text-center" disabled={item.isRepair} />
-                        </TableCell>
-                        <TableCell className="text-right font-bold">
-                            ${formatCurrency(getPrice(item) * item.quantity)}
-                        </TableCell>
-                        <TableCell>
-                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onRemoveItem(item.productId)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
+                {cart.map((item) => {
+                    const productData = allProducts.find(p => p.id === item.productId);
+                    const hasPromoAvailable = productData && productData.promoPrice && productData.promoPrice > 0;
+
+                    return (
+                        <TableRow key={item.productId} className={cn(
+                            item.isGift && "bg-green-50/50",
+                            item.isPromo && "bg-blue-50/50"
+                        )}>
+                            <TableCell className="font-medium text-xs py-3">
+                                <div className="flex flex-col gap-1">
+                                    <span className={cn(item.isGift && "line-through text-muted-foreground")}>{item.name}</span>
+                                    <div className="flex flex-wrap gap-1">
+                                        {item.isPromo && <Badge className="bg-blue-600 text-white text-[9px] h-4 px-1">OFERTA EFECTIVO</Badge>}
+                                        {item.isGift && <Badge className="bg-green-600 text-white text-[9px] h-4 px-1">OBSEQUIO</Badge>}
+                                        {item.isRepair && <Badge variant="outline" className="text-[9px] h-4 px-1">REPARACIÓN</Badge>}
+                                    </div>
+                                </div>
+                            </TableCell>
+                            <TableCell className="text-center">
+                                <input 
+                                    type="number" 
+                                    value={item.quantity} 
+                                    onChange={(e) => onUpdateQuantity(item.productId, Math.max(1, parseInt(e.target.value) || 1))} 
+                                    className="w-10 border rounded text-center text-xs h-7" 
+                                    disabled={item.isRepair} 
+                                />
+                            </TableCell>
+                            <TableCell className="text-right font-bold text-xs">
+                                {getSymbol()}{formatCurrency(getPrice(item) * item.quantity)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                                <div className="flex justify-end items-center gap-0.5">
+                                    <TooltipProvider>
+                                        {hasPromoAvailable && !item.isRepair && !item.isCustom && (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="icon" 
+                                                        className={cn("h-7 w-7", item.isPromo ? "text-blue-600 bg-blue-100" : "text-muted-foreground")}
+                                                        onClick={() => onTogglePromo(item.productId)}
+                                                    >
+                                                        <TicketPercent className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent><p>Activar Precio Oferta</p></TooltipContent>
+                                            </Tooltip>
+                                        )}
+                                        
+                                        {!item.isRepair && (
+                                            <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="icon" 
+                                                        className={cn("h-7 w-7", item.isGift ? "text-green-600 bg-green-100" : "text-muted-foreground")}
+                                                        onClick={() => onToggleGift(item.productId)}
+                                                    >
+                                                        <Gift className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent><p>Marcar como Obsequio</p></TooltipContent>
+                                            </Tooltip>
+                                        )}
+
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="icon" 
+                                                    className="h-7 w-7 text-destructive hover:bg-destructive/10" 
+                                                    onClick={() => onRemoveItem(item.productId)}
+                                                >
+                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent><p>Quitar del carrito</p></TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                </div>
+                            </TableCell>
+                        </TableRow>
+                    );
+                })}
+                {cart.length === 0 && (
+                    <TableRow>
+                        <TableCell colSpan={4} className="h-32 text-center text-muted-foreground italic">
+                            El carrito está vacío
                         </TableCell>
                     </TableRow>
-                ))}
+                )}
             </TableBody>
         </Table>
       </ScrollArea>
       <div className="p-4 border-t bg-gray-50 space-y-3">
-        <div className="flex justify-between text-sm"><span>Total:</span><span className="font-bold text-lg">{getSymbol()}{formatCurrency(total)}</span></div>
+        <div className="flex justify-between items-end">
+            <span className="text-sm text-muted-foreground">Monto Total:</span>
+            <span className="font-black text-2xl text-primary leading-none">{getSymbol()}{formatCurrency(total)}</span>
+        </div>
         <CheckoutDialog cart={cart} allProducts={allProducts} total={total} onCheckout={handleCheckout} onClearCart={onClearCart} isRepairSale={!!repairJobId}>
-            <Button size="lg" className="w-full h-12 text-lg font-bold" disabled={cart.length === 0}>PAGAR</Button>
+            <Button size="lg" className="w-full h-12 text-lg font-black shadow-lg" disabled={cart.length === 0}>
+                PAGAR {getSymbol()}{formatCurrency(total)}
+            </Button>
         </CheckoutDialog>
+        <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground h-7" onClick={onClearCart} disabled={cart.length === 0}>
+            Vaciar Carrito
+        </Button>
       </div>
     </div>
   );

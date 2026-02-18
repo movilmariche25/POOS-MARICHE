@@ -45,8 +45,6 @@ export type RepairJob = {
   customerAddress?: string;
   deviceMake: string;
   deviceModel: string;
-  deviceImei?: string;
-  devicePatternOrPassword?: string;
   reportedIssue: string;
   initialConditionsChecklist?: string[];
   partsCost: number;

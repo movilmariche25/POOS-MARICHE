@@ -24,7 +24,7 @@ const ITEMS_PER_PAGE = 25;
 
 export function ProductGrid({ products, onProductSelect, isLoading }: ProductGridProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const { format, getSymbol, getFinalPrice } = useCurrency();
+  const { format, getSymbol, getFinalPrice, convert } = useCurrency();
   const [currentPage, setCurrentPage] = useState(1);
 
   const categories = useMemo(() => {
@@ -126,6 +126,7 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
                     
                     const basePrice = getFinalPrice(product);
                     const displayPrice = hasPromo ? promoPrice : basePrice;
+                    const displayPriceBs = convert(displayPrice, 'USD', 'Bs');
 
                     return (
                         <Card
@@ -147,11 +148,16 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
                                   <p className="text-xs text-muted-foreground truncate pt-1">{product.compatibleModels.join(', ')}</p>
                                 )}
                             </CardHeader>
-                            <CardFooter className="p-2 flex justify-between items-center mt-auto">
-                                <p className="text-xs text-muted-foreground">Disp: {availableStock}</p>
-                                <div className={cn("text-xs font-bold", hasPromo && "text-green-600")}>
-                                  {hasPromo && <TicketPercent className="w-3 h-3 inline-block mr-1"/>}
-                                  {getSymbol()}{format(displayPrice)}
+                            <CardFooter className="p-2 flex justify-between items-end mt-auto">
+                                <p className="text-[10px] text-muted-foreground">Disp: {availableStock}</p>
+                                <div className="text-right flex flex-col">
+                                    <div className={cn("text-xs font-bold", hasPromo && "text-green-600")}>
+                                      {hasPromo && <TicketPercent className="w-3 h-3 inline-block mr-1"/>}
+                                      {getSymbol('USD')}{format(displayPrice, 'USD')}
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground font-bold border-t border-muted mt-0.5 pt-0.5">
+                                      {getSymbol('Bs')}{format(displayPriceBs, 'Bs')}
+                                    </div>
                                 </div>
                             </CardFooter>
                         </Card>

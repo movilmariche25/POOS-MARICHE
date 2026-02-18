@@ -22,16 +22,16 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
     };
 
     return (
-         <div className="text-black bg-white p-1 font-mono text-[13px] max-w-[215px] mx-auto leading-tight" style={{ color: '#000', fontWeight: 900 }}>
+         <div className="text-black bg-white p-1 font-mono text-[13px] max-w-[215px] mx-auto leading-tight" style={{ color: '#000' }}>
             <div className="text-center mb-4">
-                <h3 className="font-black text-[18px] uppercase" style={{ margin: 0, borderBottom: '2px solid #000', paddingBottom: '4px' }}>{businessName || 'NOTA DE ENTREGA'}</h3>
-                <p className="text-[12px] font-black mt-2">{format(parseISO(sale.transactionDate), "dd/MM/yy hh:mm a", { locale: es })}</p>
-                <p className="text-[12px] font-black">ID: {sale.id}</p>
+                <h3 className="text-[18px] uppercase" style={{ margin: 0, borderBottom: '2px solid #000', paddingBottom: '4px' }}>{businessName || 'NOTA DE ENTREGA'}</h3>
+                <p className="text-[12px] mt-2">{format(parseISO(sale.transactionDate), "dd/MM/yy hh:mm a", { locale: es })}</p>
+                <p className="text-[12px]">ID: {sale.id}</p>
             </div>
             
-            <div style={{ borderTop: '2px dashed #000', margin: '6px 0' }}></div>
+            <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }}></div>
             
-            <div className="flex font-black text-[14px]">
+            <div className="flex text-[14px]">
                 <div className="flex-1 text-left">PRODUCTO</div>
                 <div className="w-1/3 text-right">TOTAL</div>
             </div>
@@ -40,19 +40,19 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
 
             <div className="space-y-3">
                 {sale.items.map((item, idx) => (
-                    <div key={idx} className="font-black">
+                    <div key={idx}>
                         <div className="break-words text-[13px] uppercase leading-none mb-1">{item.name}</div>
                         <div className="flex justify-between text-[12px]">
                             <span>{item.quantity} x ${formatCurrency(item.price, 'USD')}</span>
-                            <span className="font-black">${formatCurrency(item.price * item.quantity, 'USD')}</span>
+                            <span>${formatCurrency(item.price * item.quantity, 'USD')}</span>
                         </div>
                     </div>
                 ))}
             </div>
 
-            <div style={{ borderTop: '2px dashed #000', margin: '8px 0' }}></div>
+            <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }}></div>
 
-            <div className="space-y-1 text-right font-black text-[14px]">
+            <div className="space-y-1 text-right text-[14px]">
                  <div className="flex justify-between">
                     <span>SUB-TOTAL:</span>
                     <span>${formatCurrency(sale.subtotal, 'USD')}</span>
@@ -63,20 +63,20 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
                         <span>-${formatCurrency(sale.discount, 'USD')}</span>
                     </div>
                 )}
-                 <div className="flex justify-between font-black text-[18px] pt-2 mt-1" style={{ borderTop: '2px solid #000' }}>
+                 <div className="flex justify-between text-[18px] pt-2 mt-1" style={{ borderTop: '1px solid #000' }}>
                     <span>TOTAL:</span>
                     <span>${formatCurrency(sale.totalAmount, 'USD')}</span>
                 </div>
             </div>
             
-            <div style={{ borderTop: '2px dashed #000', margin: '10px 0' }}></div>
+            <div style={{ borderTop: '1px dashed #000', margin: '10px 0' }}></div>
 
             <div className="space-y-1 text-[12px]">
-                <p className="font-black mb-2 text-center text-[13px] underline">PAGOS RECIBIDOS</p>
+                <p className="mb-2 text-center text-[13px] underline">PAGOS RECIBIDOS</p>
                 {sale.payments.map((p, index) => (
-                    <div key={index} className="flex justify-between font-black">
+                    <div key={index} className="flex justify-between">
                         <span className="uppercase text-[11px] flex-1">{p.method}{p.reference ? ` (${p.reference})` : ''}:</span>
-                        <span className="font-black ml-2">{getPaymentAmountInCorrectCurrency(p)}</span>
+                        <span className="ml-2">{getPaymentAmountInCorrectCurrency(p)}</span>
                     </div>
                 ))}
             </div>
@@ -85,14 +85,14 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
                  <>
                 <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }}></div>
                 <div className="space-y-1 text-[12px]">
-                    <p className="font-black mb-2 text-center text-[13px] underline">VUELTO ENTREGADO</p>
+                    <p className="mb-2 text-center text-[13px] underline">VUELTO ENTREGADO</p>
                     {sale.changeGiven.map((change, index) => {
                         const isUSD = change.method === 'Efectivo USD';
                         const symbol = isUSD ? getSymbol('USD') : getSymbol('Bs');
                         return (
-                            <div key={index} className="flex justify-between font-black">
+                            <div key={index} className="flex justify-between">
                                 <span className="uppercase text-[11px]">{change.method}:</span>
-                                <span className="font-black">{symbol}{formatCurrency(change.amount, isUSD ? 'USD' : 'Bs')}</span>
+                                <span>{symbol}{formatCurrency(change.amount, isUSD ? 'USD' : 'Bs')}</span>
                             </div>
                         );
                     })}
@@ -100,8 +100,8 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
                 </>
             )}
 
-             <div style={{ borderTop: '2px dashed #000', margin: '12px 0' }}></div>
-             <div className="text-center mt-2 font-black text-[12px] uppercase space-y-1">
+             <div style={{ borderTop: '1px dashed #000', margin: '12px 0' }}></div>
+             <div className="text-center mt-2 text-[12px] uppercase space-y-1">
                 <p>¡GRACIAS POR SU COMPRA!</p>
                 <p className="text-[10px]">INDISPENSABLE PARA GARANTÍA</p>
              </div>
@@ -132,6 +132,7 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                         font-family: 'Courier New', Courier, monospace; 
                         background-color: #fff; 
                         color: #000 !important;
+                        font-weight: 400 !important;
                     }
                     .receipt-container { 
                         width: 58mm; 
@@ -139,12 +140,10 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                         box-sizing: border-box; 
                     }
                     .text-center { text-align: center; }
-                    .font-black { font-weight: 900 !important; }
-                    .font-bold { font-weight: 700 !important; }
                     .flex { display: flex; }
                     .justify-between { justify-content: space-between; }
-                    .border-t-2 { border-top: 2px solid #000; }
-                    .border-b-2 { border-bottom: 2px solid #000; }
+                    .border-t-2 { border-top: 1px solid #000; }
+                    .border-b-2 { border-bottom: 1px solid #000; }
                     .border-black { border-color: #000 !important; }
                     .w-full { width: 100%; }
                     .mx-auto { margin-left: auto; margin-right: auto; }
