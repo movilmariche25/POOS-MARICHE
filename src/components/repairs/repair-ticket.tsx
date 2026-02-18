@@ -1,4 +1,3 @@
-
 import type { RepairJob } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -18,50 +17,52 @@ export function CustomerTicket({ repairJob, businessName }: RepairTicketProps) {
     const fecha = format(date, "dd/MM/yy hh:mm a", { locale: es });
 
     return (
-        <div className="text-black bg-white font-mono text-[10px] max-w-[215px] mx-auto">
-            <div className="text-center mb-2">
-                <h3 className="font-bold text-sm uppercase">{businessName || 'MARICHE MOVIL'}</h3>
-                <p className="text-[9px] font-bold">NOTA DE ENTREGA (CLIENTE)</p>
+        <div className="text-black bg-white font-mono text-[12px] max-w-[215px] mx-auto leading-tight" style={{ color: '#000', fontWeight: 'bold' }}>
+            <div className="text-center mb-3">
+                <h3 className="font-black text-[16px] uppercase" style={{ margin: 0 }}>{businessName || 'MARICHE MOVIL'}</h3>
+                <p className="text-[12px] font-black underline">NOTA DE ENTREGA (CLIENTE)</p>
             </div>
             
-            <div className="flex justify-between text-[9px] font-bold mb-2">
+            <div className="flex justify-between text-[11px] font-black mb-2">
                 <span>{fecha}</span>
                 <span>ID: {repairJob.id}</span>
             </div>
 
-            <div className="space-y-0.5">
-                <p><span className="font-bold">Cliente:</span> {repairJob.customerName}</p>
-                <p><span className="font-bold">Cédula:</span> {repairJob.customerID || 'N/A'}</p>
-                <p><span className="font-bold">Teléfono:</span> {repairJob.customerPhone}</p>
-                {repairJob.customerAddress && <p><span className="font-bold">Dir:</span> {repairJob.customerAddress}</p>}
-                <div className="border-t border-dotted border-black my-1"></div>
-                <p><span className="font-bold">Equipo:</span> {repairJob.deviceMake} {repairJob.deviceModel}</p>
-                {repairJob.deviceImei && <p><span className="font-bold">IMEI:</span> {repairJob.deviceImei}</p>}
-                <p><span className="font-bold">Falla:</span> {repairJob.reportedIssue}</p>
+            <div className="space-y-1">
+                <p><span className="font-black">CLIENTE:</span> {repairJob.customerName.toUpperCase()}</p>
+                <p><span className="font-black">CÉDULA:</span> {repairJob.customerID || 'N/A'}</p>
+                <p><span className="font-black">TÉLF:</span> {repairJob.customerPhone}</p>
+                {repairJob.customerAddress && <p><span className="font-black">DIR:</span> {repairJob.customerAddress.toUpperCase()}</p>}
+                
+                <div style={{ borderTop: '2px dashed #000', margin: '6px 0' }}></div>
+                
+                <p><span className="font-black">EQUIPO:</span> {repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
+                {repairJob.deviceImei && <p><span className="font-black">IMEI:</span> {repairJob.deviceImei}</p>}
+                <p><span className="font-black">FALLA:</span> {repairJob.reportedIssue.toUpperCase()}</p>
             </div>
 
-            <div className="border-t border-black mt-2 pt-1 space-y-1">
-                <div className="flex justify-between">
-                    <span>Costo Total:</span>
-                    <span>${total.toFixed(2)}</span>
+            <div className="border-t-2 border-black mt-3 pt-2 space-y-1">
+                <div className="flex justify-between text-[13px]">
+                    <span>COSTO TOTAL:</span>
+                    <span className="font-black">${total.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between">
-                    <span>Abono:</span>
-                    <span>${abono.toFixed(2)}</span>
+                <div className="flex justify-between text-[13px]">
+                    <span>ABONO:</span>
+                    <span className="font-black">${abono.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between font-bold text-xs border-t border-black pt-1">
-                    <span>SALDO PENDIENTE:</span>
+                <div className="flex justify-between font-black text-[16px] border-t-2 border-black pt-1 mt-1">
+                    <span>PENDIENTE:</span>
                     <span>${saldo.toFixed(2)}</span>
                 </div>
             </div>
 
-            <div className="border-t border-black mt-2 pt-1 text-[8px] leading-tight space-y-1 italic">
-                <p><span className="font-bold">Garantía:</span> 4 días por el servicio específico realizado.</p>
-                <p><span className="font-bold">PLAZO DE RETIRO:</span> 7 días continuos una vez notificado. Pasado este lapso, el taller no se hace responsable por la integridad, resguardo o pérdida del mismo.</p>
-                <p>Indispensable presentar este ticket para el retiro del equipo.</p>
+            <div className="border-t border-black mt-4 pt-2 text-[10px] leading-tight space-y-1 italic font-bold">
+                <p><span className="font-black">GARANTÍA:</span> 4 DÍAS POR EL SERVICIO REALIZADO.</p>
+                <p><span className="font-black">RETIRO:</span> 7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL TALLER NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.</p>
+                <p className="text-center font-black uppercase mt-2">INDISPENSABLE PRESENTAR TICKET</p>
             </div>
-            <div className="text-center mt-4">
-                <p>¡Gracias por su confianza!</p>
+            <div className="text-center mt-4 font-black text-[12px]">
+                <p>¡GRACIAS POR SU CONFIANZA!</p>
             </div>
         </div>
     );
@@ -84,73 +85,63 @@ export function InternalTicket({ repairJob, businessName }: RepairTicketProps) {
     ];
 
     return (
-        <div className="text-black bg-white font-mono text-[10px] max-w-[215px] mx-auto">
-            <div className="text-center mb-2">
-                <h3 className="font-bold text-[11px] uppercase">CONTROL INTERNO: {businessName || 'MARICHE MOVIL'}</h3>
-                <p className="text-[9px]">ID: {repairJob.id} | Fecha: {fecha} | Hora: {hora}</p>
+        <div className="text-black bg-white font-mono text-[11px] max-w-[215px] mx-auto leading-tight" style={{ color: '#000', fontWeight: 'bold' }}>
+            <div className="text-center mb-3">
+                <h3 className="font-black text-[14px] uppercase">CONTROL INTERNO</h3>
+                <p className="text-[10px] font-black">ID: {repairJob.id} | {fecha} | {hora}</p>
             </div>
 
-            <div className="border-t border-black pt-1 mb-2">
-                <p className="font-bold">📱 DATOS DEL SERVICIO</p>
-                <p><span className="font-bold">Cliente:</span> {repairJob.customerName}</p>
-                <p><span className="font-bold">Cédula:</span> {repairJob.customerID || 'N/A'}</p>
-                <p><span className="font-bold">Dirección:</span> {repairJob.customerAddress || 'N/A'}</p>
-                <p><span className="font-bold">Equipo:</span> {repairJob.deviceMake} {repairJob.deviceModel}</p>
-                <p><span className="font-bold">Falla:</span> {repairJob.reportedIssue}</p>
-                <p><span className="font-bold">Costo:</span> ${total.toFixed(2)} | <span className="font-bold">Saldo:</span> ${saldo.toFixed(2)}</p>
+            <div className="border-t-2 border-black pt-2 mb-3">
+                <p className="font-black text-[12px] mb-1">DATOS DEL SERVICIO:</p>
+                <p><span className="font-black">CLIENTE:</span> {repairJob.customerName.toUpperCase()}</p>
+                <p><span className="font-black">EQUIPO:</span> {repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
+                <p><span className="font-black">FALLA:</span> {repairJob.reportedIssue.toUpperCase()}</p>
+                <p className="text-[13px] font-black mt-1">COSTO: ${total.toFixed(2)} | SALDO: ${saldo.toFixed(2)}</p>
             </div>
 
-            <div className="border-t border-black pt-1 mb-2">
-                <p className="font-bold mb-1">✅ CHECKLIST (ENTRADA vs SALIDA)</p>
-                <table className="w-full border-collapse text-[9px]">
+            <div className="border-t-2 border-black pt-2 mb-3">
+                <p className="font-black mb-1">CHECKLIST (E = Entrada | S = Salida):</p>
+                <table className="w-full border-collapse text-[10px] font-black">
                     <thead>
-                        <tr className="border-b border-black">
-                            <th className="text-left py-0.5">Función</th>
-                            <th className="text-center py-0.5">E</th>
-                            <th className="text-center py-0.5">S</th>
-                            <th className="text-left py-0.5 pl-2 border-l border-black">Función</th>
-                            <th className="text-center py-0.5">E</th>
-                            <th className="text-center py-0.5">S</th>
+                        <tr className="border-b-2 border-black">
+                            <th className="text-left py-1">FUNCIÓN</th>
+                            <th className="text-center py-1">E</th>
+                            <th className="text-center py-1">S</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {checklistItems.map(([f1, f2], idx) => (
-                            <tr key={idx} className="border-b border-gray-200">
-                                <td className="py-1">{f1}</td>
-                                <td className="text-center text-[8px] font-mono">[ ]</td>
-                                <td className="text-center text-[8px] font-mono">[ ]</td>
-                                <td className="py-1 pl-2 border-l border-black">{f2}</td>
-                                <td className="text-center text-[8px] font-mono">[ ]</td>
-                                <td className="text-center text-[8px] font-mono">[ ]</td>
+                        {checklistItems.flat().map((item, idx) => (
+                            <tr key={idx} className="border-b border-black">
+                                <td className="py-1 uppercase">{item}</td>
+                                <td className="text-center font-black">[ ]</td>
+                                <td className="text-center font-black">[ ]</td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
-                <p className="text-[7px] text-center mt-1 italic uppercase">E: Entrada (Al recibir) | S: Salida (Al entregar)</p>
             </div>
 
             {repairJob.devicePatternOrPassword && (
-                <div className="mb-2 p-1.5 bg-gray-100 border border-black rounded text-center">
-                    <p className="font-bold text-[9px] uppercase">Clave/Patrón:</p>
-                    <p className="text-sm font-bold">{repairJob.devicePatternOrPassword}</p>
+                <div className="mb-3 p-2 bg-white border-2 border-black rounded text-center">
+                    <p className="font-black text-[11px] uppercase">CLAVE / PATRÓN:</p>
+                    <p className="text-[18px] font-black">{repairJob.devicePatternOrPassword}</p>
                 </div>
             )}
 
-            <div className="mb-3 space-y-1">
-                <p>Obs. Técnicas: ________________________________</p>
-                <p>________________________________________________</p>
+            <div className="mb-4 space-y-2">
+                <p className="font-black underline">OBSERVACIONES TÉCNICAS:</p>
+                <div className="border-b border-black h-6"></div>
+                <div className="border-b border-black h-6"></div>
             </div>
 
-            <div className="border-t border-black pt-1 mb-3">
-                <p className="font-bold uppercase text-[8px]">✍️ 1. FIRMA DE RECEPCIÓN (AL DEJAR)</p>
-                <div className="mt-4 border-b border-black w-3/4 mx-auto"></div>
-                <p className="text-center font-bold text-[8px] mt-1">Firma Cliente</p>
+            <div className="border-t-2 border-black pt-4 mb-6">
+                <div className="mt-6 border-b-2 border-black w-3/4 mx-auto"></div>
+                <p className="text-center font-black text-[10px] mt-1">FIRMA RECEPCIÓN</p>
             </div>
 
-            <div className="border-t border-black pt-1">
-                <p className="font-bold uppercase text-[8px]">✍️ 2. FIRMA DE ENTREGA (AL RETIRAR)</p>
-                <div className="mt-4 border-b border-black w-3/4 mx-auto"></div>
-                <p className="text-center font-bold text-[8px] mt-1">Firma Cliente</p>
+            <div className="border-t-2 border-black pt-4">
+                <div className="mt-6 border-b-2 border-black w-3/4 mx-auto"></div>
+                <p className="text-center font-black text-[10px] mt-1">FIRMA ENTREGA</p>
             </div>
         </div>
     );
@@ -163,12 +154,12 @@ export function StickerTicket({ repairJob }: RepairTicketProps) {
     const saldo = Math.max(0, total - abono);
 
     return (
-        <div className="text-black bg-white font-mono text-[10px] max-w-[215px] mx-auto p-1">
-            <div className="border border-black p-2 space-y-0.5">
-                <p className="font-bold text-[11px]">ID: {repairJob.id}</p>
-                <p><span className="font-bold text-[9px]">Cliente:</span> {repairJob.customerName}</p>
-                <p><span className="font-bold text-[9px]">Modelo:</span> {repairJob.deviceMake} {repairJob.deviceModel}</p>
-                <p className="font-bold text-xs pt-1 border-t border-dotted border-black">SALDO: ${saldo.toFixed(2)}</p>
+        <div className="text-black bg-white font-mono text-[12px] max-w-[215px] mx-auto p-1 leading-tight" style={{ color: '#000' }}>
+            <div className="border-4 border-black p-2 space-y-1 text-center">
+                <p className="font-black text-[18px]">ID: {repairJob.id}</p>
+                <p className="font-black text-[14px] uppercase">{repairJob.customerName}</p>
+                <p className="font-black text-[14px] uppercase">{repairJob.deviceMake} {repairJob.deviceModel}</p>
+                <p className="font-black text-[18px] pt-1 border-t-2 border-black">SALDO: ${saldo.toFixed(2)}</p>
             </div>
         </div>
     );
@@ -177,14 +168,20 @@ export function StickerTicket({ repairJob }: RepairTicketProps) {
 const printStyles = `
     @media print {
         @page { margin: 0; size: auto; }
-        body { margin: 0; padding: 10px; }
+        body { margin: 0; padding: 5px; }
+    }
+    * { 
+        -webkit-print-color-adjust: exact !important; 
+        print-color-adjust: exact !important;
+        -webkit-font-smoothing: none !important;
+        font-smooth: never !important;
     }
     body { 
         margin: 0; 
-        padding: 15px; 
-        font-family: monospace; 
+        padding: 10px; 
+        font-family: 'Courier New', Courier, monospace; 
         background-color: #fff; 
-        color: #000;
+        color: #000 !important;
     }
     .ticket-container { 
         width: 58mm; 
@@ -192,46 +189,20 @@ const printStyles = `
         box-sizing: border-box; 
     }
     .text-center { text-align: center; }
-    .font-bold { font-weight: 700; }
+    .font-black { font-weight: 900 !important; }
+    .font-bold { font-weight: 700 !important; }
     .flex { display: flex; }
     .justify-between { justify-content: space-between; }
-    .border-t { border-top: 1px solid #000; }
-    .border-b { border-bottom: 1px solid #000; }
-    .border-dashed { border-style: dashed !important; }
-    .border-dotted { border-style: dotted !important; }
-    .border { border: 1px solid #000; }
-    .border-gray-200 { border-color: #e5e7eb; }
-    .border-gray-400 { border-color: #9ca3af; }
-    .bg-gray-100 { background-color: #f3f4f6; }
+    .border-t-2 { border-top: 2px solid #000; }
+    .border-b-2 { border-bottom: 2px solid #000; }
+    .border-black { border-color: #000 !important; }
     .w-full { width: 100%; }
-    .w-3\\/4 { width: 75%; }
     .mx-auto { margin-left: auto; margin-right: auto; }
-    .space-y-0\\.5 > * + * { margin-top: 0.125rem; }
-    .space-y-1 > * + * { margin-top: 0.25rem; }
-    .space-y-2 > * + * { margin-top: 0.5rem; }
-    .space-y-3 > * + * { margin-top: 0.75rem; }
-    .space-y-4 > * + * { margin-top: 1rem; }
-    .mb-2 { margin-bottom: 0.5rem; }
-    .mb-3 { margin-bottom: 0.75rem; }
-    .mb-4 { margin-bottom: 1rem; }
-    .my-4 { margin-top: 1rem; margin-bottom: 1rem; }
-    .mt-1 { margin-top: 0.125rem; }
-    .mt-2 { margin-top: 0.25rem; }
-    .mt-3 { margin-top: 0.5rem; }
-    .mt-4 { margin-top: 1rem; }
-    .p-0\\.5 { padding: 0.125rem; }
-    .p-1 { padding: 0.25rem; }
-    .p-2 { padding: 0.5rem; }
-    .pt-1 { padding-top: 0.25rem; }
-    .pt-2 { padding-top: 0.5rem; }
-    .pt-4 { padding-top: 1rem; }
-    .text-xs { font-size: 12px; }
-    .text-sm { font-size: 14px; }
     .uppercase { text-transform: uppercase; }
     .italic { font-style: italic; }
+    .underline { text-decoration: underline; }
     table { width: 100%; border-collapse: collapse; }
-    th, td { border: none; padding: 2px; }
-    .border-l { border-left: 1px solid #000; }
+    th, td { border: none; padding: 4px 2px; color: #000 !important; }
 `;
 
 function iframePrint(html: string) {
@@ -290,9 +261,9 @@ export const handlePrintAllTickets = (props: RepairTicketProps, onError: (messag
         const html = renderToString(
             <>
                 <CustomerTicket {...props} />
-                <div className="my-4 border-t border-dashed border-black"></div>
+                <div style={{ margin: '20px 0', borderTop: '3px dashed #000' }}></div>
                 <InternalTicket {...props} />
-                <div className="my-4 border-t border-dashed border-black"></div>
+                <div style={{ margin: '20px 0', borderTop: '3px dashed #000' }}></div>
                 <StickerTicket {...props} />
             </>
         );
