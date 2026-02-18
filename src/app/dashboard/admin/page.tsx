@@ -1,4 +1,3 @@
-
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -28,13 +27,14 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Edit, Mail, Building, Megaphone, Save, Trash2, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 function AnnouncementEditor() {
     const { firestore } = useFirebase();
@@ -260,7 +260,7 @@ export default function AdminPage() {
                                     {users?.filter(u => u.licenseStatus === 'trial').length || 0}
                                 </div>
                             </CardContent>
-                        </div>
+                        </Card>
                     </div>
                     <div className="md:col-span-1">
                         <AnnouncementEditor />
@@ -320,9 +320,9 @@ export default function AdminPage() {
                                                             </Button>
                                                         </AlertDialogTrigger>
                                                         <AlertDialogContent>
-                                                            <DialogHeader>
-                                                                <DialogTitle>¿Eliminar taller y TODOS sus datos?</DialogTitle>
-                                                                <DialogDescription className="space-y-3">
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>¿Eliminar taller y TODOS sus datos?</AlertDialogTitle>
+                                                                <AlertDialogDescription className="space-y-3">
                                                                     <p>Esta acción es <strong>irreversible</strong> y realizará lo siguiente:</p>
                                                                     <ul className="list-disc pl-5 text-xs space-y-1">
                                                                         <li>Borrará el perfil de acceso de <strong>{user.email}</strong>.</li>
@@ -331,9 +331,9 @@ export default function AdminPage() {
                                                                         <li>Eliminará todos los registros de reparaciones y clientes.</li>
                                                                     </ul>
                                                                     <p className="font-bold text-destructive">¿Estás absolutamente seguro de querer proceder?</p>
-                                                                </DialogDescription>
-                                                            </DialogHeader>
-                                                            <DialogFooter>
+                                                                </AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
                                                                 <AlertDialogCancel>Cancelar</AlertDialogCancel>
                                                                 <AlertDialogAction 
                                                                     onClick={() => handleDeleteUserWithData(user.uid, user.email)}
@@ -343,7 +343,7 @@ export default function AdminPage() {
                                                                     {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                                                                     Eliminar Todo Permanentemente
                                                                 </AlertDialogAction>
-                                                            </DialogFooter>
+                                                            </AlertDialogFooter>
                                                         </AlertDialogContent>
                                                     </AlertDialog>
                                                 )}

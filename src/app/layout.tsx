@@ -2,7 +2,7 @@
 
 import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
-import { FirebaseClientProvider, useUser, useFirebase } from '@/firebase';
+import { FirebaseClientProvider, useFirebase } from '@/firebase';
 import { AuthView } from '@/components/auth-view';
 import { useEffect, useRef, useState } from 'react';
 import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
@@ -13,8 +13,7 @@ import { Loader2 } from 'lucide-react';
 import './globals.css';
 
 function AppContent({ children }: { children: React.ReactNode }) {
-  const { user, isUserLoading } = useUser();
-  const { firestore, auth } = useFirebase();
+  const { user, isUserLoading, firestore, auth } = useFirebase();
   const [isInitializing, setIsInitializing] = useState(true);
   const [isKickingOut, setIsKickingOut] = useState(false);
   const currentSessionId = useRef<string | null>(null);
@@ -94,13 +93,13 @@ function AppContent({ children }: { children: React.ReactNode }) {
         setIsInitializing(false);
       } catch (serverError: any) {
         console.error("Session sync failed:", serverError);
-        // Si el error es de permisos, lo reportamos para depuración pero permitimos continuar si es posible
-        if (serverError.code === 'permission-denied') {
-          const permissionError = new FirestorePermissionError({
-            path: `users/${user.uid}`,
-            operation: 'get',
-          } satisfies SecurityRuleContext);
-          errorEmitter.emit('permission-error', permissionError);
+        // Emitir error contextual para depuración de reglas
+        if (user) {
+            const permissionError = new FirestorePermissionError({
+                path: `users/${user.uid}`,
+                operation: 'get',
+            } satisfies SecurityRuleContext);
+            errorEmitter.emit('permission-error', permissionError);
         }
         setIsInitializing(false);
       }
