@@ -1,4 +1,3 @@
-
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -58,8 +57,6 @@ const formSchema = z.object({
   customerAddress: z.string().optional(),
   deviceMake: z.string().min(2, "Marca obligatoria"),
   deviceModel: z.string().min(1, "Modelo obligatorio"),
-  deviceImei: z.string().optional(),
-  devicePatternOrPassword: z.string().optional(),
   reportedIssue: z.string().min(5, "Detalla la falla del equipo"),
   estimatedCost: z.coerce.number().min(0, "Costo debe ser positivo"),
   status: z.enum(repairStatuses),
@@ -282,10 +279,6 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                 <div className="grid grid-cols-2 gap-4">
                     <FormField control={form.control} name="deviceMake" render={({field}) => <FormItem><FormLabel>Marca</FormLabel><Input placeholder="Samsung, iPhone..." {...field}/><FormMessage /></FormItem>} />
                     <FormField control={form.control} name="deviceModel" render={({field}) => <FormItem><FormLabel>Modelo</FormLabel><Input placeholder="S23 Ultra, 14 Pro..." {...field}/><FormMessage /></FormItem>} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <FormField control={form.control} name="deviceImei" render={({field}) => <FormItem><FormLabel>IMEI / Serie</FormLabel><Input placeholder="Número de serie..." {...field}/><FormMessage /></FormItem>} />
-                    <FormField control={form.control} name="devicePatternOrPassword" render={({field}) => <FormItem><FormLabel>Clave / Patrón</FormLabel><Input placeholder="1234 o L..." {...field}/><FormMessage /></FormItem>} />
                 </div>
                 <FormField control={form.control} name="reportedIssue" render={({field}) => <FormItem><FormLabel>Falla Reportada</FormLabel><Textarea placeholder="Ej: Pantalla partida, no carga..." {...field} className="resize-none" /></FormItem>} />
             </div>

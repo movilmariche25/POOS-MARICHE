@@ -49,7 +49,7 @@ export default function RepairsPage() {
                     columns={columns} 
                     data={filteredRepairJobs || []}
                     isLoading={isLoading}
-                    filterPlaceholder="Buscar cliente, teléfono o IMEI..."
+                    filterPlaceholder="Buscar cliente o teléfono..."
                 >
                     {(table) => (
                         <div className="flex items-center gap-2">

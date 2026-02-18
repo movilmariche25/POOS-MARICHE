@@ -1,25 +1,22 @@
-
 "use client"
 
-import type { Sale, Payment, Product, CartItem, RepairJob } from "@/lib/types";
+import type { Sale, Payment, Product, CartItem, RepairJob, UserProfile } from "@/lib/types";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { useCurrency } from "@/hooks/use-currency";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { ReceiptView, handlePrintReceipt } from "../pos/receipt-view";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
-import { Printer, Undo2, CheckCircle2 } from "lucide-react";
+import { Printer, Undo2 } from "lucide-react";
 import React, { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "../ui/skeleton";
 import { AdminAuthDialog } from "../admin-auth-dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../ui/alert-dialog";
-import { useFirebase } from "@/firebase";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../ui/alert-dialog";
+import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
 import { doc, runTransaction } from "firebase/firestore";
 import { Badge } from "../ui/badge";
-import { cn } from "@/lib/utils";
 import { Textarea } from "../ui/textarea";
 import { Label } from "../ui/label";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
@@ -79,7 +76,7 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
     return (
         <>
             <AdminAuthDialog onAuthorized={() => setIsConfirmOpen(true)}>
-                <Button variant="outline" size="sm"><Undo2 className="mr-2 h-4 w-4" /> Reembolsar</Button>
+                <Button variant="outline" size="sm" className="h-8"><Undo2 className="mr-2 h-4 w-4" /> Reembolsar</Button>
             </AdminAuthDialog>
             <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
                 <AlertDialogContent>
@@ -103,19 +100,47 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
 };
 
 export function TransactionList({ sales, isLoading }: TransactionListProps) {
-    const { format: formatCurrency, getSymbol } = useCurrency();
+    const { firestore, user } = useFirebase();
+    const { format: formatCurrency, getSymbol, convert } = useCurrency();
+    const { toast } = useToast();
+
+    const profileRef = useMemoFirebase(() => 
+        (firestore && user) ? doc(firestore, 'users', user.uid) : null,
+        [firestore, user?.uid]
+    );
+    const { data: profile } = useDoc<UserProfile>(profileRef);
+
+    const onReprint = (sale: Sale) => {
+        handlePrintReceipt({
+            sale,
+            currency: { format: formatCurrency, getSymbol, convert },
+            businessName: profile?.businessName
+        }, (error) => {
+            toast({
+                variant: "destructive",
+                title: "Error de Impresión",
+                description: error
+            });
+        });
+    };
+
     if (isLoading) return <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}</div>
     if (sales.length === 0) return <p className="text-muted-foreground text-center">No hay transacciones.</p>
-    const sortedSales = [...sales].sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime());
+    
+    const sortedSales = [...sales].sort((a, b) => {
+        const dateA = a.transactionDate ? new Date(a.transactionDate).getTime() : 0;
+        const dateB = b.transactionDate ? new Date(b.transactionDate).getTime() : 0;
+        return dateB - dateA;
+    });
 
     return (
         <Accordion type="single" collapsible className="w-full">
             {sortedSales.map((sale) => (
                 <AccordionItem value={sale.id!} key={sale.id}>
-                    <AccordionTrigger>
+                    <AccordionTrigger className="hover:no-underline">
                         <div className="flex justify-between w-full pr-4">
                             <div className="text-left">
-                                <p className="font-semibold">{format(parseISO(sale.transactionDate), "dd/MM/yy", { locale: es })}</p>
+                                <p className="font-semibold">{sale.transactionDate ? format(parseISO(sale.transactionDate), "dd/MM/yy hh:mm a", { locale: es }) : 'Sin fecha'}</p>
                                 <p className="text-xs text-muted-foreground">{sale.id}</p>
                             </div>
                             <div className="flex items-center gap-4">
@@ -126,15 +151,48 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                         </div>
                     </AccordionTrigger>
                     <AccordionContent>
-                        <div className="flex justify-end mb-2"><RefundButton sale={sale} /></div>
-                        <Table>
-                            <TableHeader><TableRow><TableHead>Producto</TableHead><TableHead className="text-right">Total</TableHead></TableRow></TableHeader>
-                            <TableBody>
-                                {sale.items.map(item => (
-                                    <TableRow key={item.productId}><TableCell>{item.name}</TableCell><TableCell className="text-right">${formatCurrency(item.price * item.quantity)}</TableCell></TableRow>
+                        <div className="p-4 bg-muted/30 rounded-lg space-y-4">
+                            <div className="flex justify-end gap-2">
+                                <Button variant="outline" size="sm" className="h-8" onClick={() => onReprint(sale)}>
+                                    <Printer className="mr-2 h-4 w-4" /> Reimprimir Ticket
+                                </Button>
+                                <RefundButton sale={sale} />
+                            </div>
+                            
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Producto / Servicio</TableHead>
+                                        <TableHead className="text-center">Cant.</TableHead>
+                                        <TableHead className="text-right">Precio</TableHead>
+                                        <TableHead className="text-right">Total</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {sale.items.map((item, idx) => (
+                                        <TableRow key={idx}>
+                                            <TableCell className="font-medium text-xs">{item.name}</TableCell>
+                                            <TableCell className="text-center">{item.quantity}</TableCell>
+                                            <TableCell className="text-right">${formatCurrency(item.price)}</TableCell>
+                                            <TableCell className="text-right font-bold">${formatCurrency(item.price * item.quantity)}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+
+                            <div className="border-t pt-2 space-y-1 text-sm">
+                                <div className="flex justify-between">
+                                    <span className="text-muted-foreground">Método(s) de Pago:</span>
+                                    <span className="font-medium uppercase">{sale.paymentMethod}</span>
+                                </div>
+                                {sale.payments.map((p, i) => (
+                                    <div key={i} className="flex justify-between text-xs pl-4">
+                                        <span>- {p.method} {p.reference ? `(${p.reference})` : ''}</span>
+                                        <span>{p.method === 'Efectivo USD' ? '$' : 'Bs '}{formatCurrency(p.amount)}</span>
+                                    </div>
                                 ))}
-                            </TableBody>
-                        </Table>
+                            </div>
+                        </div>
                     </AccordionContent>
                 </AccordionItem>
             ))}
