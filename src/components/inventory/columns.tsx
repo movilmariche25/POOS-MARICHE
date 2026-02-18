@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ArrowUpDown, MoreHorizontal, Edit, Trash2, TicketPercent, PackagePlus, Lock, Percent } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Edit, Trash2, TicketPercent, PackagePlus, Lock, Percent, Info } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { ProductFormDialog } from "./product-form-dialog"
 import { useToast } from "@/hooks/use-toast"
@@ -33,6 +33,7 @@ import { AdminAuthDialog } from "../admin-auth-dialog"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { Checkbox } from "../ui/checkbox"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip"
 
 const ActionsCell = ({ product }: { product: Product }) => {
     const { toast } = useToast();
@@ -225,7 +226,31 @@ export const columns: ColumnDef<Product>[] = [
         className = "border-yellow-500 text-yellow-500"
       }
 
-      return <div className="text-center"><Badge variant={variant} className={className}>{availableStock}</Badge></div>
+      return (
+        <div className="flex justify-center items-center gap-1">
+            <TooltipProvider>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <Badge variant={variant} className={cn(className, "cursor-help")}>
+                            {availableStock}
+                        </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent className="p-3 space-y-1">
+                        <p className="font-bold text-xs">Desglose de Stock:</p>
+                        <div className="text-[10px] space-y-0.5">
+                            <div className="flex justify-between gap-4"><span>Físico en estante:</span><span className="font-mono">{product.stockLevel}</span></div>
+                            <div className="flex justify-between gap-4 text-amber-500"><span>Reservado (En taller):</span><span className="font-mono">-{product.reservedStock || 0}</span></div>
+                            <div className="flex justify-between gap-4 text-destructive"><span>Dañado/Garantía:</span><span className="font-mono">-{product.damagedStock || 0}</span></div>
+                            <div className="border-t pt-1 flex justify-between gap-4 font-bold"><span>Disponible real:</span><span className="font-mono">{availableStock}</span></div>
+                        </div>
+                        {availableStock < 0 && (
+                            <p className="text-[9px] text-destructive mt-2 italic">* Tienes más reparaciones que piezas físicas.</p>
+                        )}
+                    </TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+        </div>
+      );
     }
   },
   {

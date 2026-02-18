@@ -1,4 +1,3 @@
-
 import type { RepairJob } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -31,7 +30,10 @@ export function CustomerTicket({ repairJob, businessName }: RepairTicketProps) {
 
             <div className="space-y-0.5">
                 <p><span className="font-bold">Cliente:</span> {repairJob.customerName}</p>
-                <p><span className="font-bold">CI:</span> {repairJob.customerID || 'N/A'} | <span className="font-bold">Tlf:</span> {repairJob.customerPhone}</p>
+                <p><span className="font-bold">Cédula:</span> {repairJob.customerID || 'N/A'}</p>
+                <p><span className="font-bold">Teléfono:</span> {repairJob.customerPhone}</p>
+                {repairJob.customerAddress && <p><span className="font-bold">Dir:</span> {repairJob.customerAddress}</p>}
+                <div className="border-t border-dotted border-black my-1"></div>
                 <p><span className="font-bold">Equipo:</span> {repairJob.deviceMake} {repairJob.deviceModel}</p>
                 {repairJob.deviceImei && <p><span className="font-bold">IMEI:</span> {repairJob.deviceImei}</p>}
                 <p><span className="font-bold">Falla:</span> {repairJob.reportedIssue}</p>
@@ -89,10 +91,12 @@ export function InternalTicket({ repairJob, businessName }: RepairTicketProps) {
 
             <div className="border-t border-black pt-1 mb-2">
                 <p className="font-bold">📱 DATOS DEL SERVICIO</p>
-                <p><span className="font-bold">Cliente:</span> {repairJob.customerName} ({repairJob.customerID || 'N/A'})</p>
+                <p><span className="font-bold">Cliente:</span> {repairJob.customerName}</p>
+                <p><span className="font-bold">Cédula:</span> {repairJob.customerID || 'N/A'}</p>
+                <p><span className="font-bold">Dirección:</span> {repairJob.customerAddress || 'N/A'}</p>
                 <p><span className="font-bold">Equipo:</span> {repairJob.deviceMake} {repairJob.deviceModel}</p>
                 <p><span className="font-bold">Falla:</span> {repairJob.reportedIssue}</p>
-                <p><span className="font-bold">Costo:</span> ${total.toFixed(2)} | <span className="font-bold">Abono:</span> ${abono.toFixed(2)} | <span className="font-bold">Saldo:</span> ${saldo.toFixed(2)}</p>
+                <p><span className="font-bold">Costo:</span> ${total.toFixed(2)} | <span className="font-bold">Saldo:</span> ${saldo.toFixed(2)}</p>
             </div>
 
             <div className="border-t border-black pt-1 mb-2">
@@ -134,20 +138,16 @@ export function InternalTicket({ repairJob, businessName }: RepairTicketProps) {
             <div className="mb-3 space-y-1">
                 <p>Obs. Técnicas: ________________________________</p>
                 <p>________________________________________________</p>
-                <p>________________________________________________</p>
-                <p>________________________________________________</p>
             </div>
 
             <div className="border-t border-black pt-1 mb-3">
                 <p className="font-bold uppercase text-[8px]">✍️ 1. FIRMA DE RECEPCIÓN (AL DEJAR)</p>
-                <p className="text-[7.5px] leading-tight italic">"Declaro que el equipo es de mi propiedad y acepto el estado inicial registrado en la columna (E). Entiendo que tengo 7 días continuos para retirar el equipo tras la notificación, de lo contrario el taller no se hace responsable."</p>
                 <div className="mt-4 border-b border-black w-3/4 mx-auto"></div>
                 <p className="text-center font-bold text-[8px] mt-1">Firma Cliente</p>
             </div>
 
             <div className="border-t border-black pt-1">
                 <p className="font-bold uppercase text-[8px]">✍️ 2. FIRMA DE ENTREGA (AL RETIRAR)</p>
-                <p className="text-[7.5px] leading-tight italic">"Recibo mi equipo reparado, probado y a total conformidad según la columna (S). Acepto que a partir de hoy inician mis 4 días de garantía bajo los términos del ticket."</p>
                 <div className="mt-4 border-b border-black w-3/4 mx-auto"></div>
                 <p className="text-center font-bold text-[8px] mt-1">Firma Cliente</p>
             </div>
