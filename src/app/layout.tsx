@@ -1,84 +1,129 @@
-
 "use client";
 
 import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
-import { FirebaseClientProvider, useUser, useFirebase, setDocumentNonBlocking } from '@/firebase';
+import { FirebaseClientProvider, useUser, useFirebase } from '@/firebase';
 import { AuthView } from '@/components/auth-view';
-import { useEffect } from 'react';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { useEffect, useRef, useState } from 'react';
+import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, type SecurityRuleContext } from '@/firebase/errors';
 import './globals.css';
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser();
   const { firestore, auth } = useFirebase();
+  const currentSessionId = useRef<string | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const isKickingOut = useRef(false);
 
   useEffect(() => {
-    if (user && firestore && auth) {
-      // 1. Obtener o generar ID de sesión local
-      let localSessionId = localStorage.getItem('mm_session_id');
-      if (!localSessionId) {
-        localSessionId = Math.random().toString(36).substring(7) + Date.now();
-        localStorage.setItem('mm_session_id', localSessionId);
+    let unsubscribe: (() => void) | undefined;
+
+    if (user && firestore && auth && !isKickingOut.current) {
+      // 1. Generar o recuperar ID de sesión único para ESTA pestaña/instancia
+      if (!currentSessionId.current) {
+        let sid = sessionStorage.getItem('mm_active_session_id');
+        if (!sid) {
+          sid = Math.random().toString(36).substring(7) + Date.now();
+          sessionStorage.setItem('mm_active_session_id', sid);
+        }
+        currentSessionId.current = sid;
       }
 
-      const checkProfile = async () => {
-        const profileRef = doc(firestore, 'users', user.uid);
-        const profileSnap = await getDoc(profileRef);
-        
-        const adminRoleRef = doc(firestore, 'roles_admin', user.uid);
-        const adminRoleSnap = await getDoc(adminRoleRef);
-        const isAdmin = adminRoleSnap.exists();
+      const sessionId = currentSessionId.current;
+      const profileRef = doc(firestore, 'users', user.uid);
 
-        if (!profileSnap.exists()) {
-          const newProfile = {
+      const syncAndWatch = async () => {
+        try {
+          // PASO CRÍTICO: Asegurar que el token esté fresco
+          await user.getIdToken(true);
+          
+          const profileSnap = await getDoc(profileRef);
+          
+          const adminRoleRef = doc(firestore, 'roles_admin', user.uid);
+          const adminRoleSnap = await getDoc(adminRoleRef);
+          const isAdmin = adminRoleSnap.exists();
+
+          // 2. Registrar ESTA sesión como la activa
+          const profileData = {
             uid: user.uid,
             email: user.email,
-            licenseStatus: isAdmin ? 'active' : 'trial',
-            licenseExpiry: isAdmin 
-              ? new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString()
-              : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-            createdAt: new Date().toISOString(),
             isAdmin: isAdmin,
-            lastSessionId: localSessionId // Registrar sesión actual
+            lastSessionId: sessionId,
+            updatedAt: new Date().toISOString(),
+            ...(!profileSnap.exists() && {
+              licenseStatus: isAdmin ? 'active' : 'trial',
+              licenseExpiry: isAdmin 
+                ? new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString() 
+                : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+              createdAt: new Date().toISOString(),
+            })
           };
-          setDocumentNonBlocking(profileRef, newProfile, { merge: true });
-        } else {
-          const currentProfile = profileSnap.data();
-          // Forzar actualización de sesión y sincronizar admin
-          setDocumentNonBlocking(profileRef, { 
-            isAdmin, 
-            lastSessionId: localSessionId 
-          }, { merge: true });
+
+          await setDoc(profileRef, profileData, { merge: true });
+          setIsInitializing(false);
+
+          // 3. Vigilar cambios en tiempo real para sesión única
+          unsubscribe = onSnapshot(profileRef, (snap) => {
+            if (snap.exists()) {
+              const data = snap.data();
+              // Si el ID en la DB es distinto al nuestro, alguien más entró con ESTA cuenta
+              if (data.lastSessionId && data.lastSessionId !== sessionId && !isKickingOut.current) {
+                isKickingOut.current = true;
+                
+                // Detener el escuchador inmediatamente para evitar errores de permisos al cerrar sesión
+                if (unsubscribe) {
+                  unsubscribe();
+                  unsubscribe = undefined;
+                }
+
+                signOut(auth).then(() => {
+                  sessionStorage.removeItem('mm_active_session_id');
+                  window.location.href = '/'; // Redirección limpia al inicio
+                }).catch(() => {
+                  window.location.href = '/';
+                });
+              }
+            }
+          }, (error) => {
+            // Ignorar errores si estamos en proceso de salida
+            if (!isKickingOut.current && error.code !== 'permission-denied') {
+               console.error("Watcher error:", error);
+            }
+          });
+
+        } catch (serverError: any) {
+          if (!isKickingOut.current) {
+            console.error("Session sync failed:", serverError);
+            if (serverError.code === 'permission-denied') {
+              const permissionError = new FirestorePermissionError({
+                path: `users/${user.uid}`,
+                operation: 'get',
+              } satisfies SecurityRuleContext);
+              errorEmitter.emit('permission-error', permissionError);
+            }
+          }
+          setIsInitializing(false);
         }
       };
       
-      checkProfile();
-
-      // 2. Escuchador de sesión única (Eyectar si cambia el lastSessionId en Firestore)
-      const profileRef = doc(firestore, 'users', user.uid);
-      const unsubscribe = onSnapshot(profileRef, (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data.lastSessionId && data.lastSessionId !== localSessionId) {
-            // Se detectó una sesión más reciente en otro lugar
-            signOut(auth).then(() => {
-              localStorage.removeItem('mm_session_id');
-            });
-          }
-        }
-      });
-
-      return () => unsubscribe();
+      syncAndWatch();
+    } else if (!user) {
+      setIsInitializing(false);
     }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [user, firestore, auth]);
 
-  if (isUserLoading) {
+  if (isUserLoading || isInitializing) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-pulse flex flex-col items-center gap-4">
-          <div className="w-16 h-16 bg-muted rounded-full" />
+          <div className="w-16 h-16 bg-primary/20 rounded-full" />
           <div className="h-4 w-32 bg-muted rounded" />
         </div>
       </div>

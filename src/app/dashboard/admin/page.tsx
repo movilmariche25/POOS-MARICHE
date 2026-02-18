@@ -185,7 +185,6 @@ export default function AdminPage() {
         setIsDeleting(true);
         try {
             const batch = writeBatch(firestore);
-            
             const subcollections = [
                 'products', 
                 'repair_jobs', 
@@ -261,7 +260,7 @@ export default function AdminPage() {
                                     {users?.filter(u => u.licenseStatus === 'trial').length || 0}
                                 </div>
                             </CardContent>
-                        </Card>
+                        </div>
                     </div>
                     <div className="md:col-span-1">
                         <AnnouncementEditor />

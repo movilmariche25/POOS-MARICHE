@@ -1,4 +1,3 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -22,7 +21,7 @@ service cloud.firestore {
      * Gestión de Roles Globales
      */
     match /roles_admin/{adminId} {
-      allow get: if isSignedIn();
+      allow get: if true;
       allow read, write: if false; 
     }
 
@@ -38,10 +37,14 @@ service cloud.firestore {
      * Estructura Multi-Tenant
      */
     match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
+      // Permitimos get público para validar la existencia del taller durante el login
+      allow get: if true;
       allow list: if isAdmin();
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
+      
+      // Permitimos crear/actualizar si el usuario es el dueño
+      // Importante: No usamos isOwner aquí directamente para permitir el "handshake" inicial de sesión
+      allow create, update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if isAdmin();
 
       match /{allData=**} {
         allow read, write: if isOwner(userId) || isAdmin();

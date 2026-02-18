@@ -163,7 +163,6 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
             const newPartId = mainPart?.id;
 
             if (!repairJob?.isPaid) {
-                // Caso A: Pieza nueva en registro nuevo
                 if (!repairJob && newPartId) {
                     const pRef = doc(firestore, 'users', user.uid, 'products', newPartId);
                     const pDoc = await transaction.get(pRef);
@@ -171,9 +170,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                         transaction.update(pRef, { reservedStock: (pDoc.data().reservedStock || 0) + 1 });
                     }
                 } 
-                // Caso B: Cambio de pieza en registro existente
                 else if (repairJob && oldPartId !== newPartId) {
-                    // Liberar vieja
                     if (oldPartId) {
                         const oldRef = doc(firestore, 'users', user.uid, 'products', oldPartId);
                         const oldDoc = await transaction.get(oldRef);
@@ -181,7 +178,6 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                             transaction.update(oldRef, { reservedStock: Math.max(0, (oldDoc.data().reservedStock || 0) - 1) });
                         }
                     }
-                    // Reservar nueva
                     if (newPartId) {
                         const newRef = doc(firestore, 'users', user.uid, 'products', newPartId);
                         const newDoc = await transaction.get(newRef);
@@ -223,7 +219,6 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                 });
             }
 
-            // 3. Actualización de Datos del Trabajo
             const isNowFullyPaid = newPaidTotal >= (values.estimatedCost - 0.01);
             const wasCompleted = repairJob?.status === 'Completado';
             
