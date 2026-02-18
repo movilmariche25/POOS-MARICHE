@@ -120,7 +120,10 @@ export default function SettingsPage() {
     };
 
     const handleSignOut = () => {
-        if (auth) signOut(auth);
+        if (auth) {
+            localStorage.removeItem('mm_session_id');
+            signOut(auth);
+        }
     }
 
     return (

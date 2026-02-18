@@ -27,10 +27,7 @@ export const handlePrint = (
     </div>
   );
 
-  const printWindow = window.open('', '_blank', 'width=800,height=600');
-
-  if (printWindow) {
-    printWindow.document.write(`
+  const fullHtml = `
         <html>
             <head>
                 <title>Etiquetas de Productos</title>
@@ -87,19 +84,34 @@ export const handlePrint = (
             </head>
             <body>
                 ${labelsHtml}
-                <script>
-                    window.onload = function() {
-                        setTimeout(function() {
-                            window.print();
-                        }, 100);
-                    }
-                <\/script>
             </body>
         </html>
-    `);
-    printWindow.document.close();
+    `;
+
+  // SOLUCIÓN IFRAME OCULTO
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'absolute';
+  iframe.style.width = '0';
+  iframe.style.height = '0';
+  iframe.style.border = 'none';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow?.document;
+  if (doc) {
+    doc.open();
+    doc.write(fullHtml);
+    doc.close();
+
+    // Esperar a que el contenido cargue antes de imprimir
+    setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+        }, 1000);
+    }, 500);
   } else {
-    onError("No se pudo abrir la ventana de impresión. Revisa si tu navegador está bloqueando las ventanas emergentes.");
+    onError("No se pudo inicializar el canal de impresión.");
   }
 };
 

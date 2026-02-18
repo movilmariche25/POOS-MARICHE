@@ -6,48 +6,73 @@ import { cn } from '@/lib/utils';
 import { FirebaseClientProvider, useUser, useFirebase, setDocumentNonBlocking } from '@/firebase';
 import { AuthView } from '@/components/auth-view';
 import { useEffect } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
 import './globals.css';
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser();
-  const { firestore } = useFirebase();
+  const { firestore, auth } = useFirebase();
 
   useEffect(() => {
-    if (user && firestore) {
+    if (user && firestore && auth) {
+      // 1. Obtener o generar ID de sesión local
+      let localSessionId = localStorage.getItem('mm_session_id');
+      if (!localSessionId) {
+        localSessionId = Math.random().toString(36).substring(7) + Date.now();
+        localStorage.setItem('mm_session_id', localSessionId);
+      }
+
       const checkProfile = async () => {
         const profileRef = doc(firestore, 'users', user.uid);
         const profileSnap = await getDoc(profileRef);
         
-        // Verificar si es administrador en la colección protegida
         const adminRoleRef = doc(firestore, 'roles_admin', user.uid);
         const adminRoleSnap = await getDoc(adminRoleRef);
         const isAdmin = adminRoleSnap.exists();
 
         if (!profileSnap.exists()) {
-          // Crear perfil inicial si no existe
           const newProfile = {
             uid: user.uid,
             email: user.email,
             licenseStatus: isAdmin ? 'active' : 'trial',
             licenseExpiry: isAdmin 
-              ? new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString() // 10 años para admin
-              : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 días de prueba
+              ? new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString()
+              : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
             createdAt: new Date().toISOString(),
-            isAdmin: isAdmin
+            isAdmin: isAdmin,
+            lastSessionId: localSessionId // Registrar sesión actual
           };
           setDocumentNonBlocking(profileRef, newProfile, { merge: true });
         } else {
-          // Si el perfil existe, asegurar que el estado isAdmin esté sincronizado
           const currentProfile = profileSnap.data();
-          if (currentProfile.isAdmin !== isAdmin) {
-            setDocumentNonBlocking(profileRef, { isAdmin }, { merge: true });
-          }
+          // Forzar actualización de sesión y sincronizar admin
+          setDocumentNonBlocking(profileRef, { 
+            isAdmin, 
+            lastSessionId: localSessionId 
+          }, { merge: true });
         }
       };
+      
       checkProfile();
+
+      // 2. Escuchador de sesión única (Eyectar si cambia el lastSessionId en Firestore)
+      const profileRef = doc(firestore, 'users', user.uid);
+      const unsubscribe = onSnapshot(profileRef, (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data.lastSessionId && data.lastSessionId !== localSessionId) {
+            // Se detectó una sesión más reciente en otro lugar
+            signOut(auth).then(() => {
+              localStorage.removeItem('mm_session_id');
+            });
+          }
+        }
+      });
+
+      return () => unsubscribe();
     }
-  }, [user, firestore]);
+  }, [user, firestore, auth]);
 
   if (isUserLoading) {
     return (

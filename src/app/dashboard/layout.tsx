@@ -33,6 +33,11 @@ function LicenseExpiredScreen() {
     const whatsappNumber = "584141135956";
     const message = encodeURIComponent("Hola, mi licencia de Mariche Movil ha expirado. Deseo renovar mi suscripción.");
     
+    const handleSignOut = () => {
+        localStorage.removeItem('mm_session_id');
+        auth && signOut(auth);
+    };
+
     return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
             <Card className="max-w-md w-full shadow-2xl border-t-4 border-destructive">
@@ -61,7 +66,7 @@ function LicenseExpiredScreen() {
                         <Button className="w-full bg-green-600 hover:bg-green-700" onClick={() => window.open(`https://wa.me/${whatsappNumber}?text=${message}`, '_blank')}>
                             Contactar Soporte (WhatsApp)
                         </Button>
-                        <Button variant="ghost" onClick={() => auth && signOut(auth)}>
+                        <Button variant="ghost" onClick={handleSignOut}>
                             <LogOut className="w-4 h-4 mr-2" /> Cerrar Sesión
                         </Button>
                     </div>

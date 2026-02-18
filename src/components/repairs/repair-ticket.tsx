@@ -1,3 +1,4 @@
+
 import type { RepairJob } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -233,36 +234,34 @@ const printStyles = `
     .border-l { border-left: 1px solid #000; }
 `;
 
-function createPrintWindow(html: string, title: string) {
-    const printWindow = window.open('', '_blank', 'width=300,height=600');
-    if (printWindow) {
-        printWindow.document.write(`
-            <html>
-                <head>
-                    <title>${title}</title>
-                    <style>${printStyles}</style>
-                </head>
-                <body>
-                    <div class="ticket-container">${html}</div>
-                    <script>
-                        window.onload = function() {
-                            window.print();
-                            setTimeout(function() { window.close(); }, 500);
-                        }
-                    </script>
-                </body>
-            </html>
-        `);
-        printWindow.document.close();
-    } else {
-        throw new Error("No se pudo abrir la ventana de impresión.");
+function iframePrint(html: string) {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+        doc.open();
+        doc.write(`<html><head><style>${printStyles}</style></head><body><div class="ticket-container">${html}</div></body></html>`);
+        doc.close();
+
+        setTimeout(() => {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+            }, 1000);
+        }, 500);
     }
 }
 
 export const handlePrintCustomerTicket = (props: RepairTicketProps, onError: (message: string) => void) => {
     try {
         const html = renderToString(<CustomerTicket {...props} />);
-        createPrintWindow(html, `Nota Cliente - ${props.repairJob.id}`);
+        iframePrint(html);
     } catch (e: any) {
         onError(e.message);
     }
@@ -271,7 +270,7 @@ export const handlePrintCustomerTicket = (props: RepairTicketProps, onError: (me
 export const handlePrintInternalTicket = (props: RepairTicketProps, onError: (message: string) => void) => {
     try {
         const html = renderToString(<InternalTicket {...props} />);
-        createPrintWindow(html, `Control Interno - ${props.repairJob.id}`);
+        iframePrint(html);
     } catch (e: any) {
         onError(e.message);
     }
@@ -280,7 +279,7 @@ export const handlePrintInternalTicket = (props: RepairTicketProps, onError: (me
 export const handlePrintStickerTicket = (props: RepairTicketProps, onError: (message: string) => void) => {
     try {
         const html = renderToString(<StickerTicket {...props} />);
-        createPrintWindow(html, `Etiqueta - ${props.repairJob.id}`);
+        iframePrint(html);
     } catch (e: any) {
         onError(e.message);
     }
@@ -297,7 +296,7 @@ export const handlePrintAllTickets = (props: RepairTicketProps, onError: (messag
                 <StickerTicket {...props} />
             </>
         );
-        createPrintWindow(html, `Tickets Reparación - ${props.repairJob.id}`);
+        iframePrint(html);
     } catch (e: any) {
         onError(e.message);
     }

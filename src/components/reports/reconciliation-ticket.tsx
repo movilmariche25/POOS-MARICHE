@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import type { DailyReconciliation, PaymentMethod } from "@/lib/types";
@@ -92,41 +91,56 @@ export function ReconciliationTicket({ reconciliation, currency }: Reconciliatio
 
 export const handlePrintReconciliation = (props: ReconciliationTicketProps, onError: (message: string) => void) => {
     const ticketHtml = renderToString(<ReconciliationTicket {...props} />);
-    const printWindow = window.open('', '_blank', 'width=300,height=500');
+    const fullHtml = `
+        <html>
+            <head>
+                <title>Reporte de Cierre de Caja</title>
+                <style>
+                    body { margin: 0; font-family: monospace; font-size: 10px; }
+                    .ticket-container { width: 58mm; padding: 2mm; box-sizing: border-box; }
+                    .text-black { color: #000; } .bg-white { background-color: #fff; } .p-2 { padding: 0.5rem; }
+                    .font-mono { font-family: monospace; } .text-xs { font-size: 0.75rem; line-height: 1rem; }
+                    .max-w-\\[215px\\] { max-width: 215px; } .mx-auto { margin-left: auto; margin-right: auto; }
+                    .text-center { text-align: center; } .mb-2 { margin-bottom: 0.5rem; } .my-2 { margin-top: 0.5rem; margin-bottom: 0.5rem; }
+                    .font-bold { font-weight: 700; } .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+                    .border-dashed { border-style: dashed; } .border-t { border-top-width: 1px; }
+                    .border-black { border-color: #000; } .flex { display: flex; }
+                    .space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.25rem; }
+                    .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.5rem; }
+                    .justify-between { justify-content: space-between; }
+                    .font-semibold { font-weight: 600; }
+                    .mt-1 { margin-top: 0.25rem; } .pt-1 { padding-top: 0.25rem; }
+                    .font-medium { font-weight: 500; }
+                </style>
+            </head>
+            <body>
+                <div class="ticket-container">${ticketHtml}</div>
+            </body>
+        </html>
+    `;
 
-    if (printWindow) {
-        printWindow.document.write(`
-            <html>
-                <head>
-                    <title>Reporte de Cierre de Caja</title>
-                    <style>
-                        body { margin: 0; font-family: monospace; font-size: 10px; }
-                        .ticket-container { width: 58mm; padding: 2mm; box-sizing: border-box; }
-                        .text-black { color: #000; } .bg-white { background-color: #fff; } .p-2 { padding: 0.5rem; }
-                        .font-mono { font-family: monospace; } .text-xs { font-size: 0.75rem; line-height: 1rem; }
-                        .max-w-\\[215px\\] { max-width: 215px; } .mx-auto { margin-left: auto; margin-right: auto; }
-                        .text-center { text-align: center; } .mb-2 { margin-bottom: 0.5rem; } .my-2 { margin-top: 0.5rem; margin-bottom: 0.5rem; }
-                        .font-bold { font-weight: 700; } .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
-                        .border-dashed { border-style: dashed; } .border-t { border-top-width: 1px; }
-                        .border-black { border-color: #000; } .flex { display: flex; }
-                        .space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.25rem; }
-                        .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.5rem; }
-                        .justify-between { justify-content: space-between; }
-                        .font-semibold { font-weight: 600; }
-                        .mt-1 { margin-top: 0.25rem; } .pt-1 { padding-top: 0.25rem; }
-                        .font-medium { font-weight: 500; }
-                    </style>
-                </head>
-                <body>
-                    <div class="ticket-container">${ticketHtml.replace(/className="/g, 'class="')}</div>
-                    <script>
-                        window.onload = function() { window.print(); }
-                    <\/script>
-                </body>
-            </html>
-        `);
-        printWindow.document.close();
+    // SOLUCIÓN IFRAME OCULTO
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'absolute';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = 'none';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+        doc.open();
+        doc.write(fullHtml);
+        doc.close();
+
+        setTimeout(() => {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+            setTimeout(() => {
+                document.body.removeChild(iframe);
+            }, 1000);
+        }, 500);
     } else {
-        onError("No se pudo abrir la ventana de impresión. Revisa si tu navegador está bloqueando las ventanas emergentes.");
+        onError("No se pudo inicializar el canal de impresión.");
     }
 }

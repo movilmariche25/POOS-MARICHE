@@ -150,4 +150,5 @@ export type UserProfile = {
   licenseExpiry: string;
   createdAt: string;
   isAdmin?: boolean;
+  lastSessionId?: string;
 };
