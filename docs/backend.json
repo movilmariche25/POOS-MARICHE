@@ -1,0 +1,103 @@
+
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "sku": { "type": "string" },
+        "costPrice": { "type": "number" },
+        "stockLevel": { "type": "number" }
+      }
+    },
+    "RepairJob": {
+      "title": "RepairJob",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerName": { "type": "string" },
+        "status": { "type": "string" }
+      }
+    },
+    "Sale": {
+      "title": "Sale",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "totalAmount": { "type": "number" }
+      }
+    },
+    "DailyReconciliation": {
+      "title": "DailyReconciliation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "totalSales": { "type": "number" },
+        "totalDifference": { "type": "number" }
+      }
+    },
+    "SystemAnnouncement": {
+      "title": "SystemAnnouncement",
+      "type": "object",
+      "properties": {
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "warning", "critical"] },
+        "active": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      }
+    }
+  },
+  "auth": {
+    "providers": ["password"]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "description": "Perfil del usuario y dueño del taller."
+        }
+      },
+      {
+        "path": "/users/{userId}/products/{productId}",
+        "definition": {
+          "entityName": "Product",
+          "description": "Inventario personal del usuario."
+        }
+      },
+      {
+        "path": "/users/{userId}/repair_jobs/{jobId}",
+        "definition": {
+          "entityName": "RepairJob",
+          "description": "Trabajos de reparación del taller del usuario."
+        }
+      },
+      {
+        "path": "/users/{userId}/sale_transactions/{saleId}",
+        "definition": {
+          "entityName": "Sale",
+          "description": "Ventas realizadas por el taller del usuario."
+        }
+      },
+      {
+        "path": "/users/{userId}/daily_reconciliations/{reconId}",
+        "definition": {
+          "entityName": "DailyReconciliation",
+          "description": "Cierres de caja diarios por taller."
+        }
+      },
+      {
+        "path": "/system/announcements",
+        "definition": {
+          "entityName": "SystemAnnouncement",
+          "description": "Mensajes globales del administrador para todos los usuarios."
+        }
+      }
+    ]
+  }
+}
