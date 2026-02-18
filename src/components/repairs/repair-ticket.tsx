@@ -147,7 +147,7 @@ const printStyles = `
         font-family: 'Courier New', Courier, monospace; 
         background-color: #fff; 
         color: #000 !important;
-        font-weight: 400 !important;
+        font-weight: 600 !important;
     }
     .ticket-container { 
         width: 58mm; 

@@ -35,7 +35,7 @@ function generateSaleId() {
 export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem, onClearCart, repairJobId, onTogglePromo, onToggleGift }: CartDisplayProps) {
   const { firestore, user } = useFirebase();
   const { toast } = useToast();
-  const { format: formatCurrency, getFinalPrice, getSymbol } = useCurrency();
+  const { format: formatCurrency, getFinalPrice, getSymbol, convert } = useCurrency();
   const [discount] = useState(0);
   
   const repairJobRef = useMemoFirebase(() => 
@@ -51,7 +51,6 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
     const product = allProducts.find(p => p.id === item.productId);
     if (!product) return 0;
     
-    // Si es promo, usamos promoPrice. Si no, usamos el precio final calculado (que considera margen o precio fijo)
     return (item.isPromo && typeof product.promoPrice === 'number' && product.promoPrice > 0) 
         ? product.promoPrice 
         : getFinalPrice(product);
@@ -133,10 +132,10 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
         <Table>
             <TableHeader>
                 <TableRow>
-                    <TableHead className="w-[50%]">PRODUCTO</TableHead>
-                    <TableHead className="text-center">CANT</TableHead>
-                    <TableHead className="text-right">TOTAL</TableHead>
-                    <TableHead className="w-[100px] text-right">ACCIONES</TableHead>
+                    <TableHead className="w-[50%] text-[10px] uppercase">PRODUCTO</TableHead>
+                    <TableHead className="text-center text-[10px] uppercase">CANT</TableHead>
+                    <TableHead className="text-right text-[10px] uppercase">TOTAL</TableHead>
+                    <TableHead className="w-[100px] text-right text-[10px] uppercase">ACCIONES</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
@@ -236,13 +235,20 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
         </Table>
       </ScrollArea>
       <div className="p-4 border-t bg-gray-50 space-y-3">
-        <div className="flex justify-between items-end">
-            <span className="text-sm text-muted-foreground">Monto Total:</span>
-            <span className="font-black text-2xl text-primary leading-none">{getSymbol()}{formatCurrency(total)}</span>
+        <div className="flex justify-between items-center">
+            <span className="text-sm text-muted-foreground font-medium uppercase tracking-tight">Total a Pagar:</span>
+            <div className="text-right flex flex-col items-end">
+                <span className="font-black text-2xl text-primary leading-none">
+                    {getSymbol('USD')}{formatCurrency(total, 'USD')}
+                </span>
+                <span className="text-sm font-bold text-muted-foreground mt-1">
+                    Bs {formatCurrency(convert(total, 'USD', 'Bs'), 'Bs')}
+                </span>
+            </div>
         </div>
         <CheckoutDialog cart={cart} allProducts={allProducts} total={total} onCheckout={handleCheckout} onClearCart={onClearCart} isRepairSale={!!repairJobId}>
             <Button size="lg" className="w-full h-12 text-lg font-black shadow-lg" disabled={cart.length === 0}>
-                PAGAR {getSymbol()}{formatCurrency(total)}
+                PAGAR COMPRA
             </Button>
         </CheckoutDialog>
         <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground h-7" onClick={onClearCart} disabled={cart.length === 0}>

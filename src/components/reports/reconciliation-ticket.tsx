@@ -99,16 +99,23 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
             <head>
                 <title>Reporte de Cierre de Caja</title>
                 <style>
-                    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                    @media print {
+                        @page { margin: 0; size: auto; }
+                        body { margin: 0; padding: 5px; }
+                    }
+                    * { 
+                        -webkit-print-color-adjust: exact !important; 
+                        print-color-adjust: exact !important;
+                        -webkit-font-smoothing: none !important;
+                        font-smooth: never !important;
+                    }
                     body { 
                         margin: 0; 
-                        padding: 0;
+                        padding: 10px; 
                         font-family: 'Courier New', Courier, monospace; 
-                        background-color: #fff;
+                        background-color: #fff; 
                         color: #000 !important;
-                        -webkit-font-smoothing: none;
-                        font-smooth: never;
-                        font-weight: 400 !important;
+                        font-weight: 600 !important;
                     }
                     .ticket-container { 
                         width: 58mm; 
