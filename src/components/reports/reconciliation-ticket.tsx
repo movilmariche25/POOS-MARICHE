@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { DailyReconciliation, PaymentMethod } from "@/lib/types";
@@ -20,9 +19,9 @@ export function ReconciliationTicket({ reconciliation, currency }: Reconciliatio
     return (
         <div className="recon-ticket">
             <div className="text-center mb-3">
-                <h3 className="recon-header">CIERRE DE CAJA</h3>
-                <p className="business-name">POOS MARICHE</p>
-                <p className="meta-info">FECHA: {formatDate(parseISO(reconciliation.closedAt), "dd/MM/yy hh:mm a", { locale: es })}</p>
+                <h3 className="recon-header bold-header">CIERRE DE CAJA</h3>
+                <p className="business-name bold-header">POOS MARICHE</p>
+                <p className="meta-info mt-1">FECHA: {formatDate(parseISO(reconciliation.closedAt), "dd/MM/yy hh:mm a", { locale: es })}</p>
                 <p className="meta-info">ID: {reconciliation.id}</p>
             </div>
 
@@ -31,7 +30,7 @@ export function ReconciliationTicket({ reconciliation, currency }: Reconciliatio
             <div className="summary-section uppercase">
                 <div className="flex-row">
                     <span>VENTAS TOTALES:</span>
-                    <span>{getSymbol('USD')}{format(reconciliation.totalSales, 'USD')}</span>
+                    <span className="bold-header">{getSymbol('USD')}{format(reconciliation.totalSales, 'USD')}</span>
                 </div>
                  <div className="flex-row">
                     <span>TRANSACCIONES:</span>
@@ -44,13 +43,13 @@ export function ReconciliationTicket({ reconciliation, currency }: Reconciliatio
             <div className="cash-flow-section uppercase">
                  <div className="flex-row">
                     <span>PAGOS RECIBIDOS:</span>
-                    <span>+{getSymbol('USD')}{format(reconciliation.totalPaymentsReceived ?? 0, 'USD')}</span>
+                    <span style={{ color: 'green' }}>+{getSymbol('USD')}{format(reconciliation.totalPaymentsReceived ?? 0, 'USD')}</span>
                 </div>
                 <div className="flex-row">
                     <span>VUELTOS ENTREGADOS:</span>
-                    <span>-{getSymbol('USD')}{format(reconciliation.totalChangeGiven ?? 0, 'USD')}</span>
+                    <span style={{ color: 'red' }}>-{getSymbol('USD')}{format(reconciliation.totalChangeGiven ?? 0, 'USD')}</span>
                 </div>
-                <div className="flex-row net-expected mt-1">
+                <div className="flex-row net-expected mt-1 bold-header">
                     <span>NETO ESPERADO:</span>
                     <span>{getSymbol('USD')}{format(reconciliation.totalExpected, 'USD')}</span>
                 </div>
@@ -59,18 +58,19 @@ export function ReconciliationTicket({ reconciliation, currency }: Reconciliatio
             <div className="divider-dashed"></div>
 
             <div className="methods-breakdown">
-                <p className="section-title underline">DESGLOSE POR MÉTODO:</p>
+                <p className="section-title underline bold-header">DESGLOSE POR MÉTODO:</p>
                 {paymentMethodsOrder.map(method => {
                     if (!reconciliation.paymentMethods || !reconciliation.paymentMethods[method]) return null;
                     const details = reconciliation.paymentMethods[method]!;
                     const symbol = getSymbol(method === 'Efectivo USD' ? 'USD' : 'Bs');
                     return (
                         <div key={method} className="method-box">
-                            <p className="method-name-header">{method}</p>
+                            <p className="method-name-header bold-header">{method}</p>
                             <div className="flex-row"><span>ESPERADO:</span><span>{symbol}{format(details.expected)}</span></div>
                             <div className="flex-row"><span>CONTADO:</span><span>{symbol}{format(details.counted)}</span></div>
                             <div className="flex-row diff-row">
-                                <span>DIFERENCIA:</span><span>{details.difference >= 0 ? '+' : ''}{symbol}{format(details.difference)}</span>
+                                <span className="bold-header">DIFERENCIA:</span>
+                                <span className="bold-header">{details.difference >= 0 ? '+' : ''}{symbol}{format(details.difference)}</span>
                             </div>
                         </div>
                     );
@@ -79,7 +79,7 @@ export function ReconciliationTicket({ reconciliation, currency }: Reconciliatio
 
              <div className="divider-dashed"></div>
 
-             <div className="flex-row grand-total pt-1">
+             <div className="flex-row grand-total pt-1 bold-header">
                 <p>DIF. TOTAL ($):</p>
                  <p>
                     {reconciliation.totalDifference >= 0 ? '+' : ''}{getSymbol('USD')}{format(reconciliation.totalDifference, 'USD')}
@@ -102,7 +102,7 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                 <style>
                     @media print {
                         @page { margin: 0; size: auto; }
-                        body { margin: 0; padding: 5px; }
+                        body { margin: 0; padding: 5px 0; }
                     }
                     * { 
                         -webkit-print-color-adjust: exact !important; 
@@ -111,9 +111,10 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                     }
                     body { 
                         margin: 0; 
-                        padding: 10px; 
-                        font-family: 'Courier New', Courier, monospace; 
-                        font-weight: 600;
+                        padding: 10px 4mm; 
+                        font-family: sans-serif; 
+                        font-size: 12px;
+                        line-height: 1.2;
                         background-color: #fff; 
                         color: #000 !important;
                     }
@@ -122,20 +123,21 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                         margin: 0 auto; 
                     }
                     .text-center { text-align: center; }
-                    .flex-row { display: flex; justify-content: space-between; }
-                    .recon-header { font-size: 16px; text-transform: uppercase; margin: 0; }
-                    .business-name { font-size: 14px; margin: 2px 0; }
+                    .flex-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+                    .bold-header { font-weight: bold; font-size: 10pt; }
+                    .recon-header { text-transform: uppercase; margin: 0; }
+                    .business-name { margin: 2px 0; }
                     .meta-info { font-size: 11px; margin: 1px 0; }
                     .divider-dashed { border-top: 1px dashed #000; margin: 8px 0; }
                     .summary-section { font-size: 12px; }
                     .cash-flow-section { font-size: 11px; }
-                    .net-expected { font-size: 14px; border-top: 1px solid #000; padding-top: 2px; font-weight: 600; }
-                    .section-title { text-align: center; font-size: 13px; margin-bottom: 6px; }
+                    .net-expected { border-top: 1px solid #000; padding-top: 2px; }
+                    .section-title { text-align: center; margin-bottom: 6px; }
                     .method-box { margin-bottom: 8px; font-size: 11px; }
-                    .method-name-header { text-align: center; border: 1px solid #000; padding: 2px; margin-bottom: 2px; font-weight: 600; }
-                    .diff-row { border-top: 1px solid #000; margin-top: 1px; }
-                    .grand-total { font-size: 16px; text-transform: uppercase; font-weight: 600; }
-                    .footer-note { font-size: 10px; text-transform: uppercase; opacity: 0.8; }
+                    .method-name-header { text-align: center; border: 1px solid #000; padding: 2px; margin-bottom: 2px; text-transform: uppercase; }
+                    .diff-row { border-top: 1px solid #000; margin-top: 1px; padding-top: 1px; }
+                    .grand-total { text-transform: uppercase; border-top: 2px solid #000; margin-top: 4px; padding-top: 4px; }
+                    .footer-note { font-size: 10px; text-transform: uppercase; opacity: 0.8; font-style: italic; }
                     .uppercase { text-transform: uppercase; }
                     .underline { text-decoration: underline; }
                 </style>

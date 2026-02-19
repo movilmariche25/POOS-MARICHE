@@ -1,4 +1,3 @@
-
 import type { RepairJob } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -20,8 +19,8 @@ export function CustomerTicket({ repairJob, businessName }: RepairTicketProps) {
     return (
         <div className="ticket-body">
             <div className="text-center mb-3">
-                <h3 className="business-title">{businessName || 'POOS MARICHE'}</h3>
-                <p className="ticket-type underline mt-2">NOTA DE ENTREGA (CLIENTE)</p>
+                <h3 className="business-title bold-header">{businessName || 'POOS MARICHE'}</h3>
+                <p className="ticket-type underline mt-2 bold-header">NOTA DE ENTREGA (CLIENTE)</p>
             </div>
             
             <div className="flex-row-between text-xs mb-2">
@@ -30,39 +29,39 @@ export function CustomerTicket({ repairJob, businessName }: RepairTicketProps) {
             </div>
 
             <div className="details-section">
-                <p><span>CLIENTE:</span> {repairJob.customerName.toUpperCase()}</p>
-                <p><span>CÉDULA:</span> {repairJob.customerID || 'N/A'}</p>
-                <p><span>TÉLF:</span> {repairJob.customerPhone}</p>
-                {repairJob.customerAddress && <p><span>DIR:</span> {repairJob.customerAddress.toUpperCase()}</p>}
+                <p><span className="bold-header">CLIENTE:</span> {repairJob.customerName.toUpperCase()}</p>
+                <p><span className="bold-header">CÉDULA:</span> {repairJob.customerID || 'N/A'}</p>
+                <p><span className="bold-header">TÉLF:</span> {repairJob.customerPhone}</p>
+                {repairJob.customerAddress && <p><span className="bold-header">DIR:</span> {repairJob.customerAddress.toUpperCase()}</p>}
                 
                 <div className="divider-dashed"></div>
                 
-                <p><span>EQUIPO:</span> {repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
-                <p><span>FALLA:</span> {repairJob.reportedIssue.toUpperCase()}</p>
+                <p><span className="bold-header">EQUIPO:</span> {repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
+                <p><span className="bold-header">FALLA:</span> {repairJob.reportedIssue.toUpperCase()}</p>
             </div>
 
             <div className="billing-section mt-4 pt-2">
-                <div className="flex-row-between text-md">
+                <div className="flex-row-between">
                     <span>COSTO TOTAL:</span>
                     <span>${total.toFixed(2)}</span>
                 </div>
-                <div className="flex-row-between text-md">
+                <div className="flex-row-between">
                     <span>ABONO:</span>
                     <span>${abono.toFixed(2)}</span>
                 </div>
-                <div className="flex-row-between total-row mt-1">
+                <div className="flex-row-between total-row mt-1 bold-header">
                     <span>PENDIENTE:</span>
                     <span>${saldo.toFixed(2)}</span>
                 </div>
             </div>
 
             <div className="disclaimer-section mt-5 pt-2 italic">
-                <p><span>GARANTÍA:</span> 4 DÍAS POR EL SERVICIO REALIZADO.</p>
+                <p><span className="bold-header">GARANTÍA:</span> 4 DÍAS POR EL SERVICIO REALIZADO.</p>
                 <p><span>RETIRO:</span> 7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL TALLER NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.</p>
-                <p className="text-center uppercase mt-3 underline bold-important">INDISPENSABLE PRESENTAR TICKET</p>
+                <p className="text-center uppercase mt-3 underline bold-header">INDISPENSABLE PRESENTAR TICKET</p>
             </div>
             <div className="text-center mt-5 footer-thanks pt-2">
-                <p>¡GRACIAS POR SU CONFIANZA!</p>
+                <p className="bold-header">¡GRACIAS POR SU CONFIANZA!</p>
             </div>
         </div>
     );
@@ -80,16 +79,16 @@ export function InternalTicket({ repairJob }: RepairTicketProps) {
     return (
         <div className="ticket-body internal">
             <div className="text-center mb-3">
-                <h3 className="section-header">CONTROL INTERNO</h3>
+                <h3 className="section-header bold-header">CONTROL INTERNO</h3>
                 <p className="meta-info mt-1">ID: {repairJob.id} | {fecha} | {hora}</p>
             </div>
 
             <div className="service-info border-t-2 border-black pt-2 mb-3">
-                <p className="underline-title mb-1">DATOS DEL SERVICIO:</p>
-                <p><span>CLIENTE:</span> {repairJob.customerName.toUpperCase()}</p>
-                <p><span>EQUIPO:</span> {repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
-                <p><span>FALLA:</span> {repairJob.reportedIssue.toUpperCase()}</p>
-                <div className="balance-box mt-2">SALDO: ${saldo.toFixed(2)}</div>
+                <p className="underline bold-header mb-1">DATOS DEL SERVICIO:</p>
+                <p><span className="bold-header">CLIENTE:</span> {repairJob.customerName.toUpperCase()}</p>
+                <p><span className="bold-header">EQUIPO:</span> {repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
+                <p><span className="bold-header">FALLA:</span> {repairJob.reportedIssue.toUpperCase()}</p>
+                <div className="balance-box mt-2 bold-header">SALDO: ${saldo.toFixed(2)}</div>
             </div>
 
             <div className="notes-section mb-10">
@@ -102,12 +101,12 @@ export function InternalTicket({ repairJob }: RepairTicketProps) {
             <div className="signatures-container">
                 <div className="signature-box">
                     <div className="signature-line"></div>
-                    <p>FIRMA RECEPCIÓN</p>
+                    <p className="bold-header">FIRMA RECEPCIÓN</p>
                 </div>
 
                 <div className="signature-box mt-20">
                     <div className="signature-line"></div>
-                    <p>FIRMA ENTREGA</p>
+                    <p className="bold-header">FIRMA ENTREGA</p>
                 </div>
             </div>
         </div>
@@ -123,19 +122,19 @@ export function StickerTicket({ repairJob }: RepairTicketProps) {
     return (
         <div className="sticker-body">
             <div className="sticker-border">
-                <p className="sticker-id">ID: {repairJob.id}</p>
-                <p className="sticker-text uppercase bold-important">{repairJob.customerName}</p>
+                <p className="sticker-id bold-header">ID: {repairJob.id}</p>
+                <p className="sticker-text uppercase bold-header">{repairJob.customerName}</p>
                 <p className="sticker-text uppercase">{repairJob.deviceMake} {repairJob.deviceModel}</p>
                 
                 <div className="divider-dashed" style={{ margin: '4px 0' }}></div>
                 
                 <div className="sticker-issue-box">
-                    <p className="sticker-issue-label">FALLA A REPARAR:</p>
+                    <p className="sticker-issue-label underline bold-header">FALLA A REPARAR:</p>
                     <p className="sticker-issue-text uppercase">{repairJob.reportedIssue}</p>
                 </div>
 
                 <div className="sticker-balance-row pt-2 mt-2">
-                    <p className="sticker-balance">SALDO: ${saldo.toFixed(2)}</p>
+                    <p className="sticker-balance bold-header">SALDO: ${saldo.toFixed(2)}</p>
                 </div>
             </div>
         </div>
@@ -145,7 +144,7 @@ export function StickerTicket({ repairJob }: RepairTicketProps) {
 const printStyles = `
     @media print {
         @page { margin: 0; size: auto; }
-        body { margin: 0; padding: 5px; }
+        body { margin: 0; padding: 5px 0; }
     }
     * { 
         -webkit-print-color-adjust: exact !important; 
@@ -154,9 +153,10 @@ const printStyles = `
     }
     body { 
         margin: 0; 
-        padding: 10px; 
-        font-family: 'Courier New', Courier, monospace; 
-        font-weight: 600;
+        padding: 10px 4mm; 
+        font-family: sans-serif; 
+        font-size: 12px;
+        line-height: 1.2;
         background-color: #fff; 
         color: #000 !important;
     }
@@ -165,36 +165,35 @@ const printStyles = `
         margin: 0 auto; 
     }
     .text-center { text-align: center; }
-    .flex-row-between { display: flex; justify-content: space-between; }
-    .business-title { font-size: 20px; text-transform: uppercase; margin: 0; border-bottom: 2px solid #000; padding-bottom: 4px; }
-    .ticket-type { font-size: 13px; font-weight: 600; }
-    .details-section p, .service-info p { margin: 2px 0; font-size: 13px; line-height: 1.2; }
-    .details-section span, .service-info span { font-weight: 600; }
+    .flex-row-between { display: flex; justify-content: space-between; align-items: center; }
+    .bold-header { font-weight: bold; font-size: 10pt; }
+    .business-title { text-transform: uppercase; margin: 0; border-bottom: 2px solid #000; padding-bottom: 4px; }
+    .ticket-type { text-transform: uppercase; }
+    .details-section p, .service-info p { margin: 3px 0; line-height: 1.2; }
     .divider-dashed { border-top: 1px dashed #000; margin: 8px 0; }
-    .total-row { font-size: 20px; border-top: 2px solid #000; padding-top: 4px; font-weight: 600; }
+    .total-row { border-top: 2px solid #000; padding-top: 4px; margin-top: 4px; }
     .disclaimer-section { font-size: 11px; line-height: 1.1; }
-    .footer-thanks { font-size: 14px; border-top: 2px solid #000; font-weight: 600; }
+    .footer-thanks { border-top: 2px solid #000; }
     
-    .section-header { font-size: 18px; border-bottom: 2px solid #000; margin: 0; }
-    .meta-info { font-size: 12px; }
-    .underline-title { font-size: 14px; text-decoration: underline; }
-    .balance-box { border: 1px solid #000; padding: 4px; text-align: center; font-size: 16px; font-weight: 600; }
-    .line-input { border-bottom: 1px solid #000; height: 30px; margin-bottom: 5px; }
+    .section-header { border-bottom: 2px solid #000; margin: 0; }
+    .meta-info { font-size: 11px; }
+    .balance-box { border: 1px solid #000; padding: 6px; text-align: center; }
+    .line-input { border-bottom: 1px solid #000; height: 25px; margin-bottom: 5px; }
     
-    .signature-box { text-align: center; margin-top: 40px; }
+    .signature-box { text-align: center; margin-top: 30px; }
     .signature-line { border-bottom: 1px solid #000; width: 80%; margin: 0 auto 4px; }
-    .signature-box p { font-size: 12px; margin: 0; }
+    .signature-box p { font-size: 11px; margin: 0; }
     
-    .sticker-border { border: 2px solid #000; padding: 8px; text-align: center; }
-    .sticker-id { font-size: 22px; margin: 0; }
-    .sticker-text { font-size: 16px; margin: 2px 0; line-height: 1.1; }
+    .sticker-border { border: 2px solid #000; padding: 6px; text-align: center; }
+    .sticker-id { font-size: 14pt; margin: 0; }
+    .sticker-text { font-size: 11pt; margin: 2px 0; line-height: 1.1; }
     
     .sticker-issue-box { border: 1px solid #000; margin: 4px 0; padding: 4px; text-align: left; }
-    .sticker-issue-label { font-size: 10px; text-decoration: underline; margin-bottom: 2px; }
-    .sticker-issue-text { font-size: 13px; line-height: 1.1; }
+    .sticker-issue-label { font-size: 9px; margin-bottom: 2px; }
+    .sticker-issue-text { font-size: 11px; line-height: 1.1; }
 
     .sticker-balance-row { border-top: 1px solid #000; }
-    .sticker-balance { font-size: 24px; margin: 0; font-weight: 600; }
+    .sticker-balance { font-size: 16pt; margin: 0; }
     
     .cut-line { 
         border-top: 3px dashed #000; 
@@ -211,11 +210,9 @@ const printStyles = `
         transform: translateX(-50%);
         background: #fff;
         padding: 0 10px;
-        font-size: 11px;
-        letter-spacing: 1px;
-        font-weight: 600;
+        font-size: 10px;
+        font-weight: bold;
     }
-    .bold-important { font-weight: 600 !important; }
 `;
 
 function iframePrint(html: string) {

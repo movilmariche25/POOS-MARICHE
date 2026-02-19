@@ -24,14 +24,14 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
     return (
          <div className="receipt-content">
             <div className="text-center mb-4">
-                <h3 className="business-name">{businessName || 'NOTA DE ENTREGA'}</h3>
+                <h3 className="business-name bold-header">{businessName || 'NOTA DE ENTREGA'}</h3>
                 <p className="meta-info mt-2">{format(parseISO(sale.transactionDate), "dd/MM/yy hh:mm a", { locale: es })}</p>
                 <p className="meta-info">ID: {sale.id}</p>
             </div>
             
             <div className="divider-dashed"></div>
             
-            <div className="flex-header">
+            <div className="flex-header bold-header">
                 <div className="flex-1 text-left">PRODUCTO</div>
                 <div className="w-1/3 text-right">TOTAL</div>
             </div>
@@ -63,7 +63,7 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
                         <span>-${formatCurrency(sale.discount, 'USD')}</span>
                     </div>
                 )}
-                 <div className="flex-row total-row">
+                 <div className="flex-row total-row bold-header">
                     <span>TOTAL:</span>
                     <span>${formatCurrency(sale.totalAmount, 'USD')}</span>
                 </div>
@@ -72,7 +72,7 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
             <div className="divider-dashed"></div>
 
             <div className="payments-section">
-                <p className="section-title underline">PAGOS RECIBIDOS</p>
+                <p className="section-title underline bold-header">PAGOS RECIBIDOS</p>
                 {sale.payments.map((p, index) => (
                     <div key={index} className="flex-row">
                         <span className="method-name">{p.method}{p.reference ? ` (${p.reference})` : ''}:</span>
@@ -84,7 +84,7 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
             {sale.changeGiven && sale.changeGiven.length > 0 && (
                  <div className="change-section">
                     <div className="divider-dashed"></div>
-                    <p className="section-title underline">VUELTO ENTREGADO</p>
+                    <p className="section-title underline bold-header">VUELTO ENTREGADO</p>
                     {sale.changeGiven.map((change, index) => {
                         const isUSD = change.method === 'Efectivo USD';
                         const symbol = isUSD ? getSymbol('USD') : getSymbol('Bs');
@@ -100,7 +100,7 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
 
              <div className="divider-dashed"></div>
              <div className="footer-section">
-                <p>¡GRACIAS POR SU COMPRA!</p>
+                <p className="bold-header">¡GRACIAS POR SU COMPRA!</p>
                 <p className="guarantee-note">INDISPENSABLE PARA GARANTÍA</p>
              </div>
         </div>
@@ -116,7 +116,7 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                 <style>
                     @media print {
                         @page { margin: 0; size: auto; }
-                        body { margin: 0; padding: 5px; }
+                        body { margin: 0; padding: 5px 0; }
                     }
                     * { 
                         -webkit-print-color-adjust: exact !important; 
@@ -125,9 +125,10 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                     }
                     body { 
                         margin: 0; 
-                        padding: 10px; 
-                        font-family: 'Courier New', Courier, monospace; 
-                        font-weight: 600;
+                        padding: 10px 4mm; 
+                        font-family: sans-serif; 
+                        font-size: 12px;
+                        line-height: 1.2;
                         background-color: #fff; 
                         color: #000 !important;
                     }
@@ -136,26 +137,27 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                         margin: 0 auto; 
                     }
                     .text-center { text-align: center; }
-                    .business-name { font-size: 18px; text-transform: uppercase; margin: 0; border-bottom: 2px solid #000; padding-bottom: 4px; }
-                    .meta-info { font-size: 12px; margin: 2px 0; }
+                    .bold-header { font-weight: bold; font-size: 10pt; }
+                    .business-name { text-transform: uppercase; margin: 0; border-bottom: 2px solid #000; padding-bottom: 4px; }
+                    .meta-info { font-size: 11px; margin: 2px 0; }
                     .divider-dashed { border-top: 1px dashed #000; margin: 8px 0; }
                     .divider-solid { border-top: 1px solid #000; margin: 4px 0; }
-                    .flex-header { display: flex; font-size: 14px; }
+                    .flex-header { display: flex; text-transform: uppercase; }
                     .flex-1 { flex: 1; }
                     .w-1\\/3 { width: 33.33%; }
                     .text-right { text-align: right; }
                     .text-left { text-align: left; }
-                    .item-row { margin-bottom: 8px; }
-                    .item-name { font-size: 13px; text-transform: uppercase; line-height: 1.1; }
-                    .item-details { display: flex; justify-content: space-between; font-size: 12px; }
-                    .totals-section { font-size: 14px; text-align: right; }
-                    .flex-row { display: flex; justify-content: space-between; }
-                    .total-row { font-size: 18px; border-top: 1px solid #000; margin-top: 4px; padding-top: 4px; }
-                    .section-title { text-align: center; font-size: 13px; margin-bottom: 4px; }
+                    .item-row { margin-bottom: 6px; }
+                    .item-name { font-size: 12px; text-transform: uppercase; line-height: 1.1; }
+                    .item-details { display: flex; justify-content: space-between; font-size: 11px; color: #333; }
+                    .totals-section { text-align: right; }
+                    .flex-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+                    .total-row { border-top: 1px solid #000; margin-top: 4px; padding-top: 4px; }
+                    .section-title { text-align: center; margin-bottom: 4px; }
                     .method-name { font-size: 11px; text-transform: uppercase; flex: 1; }
-                    .method-amount { margin-left: 8px; font-size: 12px; }
-                    .footer-section { text-align: center; margin-top: 10px; font-size: 12px; text-transform: uppercase; }
-                    .guarantee-note { font-size: 10px; margin-top: 4px; }
+                    .method-amount { margin-left: 8px; font-size: 11px; }
+                    .footer-section { text-align: center; margin-top: 10px; text-transform: uppercase; }
+                    .guarantee-note { font-size: 10px; margin-top: 4px; font-style: italic; }
                 </style>
             </head>
             <body>
