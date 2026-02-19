@@ -46,8 +46,26 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
 
   const getPrice = (item: CartItem) => {
     if (item.isGift) return 0;
-    if (item.isRepair) return activeRepairJob ? Math.max(0, activeRepairJob.estimatedCost - (activeRepairJob.amountPaid || 0)) : 0;
+    
+    // Lógica especial para Reparaciones con Promoción en el repuesto
+    if (item.isRepair) {
+        if (!activeRepairJob) return 0;
+        const basePending = Math.max(0, activeRepairJob.estimatedCost - (activeRepairJob.amountPaid || 0));
+        
+        if (item.isPromo && activeRepairJob.reservedParts?.[0]) {
+            const partId = activeRepairJob.reservedParts[0].productId;
+            const product = allProducts.find(p => p.id === partId);
+            if (product && product.promoPrice && product.promoPrice > 0) {
+                const retailPriceOfPart = getFinalPrice(product);
+                const discountAmount = Math.max(0, retailPriceOfPart - product.promoPrice);
+                return Math.max(0, basePending - discountAmount);
+            }
+        }
+        return basePending;
+    }
+    
     if (item.isCustom) return item.customPrice || 0;
+    
     const product = allProducts.find(p => p.id === item.productId);
     if (!product) return 0;
     
@@ -97,9 +115,9 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 const paidNow = cartWithPrices.find(i => i.isRepair)?.price || 0;
                 const newPaid = (activeRepairJob.amountPaid || 0) + paidNow;
                 transaction.update(jobRef, { 
-                    amountPaid: newPaid, 
-                    isPaid: newPaid >= activeRepairJob.estimatedCost,
-                    status: newPaid >= activeRepairJob.estimatedCost ? 'Pagado' : activeRepairJob.status
+                    amountPaid: Number(newPaid.toFixed(2)), 
+                    isPaid: newPaid >= (activeRepairJob.estimatedCost - 0.01),
+                    status: newPaid >= (activeRepairJob.estimatedCost - 0.01) ? 'Pagado' : activeRepairJob.status
                 });
             }
 
@@ -141,7 +159,18 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
             <TableBody>
                 {cart.map((item) => {
                     const productData = allProducts.find(p => p.id === item.productId);
-                    const hasPromoAvailable = productData && productData.promoPrice && productData.promoPrice > 0;
+                    
+                    // Lógica para determinar si el botón de promoción debe aparecer
+                    let hasPromoAvailable = false;
+                    if (item.isRepair) {
+                        const partId = activeRepairJob?.reservedParts?.[0]?.productId;
+                        if (partId) {
+                            const partProduct = allProducts.find(p => p.id === partId);
+                            hasPromoAvailable = !!(partProduct?.promoPrice && partProduct.promoPrice > 0);
+                        }
+                    } else {
+                        hasPromoAvailable = !!(productData?.promoPrice && productData.promoPrice > 0);
+                    }
 
                     return (
                         <TableRow key={item.productId} className={cn(
@@ -173,7 +202,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                             <TableCell className="text-right">
                                 <div className="flex justify-end items-center gap-0.5">
                                     <TooltipProvider>
-                                        {hasPromoAvailable && !item.isRepair && !item.isCustom && (
+                                        {hasPromoAvailable && !item.isCustom && (
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
                                                     <Button 

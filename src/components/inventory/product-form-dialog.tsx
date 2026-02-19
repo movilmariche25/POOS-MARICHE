@@ -33,10 +33,11 @@ import { Checkbox } from "../ui/checkbox";
 import { Textarea } from "../ui/textarea";
 import { useCurrency } from "@/hooks/use-currency";
 import { Separator } from "../ui/separator";
-import { Info, PackagePlus, Search, Trash2, Percent, Lock } from "lucide-react";
+import { Info, PackagePlus, Search, Trash2, Percent, Lock, Check, ChevronsUpDown } from "lucide-react";
 import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
+import { cn } from "@/lib/utils";
 
 const comboItemSchema = z.object({
   productId: z.string(),
@@ -82,6 +83,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
   const { firestore, user } = useFirebase();
   const [open, setOpen] = useState(false);
   const [partsPopoverOpen, setPartsPopoverOpen] = useState(false);
+  const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
   const { toast } = useToast();
   const { getDynamicPrice, convert, format: formatCurrency, getSymbol, profitMargin } = useCurrency();
 
@@ -90,6 +92,13 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
     [firestore, user?.uid]
   );
   const { data: allProducts } = useCollection<Product>(productsCollection);
+
+  const existingCategories = useMemo(() => {
+    if (!allProducts) return [];
+    const unique = [...new Set(allProducts.map(p => p.category).filter(Boolean))] as string[];
+    unique.sort((a, b) => a.localeCompare(b));
+    return unique;
+  }, [allProducts]);
 
   const form = useForm<ProductFormData>({
     resolver: zodResolver(formSchema),
@@ -296,11 +305,80 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                 control={form.control}
                 name="category"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="flex flex-col">
                     <FormLabel>Categoría</FormLabel>
-                    <FormControl>
-                      <Input placeholder="ej. Pantallas" {...field} />
-                    </FormControl>
+                    <Popover open={categoryPopoverOpen} onOpenChange={setCategoryPopoverOpen}>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className={cn(
+                              "w-full justify-between font-normal",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value || "Seleccionar..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[200px] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Buscar o crear..." />
+                          <CommandList>
+                            <CommandEmpty className="p-2">
+                               <Button 
+                                 variant="ghost" 
+                                 size="sm" 
+                                 className="w-full justify-start text-xs"
+                                 onClick={() => {
+                                    // El valor actual del input del Command se puede usar aquí si fuera necesario
+                                    // Pero el CommandInput de shadcn no expone fácilmente su valor interno
+                                    // Así que permitiremos que el usuario simplemente escriba en el input de abajo
+                                    setCategoryPopoverOpen(false);
+                                 }}
+                               >
+                                 Escribe para crear nueva
+                               </Button>
+                            </CommandEmpty>
+                            <CommandGroup>
+                              {existingCategories.map((cat) => (
+                                <CommandItem
+                                  value={cat}
+                                  key={cat}
+                                  onSelect={() => {
+                                    form.setValue("category", cat);
+                                    setCategoryPopoverOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      cat === field.value ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  {cat}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                        <div className="p-2 border-t">
+                            <Input 
+                                placeholder="Nueva categoría..." 
+                                className="h-8 text-xs"
+                                value={field.value}
+                                onChange={(e) => field.onChange(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        setCategoryPopoverOpen(false);
+                                    }
+                                }}
+                            />
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                     <FormMessage />
                   </FormItem>
                 )}

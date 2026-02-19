@@ -16,6 +16,7 @@ import type { Product, Sale, RepairJob } from "@/lib/types";
 import { es } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrency } from "@/hooks/use-currency";
 
 type ExportSalesButtonProps = {
   sales: Sale[];
@@ -29,6 +30,7 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
     to: new Date(),
   });
   const { toast } = useToast();
+  const { bcvRate } = useCurrency();
 
   const handleExport = () => {
     if (!date?.from) {
@@ -77,12 +79,20 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
                 costPrice = product?.costPrice || 0;
             }
 
+            const totalUSD = item.price * item.quantity;
+            const totalProfit = (item.price - costPrice) * item.quantity;
+            const totalBs = totalUSD * bcvRate;
+
             return {
-                'Fecha de Venta': format(new Date(sale.transactionDate), 'dd/MM/yyyy HH:mm'),
-                'Nombre del Producto': productName,
+                'Fecha': format(new Date(sale.transactionDate), 'dd/MM/yyyy HH:mm'),
+                'Producto/Servicio': productName,
                 'Costo ($)': costPrice,
                 'Precio Venta ($)': item.price,
                 'Cantidad': item.quantity,
+                'Total ($)': totalUSD,
+                'Ganancia ($)': totalProfit,
+                'Total (Bs)': totalBs,
+                'Tasa Aplicada': bcvRate,
                 'Método de Pago': sale.paymentMethod
             }
         })
@@ -90,7 +100,7 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Ventas");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte_Financiero");
     
     // Ajuste automático de ancho de columnas
     const cols = Object.keys(dataToExport[0] || {});
@@ -99,7 +109,7 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
     }));
     worksheet["!cols"] = colWidths;
 
-    XLSX.writeFile(workbook, `Ventas_${format(from, "yyyy-MM-dd")}_al_${format(to, "yyyy-MM-dd")}.xlsx`);
+    XLSX.writeFile(workbook, `Reporte_Financiero_${format(from, "yyyy-MM-dd")}.xlsx`);
   };
 
   return (
@@ -140,7 +150,7 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
       </Popover>
       <Button onClick={handleExport} disabled={!date?.from}>
         <FileDown className="mr-2 h-4 w-4" />
-        Exportar a Excel
+        Generar Reporte Detallado
       </Button>
     </div>
   );

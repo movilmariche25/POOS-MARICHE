@@ -22,27 +22,27 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
     };
 
     return (
-         <div className="text-black bg-white p-1 font-mono text-[13px] max-w-[215px] mx-auto leading-tight" style={{ color: '#000' }}>
+         <div className="receipt-content">
             <div className="text-center mb-4">
-                <h3 className="text-[18px] uppercase" style={{ margin: 0, borderBottom: '2px solid #000', paddingBottom: '4px' }}>{businessName || 'NOTA DE ENTREGA'}</h3>
-                <p className="text-[12px] mt-2">{format(parseISO(sale.transactionDate), "dd/MM/yy hh:mm a", { locale: es })}</p>
-                <p className="text-[12px]">ID: {sale.id}</p>
+                <h3 className="business-name">{businessName || 'NOTA DE ENTREGA'}</h3>
+                <p className="meta-info mt-2">{format(parseISO(sale.transactionDate), "dd/MM/yy hh:mm a", { locale: es })}</p>
+                <p className="meta-info">ID: {sale.id}</p>
             </div>
             
-            <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }}></div>
+            <div className="divider-dashed"></div>
             
-            <div className="flex text-[14px]">
+            <div className="flex-header">
                 <div className="flex-1 text-left">PRODUCTO</div>
                 <div className="w-1/3 text-right">TOTAL</div>
             </div>
             
-            <div style={{ borderTop: '1px solid #000', margin: '4px 0' }}></div>
+            <div className="divider-solid"></div>
 
-            <div className="space-y-3">
+            <div className="items-list">
                 {sale.items.map((item, idx) => (
-                    <div key={idx}>
-                        <div className="break-words text-[13px] uppercase leading-none mb-1">{item.name}</div>
-                        <div className="flex justify-between text-[12px]">
+                    <div key={idx} className="item-row">
+                        <div className="item-name">{item.name}</div>
+                        <div className="item-details">
                             <span>{item.quantity} x ${formatCurrency(item.price, 'USD')}</span>
                             <span>${formatCurrency(item.price * item.quantity, 'USD')}</span>
                         </div>
@@ -50,60 +50,58 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
                 ))}
             </div>
 
-            <div style={{ borderTop: '1px dashed #000', margin: '8px 0' }}></div>
+            <div className="divider-dashed"></div>
 
-            <div className="space-y-1 text-right text-[14px]">
-                 <div className="flex justify-between">
+            <div className="totals-section">
+                 <div className="flex-row">
                     <span>SUB-TOTAL:</span>
                     <span>${formatCurrency(sale.subtotal, 'USD')}</span>
                 </div>
                  {sale.discount > 0 && (
-                    <div className="flex justify-between">
+                    <div className="flex-row">
                         <span>DESCUENTO:</span>
                         <span>-${formatCurrency(sale.discount, 'USD')}</span>
                     </div>
                 )}
-                 <div className="flex justify-between text-[18px] pt-2 mt-1" style={{ borderTop: '1px solid #000' }}>
+                 <div className="flex-row total-row">
                     <span>TOTAL:</span>
                     <span>${formatCurrency(sale.totalAmount, 'USD')}</span>
                 </div>
             </div>
             
-            <div style={{ borderTop: '1px dashed #000', margin: '10px 0' }}></div>
+            <div className="divider-dashed"></div>
 
-            <div className="space-y-1 text-[12px]">
-                <p className="mb-2 text-center text-[13px] underline">PAGOS RECIBIDOS</p>
+            <div className="payments-section">
+                <p className="section-title underline">PAGOS RECIBIDOS</p>
                 {sale.payments.map((p, index) => (
-                    <div key={index} className="flex justify-between">
-                        <span className="uppercase text-[11px] flex-1">{p.method}{p.reference ? ` (${p.reference})` : ''}:</span>
-                        <span className="ml-2">{getPaymentAmountInCorrectCurrency(p)}</span>
+                    <div key={index} className="flex-row">
+                        <span className="method-name">{p.method}{p.reference ? ` (${p.reference})` : ''}:</span>
+                        <span className="method-amount">{getPaymentAmountInCorrectCurrency(p)}</span>
                     </div>
                 ))}
             </div>
 
             {sale.changeGiven && sale.changeGiven.length > 0 && (
-                 <>
-                <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }}></div>
-                <div className="space-y-1 text-[12px]">
-                    <p className="mb-2 text-center text-[13px] underline">VUELTO ENTREGADO</p>
+                 <div className="change-section">
+                    <div className="divider-dashed"></div>
+                    <p className="section-title underline">VUELTO ENTREGADO</p>
                     {sale.changeGiven.map((change, index) => {
                         const isUSD = change.method === 'Efectivo USD';
                         const symbol = isUSD ? getSymbol('USD') : getSymbol('Bs');
                         return (
-                            <div key={index} className="flex justify-between">
-                                <span className="uppercase text-[11px]">{change.method}:</span>
+                            <div key={index} className="flex-row">
+                                <span className="method-name">{change.method}:</span>
                                 <span>{symbol}{formatCurrency(change.amount, isUSD ? 'USD' : 'Bs')}</span>
                             </div>
                         );
                     })}
                 </div>
-                </>
             )}
 
-             <div style={{ borderTop: '1px dashed #000', margin: '12px 0' }}></div>
-             <div className="text-center mt-2 text-[12px] uppercase space-y-1">
+             <div className="divider-dashed"></div>
+             <div className="footer-section">
                 <p>¡GRACIAS POR SU COMPRA!</p>
-                <p className="text-[10px]">INDISPENSABLE PARA GARANTÍA</p>
+                <p className="guarantee-note">INDISPENSABLE PARA GARANTÍA</p>
              </div>
         </div>
     )
@@ -123,41 +121,41 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                     * { 
                         -webkit-print-color-adjust: exact !important; 
                         print-color-adjust: exact !important;
-                        -webkit-font-smoothing: none !important;
-                        font-smooth: never !important;
+                        box-sizing: border-box;
                     }
                     body { 
                         margin: 0; 
                         padding: 10px; 
                         font-family: 'Courier New', Courier, monospace; 
+                        font-weight: 600;
                         background-color: #fff; 
                         color: #000 !important;
-                        font-weight: 600 !important;
                     }
                     .receipt-container { 
                         width: 58mm; 
                         margin: 0 auto; 
-                        box-sizing: border-box; 
                     }
                     .text-center { text-align: center; }
-                    .flex { display: flex; }
-                    .justify-between { justify-content: space-between; }
-                    .border-t-2 { border-top: 1px solid #000; }
-                    .border-b-2 { border-bottom: 1px solid #000; }
-                    .border-black { border-color: #000 !important; }
-                    .w-full { width: 100%; }
-                    .mx-auto { margin-left: auto; margin-right: auto; }
-                    .uppercase { text-transform: uppercase; }
-                    .italic { font-style: italic; }
-                    .underline { text-decoration: underline; }
-                    .space-y-1 > * + * { margin-top: 0.25rem; }
-                    .space-y-3 > * + * { margin-top: 0.75rem; }
-                    .mt-2 { margin-top: 0.5rem; }
-                    .pt-2 { padding-top: 0.5rem; }
-                    .flex-1 { flex: 1 1 0%; }
-                    .w-1\\/3 { width: 33.333333%; }
+                    .business-name { font-size: 18px; text-transform: uppercase; margin: 0; border-bottom: 2px solid #000; padding-bottom: 4px; }
+                    .meta-info { font-size: 12px; margin: 2px 0; }
+                    .divider-dashed { border-top: 1px dashed #000; margin: 8px 0; }
+                    .divider-solid { border-top: 1px solid #000; margin: 4px 0; }
+                    .flex-header { display: flex; font-size: 14px; }
+                    .flex-1 { flex: 1; }
+                    .w-1\\/3 { width: 33.33%; }
                     .text-right { text-align: right; }
                     .text-left { text-align: left; }
+                    .item-row { margin-bottom: 8px; }
+                    .item-name { font-size: 13px; text-transform: uppercase; line-height: 1.1; }
+                    .item-details { display: flex; justify-content: space-between; font-size: 12px; }
+                    .totals-section { font-size: 14px; text-align: right; }
+                    .flex-row { display: flex; justify-content: space-between; }
+                    .total-row { font-size: 18px; border-top: 1px solid #000; margin-top: 4px; padding-top: 4px; }
+                    .section-title { text-align: center; font-size: 13px; margin-bottom: 4px; }
+                    .method-name { font-size: 11px; text-transform: uppercase; flex: 1; }
+                    .method-amount { margin-left: 8px; font-size: 12px; }
+                    .footer-section { text-align: center; margin-top: 10px; font-size: 12px; text-transform: uppercase; }
+                    .guarantee-note { font-size: 10px; margin-top: 4px; }
                 </style>
             </head>
             <body>

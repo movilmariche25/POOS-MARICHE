@@ -80,7 +80,7 @@ export function DataTable<TData, TValue>({
 
   return (
     <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <Input
                 placeholder={filterPlaceholder}
                 value={globalFilter ?? ""}
@@ -91,7 +91,7 @@ export function DataTable<TData, TValue>({
             />
              {children && children(table)}
         </div>
-        <div className="rounded-md border">
+        <div className="rounded-md border bg-white">
         <ShadcnTable>
             <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -138,7 +138,7 @@ export function DataTable<TData, TValue>({
             ) : (
                 <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                    No hay resultados.
+                    No se encontraron resultados para "{globalFilter}".
                 </TableCell>
                 </TableRow>
             )}
@@ -171,4 +171,3 @@ export function DataTable<TData, TValue>({
     </div>
   )
 }
-

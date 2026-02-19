@@ -13,7 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
 import { collection, writeBatch, doc } from 'firebase/firestore';
 import { useSearchParams } from 'next/navigation';
-import type { Table as TanstackTable } from '@tanstack/react-table';
+import type { Table as TanstackTable, FilterFn } from '@tanstack/react-table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +29,18 @@ import { useToast } from '@/hooks/use-toast';
 import { PrintLabelsButton } from '@/components/inventory/print-labels-button';
 import { PriceCalculatorDialog } from '@/components/tools/price-calculator-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+// Filtro personalizado para buscar en múltiples campos del producto
+const productFilterFn: FilterFn<Product> = (row, columnId, value) => {
+    const term = String(value).toLowerCase();
+    const p = row.original;
+    const name = (p.name || "").toLowerCase();
+    const sku = (p.sku || "").toLowerCase();
+    const cat = (p.category || "").toLowerCase();
+    const models = (p.compatibleModels || []).join(" ").toLowerCase();
+    
+    return name.includes(term) || sku.includes(term) || cat.includes(term) || models.includes(term);
+};
 
 function BulkDeleteButton({ table }: { table: TanstackTable<Product> }) {
     const { firestore, user } = useFirebase();
@@ -108,8 +120,14 @@ function InventoryContent() {
         if (!products) return [];
         let temp = products;
         if (categoryFilter !== 'all') temp = temp.filter(p => p.category === categoryFilter);
-        if (stockFilter === 'low') temp = temp.filter(p => (p.stockLevel - (p.reservedStock || 0)) > 0 && (p.stockLevel - (p.reservedStock || 0)) <= p.lowStockThreshold);
-        if (stockFilter === 'out') temp = temp.filter(p => (p.stockLevel - (p.reservedStock || 0)) <= 0);
+        if (stockFilter === 'low') temp = temp.filter(p => {
+            const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
+            return available > 0 && available <= p.lowStockThreshold;
+        });
+        if (stockFilter === 'out') temp = temp.filter(p => {
+            const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
+            return available <= 0;
+        });
         return temp;
     }, [products, stockFilter, categoryFilter]);
 
@@ -129,8 +147,9 @@ function InventoryContent() {
                     columns={columns} 
                     data={filteredProducts}
                     isLoading={isLoading}
-                    filterPlaceholder="Buscar productos..."
+                    filterPlaceholder="Buscar productos o modelos compatibles..."
                     meta={{ allProducts: products || [] }}
+                    globalFilterFn={productFilterFn}
                 >
                     {(table) => (
                         <div className="flex items-center gap-2">

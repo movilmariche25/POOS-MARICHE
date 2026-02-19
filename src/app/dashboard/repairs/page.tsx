@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo } from "react";
@@ -16,6 +17,22 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { RepairFormDialog } from "@/components/repairs/repair-form-dialog";
+import type { FilterFn } from "@tanstack/react-table";
+
+// Filtro personalizado para reparaciones
+const repairFilterFn: FilterFn<RepairJob> = (row, columnId, value) => {
+    const term = String(value).toLowerCase();
+    const r = row.original;
+    return (
+        (r.customerName || "").toLowerCase().includes(term) ||
+        (r.customerPhone || "").toLowerCase().includes(term) ||
+        (r.customerID || "").toLowerCase().includes(term) ||
+        (r.deviceMake || "").toLowerCase().includes(term) ||
+        (r.deviceModel || "").toLowerCase().includes(term) ||
+        (r.reportedIssue || "").toLowerCase().includes(term) ||
+        (r.id || "").toLowerCase().includes(term)
+    );
+};
 
 export default function RepairsPage() {
     const { firestore, user } = useFirebase();
@@ -49,7 +66,8 @@ export default function RepairsPage() {
                     columns={columns} 
                     data={filteredRepairJobs || []}
                     isLoading={isLoading}
-                    filterPlaceholder="Buscar cliente o teléfono..."
+                    filterPlaceholder="Buscar cliente, equipo, falla o ID..."
+                    globalFilterFn={repairFilterFn}
                 >
                     {(table) => (
                         <div className="flex items-center gap-2">
