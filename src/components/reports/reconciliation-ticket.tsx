@@ -114,6 +114,7 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                         padding: 10px 4mm; 
                         font-family: "Courier New", Courier, monospace; 
                         font-size: 10pt;
+                        font-weight: 400;
                         line-height: 1.2;
                         background-color: #fff; 
                         color: #000 !important;
@@ -129,11 +130,11 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                     .business-name { margin: 2px 0; }
                     .meta-info { font-size: 9pt; margin: 1px 0; }
                     .divider-dashed { border-top: 1px dashed #000; margin: 8px 0; }
-                    .summary-section { font-size: 10pt; }
-                    .cash-flow-section { font-size: 10pt; }
+                    .summary-section { font-size: 10pt; font-weight: 400; }
+                    .cash-flow-section { font-size: 10pt; font-weight: 400; }
                     .net-expected { border-top: 1px solid #000; padding-top: 2px; }
                     .section-title { text-align: center; margin-bottom: 6px; }
-                    .method-box { margin-bottom: 8px; font-size: 10pt; }
+                    .method-box { margin-bottom: 8px; font-size: 10pt; font-weight: 400; }
                     .method-name-header { text-align: center; border: 1px solid #000; padding: 2px; margin-bottom: 2px; text-transform: uppercase; }
                     .diff-row { border-top: 1px solid #000; margin-top: 1px; padding-top: 1px; }
                     .grand-total { text-transform: uppercase; border-top: 2px solid #000; margin-top: 4px; padding-top: 4px; }

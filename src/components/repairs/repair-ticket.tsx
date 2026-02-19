@@ -156,6 +156,7 @@ const printStyles = `
         padding: 10px 4mm; 
         font-family: "Courier New", Courier, monospace; 
         font-size: 10pt;
+        font-weight: 400;
         line-height: 1.2;
         background-color: #fff; 
         color: #000 !important;
@@ -169,10 +170,10 @@ const printStyles = `
     .bold-header { font-weight: bold; font-size: 12pt; }
     .business-title { text-transform: uppercase; margin: 0; border-bottom: 2px solid #000; padding-bottom: 4px; }
     .ticket-type { text-transform: uppercase; }
-    .details-section p, .service-info p { margin: 3px 0; line-height: 1.2; }
+    .details-section p, .service-info p { margin: 3px 0; line-height: 1.2; font-weight: 400; }
     .divider-dashed { border-top: 1px dashed #000; margin: 8px 0; }
     .total-row { border-top: 2px solid #000; padding-top: 4px; margin-top: 4px; }
-    .disclaimer-section { font-size: 9pt; line-height: 1.1; }
+    .disclaimer-section { font-size: 9pt; line-height: 1.1; font-weight: 400; }
     .footer-thanks { border-top: 2px solid #000; }
     
     .section-header { border-bottom: 2px solid #000; margin: 0; }

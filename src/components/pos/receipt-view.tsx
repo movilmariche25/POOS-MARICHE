@@ -128,6 +128,7 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                         padding: 10px 4mm; 
                         font-family: "Courier New", Courier, monospace; 
                         font-size: 10pt;
+                        font-weight: 400;
                         line-height: 1.2;
                         background-color: #fff; 
                         color: #000 !important;
@@ -148,7 +149,7 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                     .text-right { text-align: right; }
                     .text-left { text-align: left; }
                     .item-row { margin-bottom: 6px; }
-                    .item-name { font-size: 10pt; text-transform: uppercase; line-height: 1.1; }
+                    .item-name { font-size: 10pt; text-transform: uppercase; line-height: 1.1; font-weight: 400; }
                     .item-details { display: flex; justify-content: space-between; font-size: 9pt; color: #333; }
                     .totals-section { text-align: right; }
                     .flex-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
