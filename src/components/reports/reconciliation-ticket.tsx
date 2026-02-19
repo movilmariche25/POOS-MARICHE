@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { DailyReconciliation, PaymentMethod } from "@/lib/types";
@@ -94,45 +95,45 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                 <style>
                     @media print {
                         @page { margin: 0; size: auto; }
-                        body { margin: 0; padding: 5px 0; }
+                        body { margin: 0; padding: 0; }
                     }
                     * { 
                         -webkit-print-color-adjust: exact !important; 
                         print-color-adjust: exact !important;
                         box-sizing: border-box;
+                        border: none;
+                        margin: 0;
+                        padding: 0;
                     }
                     body { 
-                        margin: 0; 
-                        padding: 10px 4mm; 
                         font-family: Arial, Helvetica, sans-serif; 
                         font-size: 10pt;
                         line-height: 1.2;
                         background-color: #fff; 
                         color: #000 !important;
+                        text-rendering: optimizeLegibility;
                     }
                     .recon-container { 
-                        width: 58mm; 
+                        width: 52mm; 
                         margin: 0 auto; 
+                        padding: 10px 2mm;
                     }
                     .text-center { text-align: center; }
-                    .flex-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+                    .flex-row { display: flex; justify-content: space-between; margin-bottom: 2px; font-variant-numeric: tabular-nums; }
                     .bold-header { 
-                        font-family: "Arial Black", Gadget, sans-serif;
                         font-weight: 900; 
-                        font-size: 12pt; 
+                        font-size: 11pt; 
                     }
-                    .recon-header { text-transform: uppercase; margin: 0; }
+                    .recon-header { text-transform: uppercase; }
                     .business-name { margin: 2px 0; }
                     .meta-info { font-size: 9pt; margin: 1px 0; }
-                    .summary-section { font-weight: 400; }
-                    .cash-flow-section { font-weight: 400; }
-                    .net-expected { border-top: 1px dashed #000; padding-top: 4px; }
+                    .net-expected { border-top: 1px dashed #000 !important; padding-top: 4px; }
                     .section-title { text-align: center; margin-bottom: 6px; text-transform: uppercase; }
-                    .method-box { margin-bottom: 12px; font-weight: 400; }
-                    .method-name-header { text-align: center; border: 1px solid #000; padding: 2px; margin-bottom: 4px; text-transform: uppercase; }
-                    .diff-row { border-top: 1px dashed #000; padding-top: 2px; }
-                    .grand-total { text-transform: uppercase; border-top: 2px solid #000; margin-top: 8px; padding-top: 8px; }
-                    .footer-note { font-size: 9pt; text-transform: uppercase; opacity: 0.8; font-style: italic; }
+                    .method-box { margin-bottom: 12px; }
+                    .method-name-header { text-align: center; border: 1px solid #000 !important; padding: 2px; margin-bottom: 4px; text-transform: uppercase; }
+                    .diff-row { border-top: 1px dashed #000 !important; padding-top: 2px; }
+                    .grand-total { text-transform: uppercase; border-top: 2px solid #000 !important; margin-top: 8px; padding-top: 8px; }
+                    .footer-note { font-size: 8pt; text-transform: uppercase; opacity: 0.8; font-style: italic; }
                     .uppercase { text-transform: uppercase; }
                     .mt-2 { margin-top: 0.5rem; }
                     .mt-4 { margin-top: 1rem; }

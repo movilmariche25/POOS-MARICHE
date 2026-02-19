@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Sale, Payment } from "@/lib/types";
@@ -24,7 +25,7 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
     return (
          <div className="receipt-content">
             <div className="text-center mb-4">
-                <h3 className="business-name bold-header">{businessName || 'NOTA DE ENTREGA'}</h3>
+                <h3 className="business-name bold-header">{businessName || 'POOS MARICHE'}</h3>
                 <p className="meta-info mt-2">{format(parseISO(sale.transactionDate), "dd/MM/yy hh:mm a", { locale: es })}</p>
                 <p className="meta-info">ID: {sale.id}</p>
             </div>
@@ -106,33 +107,35 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                 <style>
                     @media print {
                         @page { margin: 0; size: auto; }
-                        body { margin: 0; padding: 5px 0; }
+                        body { margin: 0; padding: 0; }
                     }
                     * { 
                         -webkit-print-color-adjust: exact !important; 
                         print-color-adjust: exact !important;
                         box-sizing: border-box;
+                        border: none;
+                        margin: 0;
+                        padding: 0;
                     }
                     body { 
-                        margin: 0; 
-                        padding: 10px 4mm; 
                         font-family: Arial, Helvetica, sans-serif; 
                         font-size: 10pt;
                         line-height: 1.2;
                         background-color: #fff; 
                         color: #000 !important;
+                        text-rendering: optimizeLegibility;
                     }
                     .receipt-container { 
-                        width: 58mm; 
+                        width: 52mm; 
                         margin: 0 auto; 
+                        padding: 10px 2mm;
                     }
                     .text-center { text-align: center; }
                     .bold-header { 
-                        font-family: "Arial Black", Gadget, sans-serif;
                         font-weight: 900; 
-                        font-size: 12pt; 
+                        font-size: 11pt; 
                     }
-                    .business-name { text-transform: uppercase; margin: 0; }
+                    .business-name { text-transform: uppercase; }
                     .meta-info { font-size: 9pt; margin: 2px 0; }
                     .flex-header { display: flex; text-transform: uppercase; }
                     .flex-1 { flex: 1; }
@@ -140,16 +143,16 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                     .text-right { text-align: right; }
                     .text-left { text-align: left; }
                     .item-row { margin-bottom: 6px; }
-                    .item-name { font-size: 10pt; text-transform: uppercase; line-height: 1.1; }
-                    .item-details { display: flex; justify-content: space-between; font-size: 9pt; color: #333; }
+                    .item-name { font-size: 9pt; text-transform: uppercase; line-height: 1.1; }
+                    .item-details { display: flex; justify-content: space-between; font-size: 9pt; font-variant-numeric: tabular-nums; }
                     .totals-section { text-align: right; }
-                    .flex-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
-                    .total-row { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #000; }
+                    .flex-row { display: flex; justify-content: space-between; margin-bottom: 2px; font-variant-numeric: tabular-nums; }
+                    .total-row { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #000 !important; }
                     .section-title { text-align: center; margin-bottom: 4px; text-transform: uppercase; }
                     .method-name { font-size: 9pt; text-transform: uppercase; flex: 1; }
-                    .method-amount { margin-left: 8px; font-size: 10pt; }
+                    .method-amount { margin-left: 8px; font-size: 9pt; }
                     .footer-section { text-align: center; margin-top: 10px; text-transform: uppercase; }
-                    .guarantee-note { font-size: 9pt; margin-top: 4px; font-style: italic; }
+                    .guarantee-note { font-size: 8pt; margin-top: 4px; font-style: italic; }
                     .mt-2 { margin-top: 0.5rem; }
                     .mt-4 { margin-top: 1rem; }
                     .mt-6 { margin-top: 1.5rem; }

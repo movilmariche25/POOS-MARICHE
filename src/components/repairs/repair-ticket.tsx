@@ -1,3 +1,4 @@
+
 import type { RepairJob } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -142,76 +143,78 @@ export function StickerTicket({ repairJob }: RepairTicketProps) {
 const printStyles = `
     @media print {
         @page { margin: 0; size: auto; }
-        body { margin: 0; padding: 5px 0; }
+        body { margin: 0; padding: 0; }
     }
     * { 
         -webkit-print-color-adjust: exact !important; 
         print-color-adjust: exact !important;
         box-sizing: border-box;
+        border: none;
+        margin: 0;
+        padding: 0;
     }
     body { 
-        margin: 0; 
-        padding: 10px 4mm; 
         font-family: Arial, Helvetica, sans-serif; 
         font-size: 10pt;
         line-height: 1.2;
         background-color: #fff; 
         color: #000 !important;
+        text-rendering: optimizeLegibility;
     }
     .ticket-container { 
-        width: 58mm; 
+        width: 52mm; 
         margin: 0 auto; 
+        padding: 10px 2mm;
     }
     .text-center { text-align: center; }
-    .flex-row-between { display: flex; justify-content: space-between; align-items: center; }
+    .flex-row-between { display: flex; justify-content: space-between; align-items: center; font-variant-numeric: tabular-nums; }
     .bold-header { 
-        font-family: "Arial Black", Gadget, sans-serif;
         font-weight: 900; 
-        font-size: 12pt; 
+        font-size: 11pt; 
     }
-    .business-title { text-transform: uppercase; margin: 0; }
+    .business-title { text-transform: uppercase; }
     .ticket-type { text-transform: uppercase; }
     .details-section p, .service-info p { margin: 4px 0; line-height: 1.2; }
-    .total-row { border-top: 1px dashed #000; padding-top: 4px; }
-    .disclaimer-section { font-size: 9pt; line-height: 1.1; }
-    .footer-thanks { padding-top: 10px; border-top: 1px dashed #000; }
+    .total-row { border-top: 1px dashed #000 !important; padding-top: 4px; }
+    .disclaimer-section { font-size: 8pt; line-height: 1.1; }
+    .footer-thanks { padding-top: 10px; border-top: 1px dashed #000 !important; }
     
     .section-header { margin: 0; }
     .meta-info { font-size: 9pt; }
-    .balance-box { border: 1px solid #000; padding: 6px; text-align: center; }
-    .line-input { border-bottom: 1px solid #000; height: 30px; margin-bottom: 5px; }
+    .balance-box { border: 1px solid #000 !important; padding: 6px; text-align: center; font-variant-numeric: tabular-nums; }
+    .line-input { border-bottom: 1px solid #000 !important; height: 30px; margin-bottom: 5px; }
     
     .signature-box { text-align: center; margin-top: 30px; }
-    .signature-line { border-bottom: 1px solid #000; width: 80%; margin: 0 auto 4px; }
-    .signature-box p { font-size: 9pt; margin: 0; }
+    .signature-line { border-bottom: 1px solid #000 !important; width: 80%; margin: 0 auto 4px; }
+    .signature-box p { font-size: 8pt; margin: 0; }
     
-    .sticker-border { border: 2px solid #000; padding: 6px; text-align: center; }
-    .sticker-id { font-size: 14pt; margin: 0; }
-    .sticker-text { font-size: 11pt; margin: 2px 0; line-height: 1.1; }
+    .sticker-border { border: 2px solid #000 !important; padding: 6px; text-align: center; }
+    .sticker-id { font-size: 12pt; margin: 0; }
+    .sticker-text { font-size: 10pt; margin: 2px 0; line-height: 1.1; }
     
-    .sticker-issue-box { border: 1px solid #000; margin: 4px 0; padding: 4px; text-align: left; }
-    .sticker-issue-label { font-size: 8pt; margin-bottom: 2px; }
-    .sticker-issue-text { font-size: 10pt; line-height: 1.1; }
+    .sticker-issue-box { border: 1px solid #000 !important; margin: 4px 0; padding: 4px; text-align: left; }
+    .sticker-issue-label { font-size: 7pt; margin-bottom: 2px; }
+    .sticker-issue-text { font-size: 9pt; line-height: 1.1; }
 
-    .sticker-balance-row { border-top: 1px solid #000; padding-top: 4px; }
-    .sticker-balance { font-size: 16pt; margin: 0; }
+    .sticker-balance-row { border-top: 1px solid #000 !important; padding-top: 4px; }
+    .sticker-balance { font-size: 14pt; margin: 0; font-variant-numeric: tabular-nums; }
     
     .cut-line { 
-        border-top: 3px dashed #000; 
-        margin: 40px 0; 
+        border-top: 2px dashed #000 !important; 
+        margin: 30px 0; 
         position: relative;
         height: 1px;
         width: 100%;
     }
     .cut-line::after {
-        content: "--- CORTAR AQUÍ ---";
+        content: "CORTAR AQUÍ";
         position: absolute;
-        top: -12px;
+        top: -10px;
         left: 50%;
         transform: translateX(-50%);
         background: #fff;
         padding: 0 10px;
-        font-size: 9pt;
+        font-size: 8pt;
         font-weight: bold;
     }
     .mt-2 { margin-top: 0.5rem; }
