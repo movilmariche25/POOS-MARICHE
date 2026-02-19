@@ -1,6 +1,6 @@
 "use client";
 
-import type { Sale, Payment, UserProfile } from "@/lib/types";
+import type { Sale, Payment } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { renderToString } from 'react-dom/server';
@@ -29,16 +29,12 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
                 <p className="meta-info">ID: {sale.id}</p>
             </div>
             
-            <div className="divider-dashed"></div>
-            
-            <div className="flex-header bold-header">
+            <div className="flex-header bold-header mt-4">
                 <div className="flex-1 text-left">PRODUCTO</div>
                 <div className="w-1/3 text-right">TOTAL</div>
             </div>
             
-            <div className="divider-solid"></div>
-
-            <div className="items-list">
+            <div className="items-list mt-2">
                 {sale.items.map((item, idx) => (
                     <div key={idx} className="item-row">
                         <div className="item-name">{item.name}</div>
@@ -50,9 +46,7 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
                 ))}
             </div>
 
-            <div className="divider-dashed"></div>
-
-            <div className="totals-section">
+            <div className="totals-section mt-4">
                  <div className="flex-row">
                     <span>SUB-TOTAL:</span>
                     <span>${formatCurrency(sale.subtotal, 'USD')}</span>
@@ -69,10 +63,8 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
                 </div>
             </div>
             
-            <div className="divider-dashed"></div>
-
-            <div className="payments-section">
-                <p className="section-title underline bold-header">PAGOS RECIBIDOS</p>
+            <div className="payments-section mt-4">
+                <p className="section-title bold-header">PAGOS RECIBIDOS</p>
                 {sale.payments.map((p, index) => (
                     <div key={index} className="flex-row">
                         <span className="method-name">{p.method}{p.reference ? ` (${p.reference})` : ''}:</span>
@@ -82,9 +74,8 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
             </div>
 
             {sale.changeGiven && sale.changeGiven.length > 0 && (
-                 <div className="change-section">
-                    <div className="divider-dashed"></div>
-                    <p className="section-title underline bold-header">VUELTO ENTREGADO</p>
+                 <div className="change-section mt-4">
+                    <p className="section-title bold-header">VUELTO ENTREGADO</p>
                     {sale.changeGiven.map((change, index) => {
                         const isUSD = change.method === 'Efectivo USD';
                         const symbol = isUSD ? getSymbol('USD') : getSymbol('Bs');
@@ -98,8 +89,7 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
                 </div>
             )}
 
-             <div className="divider-dashed"></div>
-             <div className="footer-section">
+             <div className="footer-section mt-6">
                 <p className="bold-header">¡GRACIAS POR SU COMPRA!</p>
                 <p className="guarantee-note">INDISPENSABLE PARA GARANTÍA</p>
              </div>
@@ -126,9 +116,8 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                     body { 
                         margin: 0; 
                         padding: 10px 4mm; 
-                        font-family: "Courier New", Courier, monospace; 
+                        font-family: Arial, Helvetica, sans-serif; 
                         font-size: 10pt;
-                        font-weight: 400;
                         line-height: 1.2;
                         background-color: #fff; 
                         color: #000 !important;
@@ -138,28 +127,33 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                         margin: 0 auto; 
                     }
                     .text-center { text-align: center; }
-                    .bold-header { font-weight: bold; font-size: 12pt; }
-                    .business-name { text-transform: uppercase; margin: 0; border-bottom: 2px solid #000; padding-bottom: 4px; }
+                    .bold-header { 
+                        font-family: "Arial Black", Gadget, sans-serif;
+                        font-weight: 900; 
+                        font-size: 12pt; 
+                    }
+                    .business-name { text-transform: uppercase; margin: 0; }
                     .meta-info { font-size: 9pt; margin: 2px 0; }
-                    .divider-dashed { border-top: 1px dashed #000; margin: 8px 0; }
-                    .divider-solid { border-top: 1px solid #000; margin: 4px 0; }
                     .flex-header { display: flex; text-transform: uppercase; }
                     .flex-1 { flex: 1; }
                     .w-1\\/3 { width: 33.33%; }
                     .text-right { text-align: right; }
                     .text-left { text-align: left; }
                     .item-row { margin-bottom: 6px; }
-                    .item-name { font-size: 10pt; text-transform: uppercase; line-height: 1.1; font-weight: 400; }
+                    .item-name { font-size: 10pt; text-transform: uppercase; line-height: 1.1; }
                     .item-details { display: flex; justify-content: space-between; font-size: 9pt; color: #333; }
                     .totals-section { text-align: right; }
                     .flex-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
-                    .total-row { border-top: 1px solid #000; margin-top: 4px; padding-top: 4px; }
-                    .section-title { text-align: center; margin-bottom: 4px; }
+                    .total-row { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #000; }
+                    .section-title { text-align: center; margin-bottom: 4px; text-transform: uppercase; }
                     .method-name { font-size: 9pt; text-transform: uppercase; flex: 1; }
                     .method-amount { margin-left: 8px; font-size: 10pt; }
                     .footer-section { text-align: center; margin-top: 10px; text-transform: uppercase; }
                     .guarantee-note { font-size: 9pt; margin-top: 4px; font-style: italic; }
-                    .underline { text-decoration: underline; }
+                    .mt-2 { margin-top: 0.5rem; }
+                    .mt-4 { margin-top: 1rem; }
+                    .mt-6 { margin-top: 1.5rem; }
+                    .mb-4 { margin-bottom: 1rem; }
                 </style>
             </head>
             <body>
