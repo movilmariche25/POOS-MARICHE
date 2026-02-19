@@ -124,8 +124,16 @@ export function StickerTicket({ repairJob }: RepairTicketProps) {
         <div className="sticker-body">
             <div className="sticker-border">
                 <p className="sticker-id">ID: {repairJob.id}</p>
-                <p className="sticker-text uppercase">{repairJob.customerName}</p>
+                <p className="sticker-text uppercase bold-important">{repairJob.customerName}</p>
                 <p className="sticker-text uppercase">{repairJob.deviceMake} {repairJob.deviceModel}</p>
+                
+                <div className="divider-dashed" style={{ margin: '4px 0' }}></div>
+                
+                <div className="sticker-issue-box">
+                    <p className="sticker-issue-label">FALLA A REPARAR:</p>
+                    <p className="sticker-issue-text uppercase">{repairJob.reportedIssue}</p>
+                </div>
+
                 <div className="sticker-balance-row pt-2 mt-2">
                     <p className="sticker-balance">SALDO: ${saldo.toFixed(2)}</p>
                 </div>
@@ -180,6 +188,11 @@ const printStyles = `
     .sticker-border { border: 2px solid #000; padding: 8px; text-align: center; }
     .sticker-id { font-size: 22px; margin: 0; }
     .sticker-text { font-size: 16px; margin: 2px 0; line-height: 1.1; }
+    
+    .sticker-issue-box { border: 1px solid #000; margin: 4px 0; padding: 4px; text-align: left; }
+    .sticker-issue-label { font-size: 10px; text-decoration: underline; margin-bottom: 2px; }
+    .sticker-issue-text { font-size: 13px; line-height: 1.1; }
+
     .sticker-balance-row { border-top: 1px solid #000; }
     .sticker-balance { font-size: 24px; margin: 0; font-weight: 600; }
     

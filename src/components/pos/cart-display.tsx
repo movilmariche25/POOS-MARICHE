@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { CartItem, Payment, Product, Sale, RepairJob } from "@/lib/types";
@@ -47,7 +48,6 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
   const getPrice = (item: CartItem) => {
     if (item.isGift) return 0;
     
-    // Lógica especial para Reparaciones con Promoción en el repuesto
     if (item.isRepair) {
         if (!activeRepairJob) return 0;
         const basePending = Math.max(0, activeRepairJob.estimatedCost - (activeRepairJob.amountPaid || 0));
@@ -112,12 +112,29 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
 
             if (repairJobId && activeRepairJob) {
                 const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJobId);
-                const paidNow = cartWithPrices.find(i => i.isRepair)?.price || 0;
+                const repairItem = cartWithPrices.find(i => i.isRepair);
+                const paidNow = repairItem?.price || 0;
+                
+                let discountToApply = 0;
+                if (repairItem?.isPromo && activeRepairJob.reservedParts?.[0]) {
+                    const partId = activeRepairJob.reservedParts[0].productId;
+                    const product = allProducts.find(p => p.id === partId);
+                    if (product && product.promoPrice && product.promoPrice > 0) {
+                        const retailPriceOfPart = getFinalPrice(product);
+                        discountToApply = Math.max(0, retailPriceOfPart - product.promoPrice);
+                    }
+                }
+
+                // Ajustamos el costo estimado de la reparación para que el descuento sea permanente en el registro
+                const newEstimatedCost = activeRepairJob.estimatedCost - discountToApply;
                 const newPaid = (activeRepairJob.amountPaid || 0) + paidNow;
+                const isFullyPaid = newPaid >= (newEstimatedCost - 0.01);
+
                 transaction.update(jobRef, { 
+                    estimatedCost: Number(newEstimatedCost.toFixed(2)),
                     amountPaid: Number(newPaid.toFixed(2)), 
-                    isPaid: newPaid >= (activeRepairJob.estimatedCost - 0.01),
-                    status: newPaid >= (activeRepairJob.estimatedCost - 0.01) ? 'Pagado' : activeRepairJob.status
+                    isPaid: isFullyPaid,
+                    status: isFullyPaid ? 'Pagado' : activeRepairJob.status
                 });
             }
 
@@ -160,7 +177,6 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 {cart.map((item) => {
                     const productData = allProducts.find(p => p.id === item.productId);
                     
-                    // Lógica para determinar si el botón de promoción debe aparecer
                     let hasPromoAvailable = false;
                     if (item.isRepair) {
                         const partId = activeRepairJob?.reservedParts?.[0]?.productId;
