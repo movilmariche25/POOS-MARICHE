@@ -58,7 +58,7 @@ export function SidebarNav() {
                 "text-lg font-semibold text-sidebar-foreground",
                 "group-data-[collapsible=icon]:hidden"
             )}>
-                Mariche Movil
+                Poos Mariche
             </span>
         </Link>
       </SidebarHeader>

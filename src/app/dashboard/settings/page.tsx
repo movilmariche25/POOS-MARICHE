@@ -19,7 +19,6 @@ import type { AppSettings, UserProfile } from "@/lib/types";
 import { Switch } from "@/components/ui/switch";
 import { signOut } from "firebase/auth";
 import { updateUserEmail, updateUserPassword } from "@/firebase/non-blocking-login";
-import { Separator } from "@/components/ui/separator";
 
 const settingsSchema = z.object({
     bcvRate: z.coerce.number().positive(),
@@ -64,6 +63,7 @@ export default function SettingsPage() {
 
     const [newEmail, setNewEmail] = useState("");
     const [newPassword, setNewPassword] = useState("");
+    const [initialEmailSet, setInitialEmailSet] = useState(false);
 
     useEffect(() => {
         if (settings) {
@@ -77,9 +77,12 @@ export default function SettingsPage() {
         }
         if (profile) {
             profileForm.reset({ businessName: profile.businessName || "" });
-            setNewEmail(profile.email || "");
+            if (!initialEmailSet) {
+                setNewEmail(profile.email || "");
+                setInitialEmailSet(true);
+            }
         }
-    }, [settings, profile, settingsForm, profileForm]);
+    }, [settings, profile, settingsForm, profileForm, initialEmailSet]);
 
     const handleSaveSettings = (values: z.infer<typeof settingsSchema>) => {
         if (!settingsRef) return;
@@ -94,25 +97,50 @@ export default function SettingsPage() {
     }
 
     const handleUpdateCredentials = async () => {
-        if (!auth) return;
+        if (!auth || !user) return;
+        
+        if (newEmail === user.email && !newPassword) {
+            toast({ title: "Sin cambios", description: "No has modificado el correo ni la contraseña." });
+            return;
+        }
+
         setIsUpdatingCredentials(true);
         try {
-            if (newEmail !== user?.email) {
+            // Actualizar Correo
+            if (newEmail && newEmail !== user.email) {
                 await updateUserEmail(auth, newEmail);
-                if (userProfileRef) setDocumentNonBlocking(userProfileRef, { email: newEmail }, { merge: true });
+                if (userProfileRef) {
+                    setDocumentNonBlocking(userProfileRef, { email: newEmail }, { merge: true });
+                }
             }
+            
+            // Actualizar Contraseña
             if (newPassword) {
+                if (newPassword.length < 6) {
+                    throw new Error("La contraseña debe tener al menos 6 caracteres.");
+                }
                 await updateUserPassword(auth, newPassword);
             }
-            toast({ title: "Credenciales actualizadas exitosamente" });
+
+            toast({ 
+                title: "Credenciales Actualizadas", 
+                description: "Tus datos de acceso han sido modificados con éxito." 
+            });
             setNewPassword("");
         } catch (e: any) {
+            console.error("Credential update error:", e);
+            let description = e.message;
+            
+            if (e.code === 'auth/requires-recent-login') {
+                description = "Por seguridad, debes haber iniciado sesión recientemente para realizar esta acción. Por favor, cierra sesión y vuelve a entrar.";
+            } else if (e.code === 'auth/email-already-in-use') {
+                description = "Este correo electrónico ya está en uso por otra cuenta.";
+            }
+
             toast({ 
                 variant: "destructive", 
                 title: "Error de Seguridad", 
-                description: e.code === 'auth/requires-recent-login' 
-                    ? "Para cambiar estos datos debes haber iniciado sesión recientemente. Cierra sesión y vuelve a entrar." 
-                    : e.message 
+                description
             });
         } finally {
             setIsUpdatingCredentials(false);
@@ -121,8 +149,10 @@ export default function SettingsPage() {
 
     const handleSignOut = () => {
         if (auth) {
-            localStorage.removeItem('mm_session_id');
-            signOut(auth);
+            localStorage.removeItem('mm_active_session_id');
+            signOut(auth).then(() => {
+                window.location.href = '/';
+            });
         }
     }
 
@@ -143,7 +173,7 @@ export default function SettingsPage() {
                                 <FormField control={profileForm.control} name="businessName" render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Nombre Comercial</FormLabel>
-                                        <FormControl><Input {...field} placeholder="Ej: Mariche Movil C.A." /></FormControl>
+                                        <FormControl><Input {...field} placeholder="Ej: Poos Mariche Central" /></FormControl>
                                         <FormMessage />
                                     </FormItem>
                                 )} />
@@ -165,14 +195,14 @@ export default function SettingsPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label className="flex items-center gap-2"><Mail className="w-3 h-3" /> Email de Acceso</Label>
-                                <Input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} />
+                                <Input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="correo@ejemplo.com" />
                             </div>
                             <div className="space-y-2">
                                 <Label className="flex items-center gap-2"><Lock className="w-3 h-3" /> Nueva Contraseña</Label>
                                 <Input type="password" placeholder="Mínimo 6 caracteres" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
                             </div>
                         </div>
-                        <p className="text-xs text-muted-foreground italic">Nota: Si cambias el email, tendrás que usar el nuevo para entrar la próxima vez.</p>
+                        <p className="text-xs text-muted-foreground italic">Nota: Si cambias el email, deberás usar el nuevo para entrar en tu próxima sesión.</p>
                     </CardContent>
                     <CardFooter className="border-t pt-4">
                         <Button variant="outline" onClick={handleUpdateCredentials} disabled={isUpdatingCredentials}>
@@ -187,14 +217,14 @@ export default function SettingsPage() {
                         <form onSubmit={settingsForm.handleSubmit(handleSaveSettings)}>
                             <CardHeader>
                                 <CardTitle>Tasas y Márgenes</CardTitle>
-                                <CardDescription>Configuración global de precios para tu inventario.</CardDescription>
+                                <CardDescription>Configuración económica global del taller.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-6">
                                 <FormField control={settingsForm.control} name="autoUpdateBcv" render={({ field }) => (
                                     <FormItem className="flex items-center justify-between rounded-lg border p-4">
                                         <div className="space-y-0.5">
                                             <FormLabel>Sincronización BCV Automática</FormLabel>
-                                            <FormDescription>Actualiza con la API oficial cada 4 horas.</FormDescription>
+                                            <FormDescription>Actualiza con la tasa oficial cada 4 horas.</FormDescription>
                                         </div>
                                         <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                                     </FormItem>

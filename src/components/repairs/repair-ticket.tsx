@@ -1,3 +1,4 @@
+
 import type { RepairJob } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -19,7 +20,7 @@ export function CustomerTicket({ repairJob, businessName }: RepairTicketProps) {
     return (
         <div className="ticket-body">
             <div className="text-center mb-3">
-                <h3 className="business-title">{businessName || 'MARICHE MOVIL'}</h3>
+                <h3 className="business-title">{businessName || 'POOS MARICHE'}</h3>
                 <p className="ticket-type underline mt-2">NOTA DE ENTREGA (CLIENTE)</p>
             </div>
             
@@ -91,7 +92,7 @@ export function InternalTicket({ repairJob }: RepairTicketProps) {
                 <div className="balance-box mt-2">SALDO: ${saldo.toFixed(2)}</div>
             </div>
 
-            <div className="notes-section mb-4">
+            <div className="notes-section mb-10">
                 <p className="underline">OBSERVACIONES TÉCNICAS:</p>
                 <div className="line-input"></div>
                 <div className="line-input"></div>
@@ -104,7 +105,7 @@ export function InternalTicket({ repairJob }: RepairTicketProps) {
                     <p>FIRMA RECEPCIÓN</p>
                 </div>
 
-                <div className="signature-box mt-16">
+                <div className="signature-box mt-20">
                     <div className="signature-line"></div>
                     <p>FIRMA ENTREGA</p>
                 </div>
@@ -183,7 +184,7 @@ const printStyles = `
     .sticker-balance { font-size: 24px; margin: 0; font-weight: 600; }
     
     .cut-line { 
-        border-top: 2px dashed #000; 
+        border-top: 3px dashed #000; 
         margin: 40px 0; 
         position: relative;
         height: 1px;
@@ -199,6 +200,7 @@ const printStyles = `
         padding: 0 10px;
         font-size: 11px;
         letter-spacing: 1px;
+        font-weight: 600;
     }
     .bold-important { font-weight: 600 !important; }
 `;

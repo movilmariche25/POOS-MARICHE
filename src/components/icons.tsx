@@ -1,3 +1,4 @@
+
 import type { SVGProps } from 'react';
 
 export function AppLogo(props: SVGProps<SVGSVGElement>) {
@@ -5,7 +6,7 @@ export function AppLogo(props: SVGProps<SVGSVGElement>) {
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 256 256"
-      aria-label="Mariche Movil Logo"
+      aria-label="Poos Mariche Logo"
       {...props}
     >
       <defs>

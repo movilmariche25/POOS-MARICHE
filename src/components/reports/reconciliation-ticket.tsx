@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { DailyReconciliation, PaymentMethod } from "@/lib/types";
@@ -20,7 +21,7 @@ export function ReconciliationTicket({ reconciliation, currency }: Reconciliatio
         <div className="recon-ticket">
             <div className="text-center mb-3">
                 <h3 className="recon-header">CIERRE DE CAJA</h3>
-                <p className="business-name">MARICHE MOVIL</p>
+                <p className="business-name">POOS MARICHE</p>
                 <p className="meta-info">FECHA: {formatDate(parseISO(reconciliation.closedAt), "dd/MM/yy hh:mm a", { locale: es })}</p>
                 <p className="meta-info">ID: {reconciliation.id}</p>
             </div>
