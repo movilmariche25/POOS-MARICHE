@@ -127,11 +127,11 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                     .recon-header { text-transform: uppercase; }
                     .business-name { margin: 2px 0; }
                     .meta-info { font-size: 9pt; margin: 1px 0; }
-                    .net-expected { border-top: 1px dashed #000 !important; padding-top: 4px; }
+                    .net-expected { padding-top: 4px; }
                     .section-title { text-align: center; margin-bottom: 6px; text-transform: uppercase; }
                     .method-box { margin-bottom: 12px; }
                     .method-name-header { text-align: center; border: 1px solid #000 !important; padding: 2px; margin-bottom: 4px; text-transform: uppercase; }
-                    .diff-row { border-top: 1px dashed #000 !important; padding-top: 2px; }
+                    .diff-row { padding-top: 2px; }
                     .grand-total { text-transform: uppercase; border-top: 2px solid #000 !important; margin-top: 8px; padding-top: 8px; }
                     .footer-note { font-size: 8pt; text-transform: uppercase; opacity: 0.8; font-style: italic; }
                     .uppercase { text-transform: uppercase; }

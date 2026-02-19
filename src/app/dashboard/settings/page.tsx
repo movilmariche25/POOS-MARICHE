@@ -5,20 +5,21 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, LogOut, ShieldCheck, UserCog, Mail, Lock } from "lucide-react";
+import { Loader2, LogOut, ShieldCheck, UserCog, Mail, Lock, KeyRound, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { useDoc, useFirebase, useMemoFirebase, setDocumentNonBlocking } from "@/firebase";
+import { useDoc, useFirebase, useMemoFirebase, setDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase";
 import { doc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import type { AppSettings, UserProfile } from "@/lib/types";
 import { Switch } from "@/components/ui/switch";
 import { signOut } from "firebase/auth";
 import { updateUserEmail, updateUserPassword } from "@/firebase/non-blocking-login";
+import { cn } from "@/lib/utils";
 
 const settingsSchema = z.object({
     bcvRate: z.coerce.number().positive(),
@@ -32,10 +33,13 @@ const profileSchema = z.object({
     businessName: z.string().min(2, "Mínimo 2 caracteres"),
 });
 
+const DEFAULT_PIN = "2026";
+
 export default function SettingsPage() {
     const { toast } = useToast();
     const { firestore, auth, user } = useFirebase();
     const [isUpdatingCredentials, setIsUpdatingCredentials] = useState(false);
+    const [isUpdatingPin, setIsUpdatingPin] = useState(false);
     
     // Configuración del sistema
     const settingsRef = useMemoFirebase(() => 
@@ -63,6 +67,9 @@ export default function SettingsPage() {
 
     const [newEmail, setNewEmail] = useState("");
     const [newPassword, setNewPassword] = useState("");
+    const [newPin, setNewPin] = useState("");
+    const [currentPinVerify, setCurrentPinVerify] = useState("");
+    const [isPinRequired, setIsPinRequired] = useState(true);
     const [initialEmailSet, setInitialEmailSet] = useState(false);
 
     useEffect(() => {
@@ -81,6 +88,7 @@ export default function SettingsPage() {
                 setNewEmail(profile.email || "");
                 setInitialEmailSet(true);
             }
+            setIsPinRequired(profile.isPinRequired !== false);
         }
     }, [settings, profile, settingsForm, profileForm, initialEmailSet]);
 
@@ -95,6 +103,46 @@ export default function SettingsPage() {
         setDocumentNonBlocking(userProfileRef, values, { merge: true });
         toast({ title: "Perfil Actualizado" });
     }
+
+    const handleUpdatePinSettings = async () => {
+        if (!userProfileRef || !currentPinVerify) return;
+        
+        const storedPin = profile?.securityPin || DEFAULT_PIN;
+        
+        if (currentPinVerify !== storedPin) {
+            toast({ 
+                variant: "destructive", 
+                title: "PIN Actual Incorrecto", 
+                description: "Debes ingresar tu PIN de gerente actual para autorizar cambios en la seguridad." 
+            });
+            return;
+        }
+
+        setIsUpdatingPin(true);
+        try {
+            const updateData: Partial<UserProfile> = {
+                isPinRequired: isPinRequired,
+            };
+
+            if (newPin) {
+                updateData.securityPin = newPin;
+            }
+
+            await updateDocumentNonBlocking(userProfileRef, updateData);
+            
+            toast({ 
+                title: "Seguridad Actualizada", 
+                description: "Los ajustes de tu clave de gerente han sido guardados." 
+            });
+            
+            setNewPin("");
+            setCurrentPinVerify("");
+        } catch (e) {
+            toast({ variant: "destructive", title: "Error al actualizar" });
+        } finally {
+            setIsUpdatingPin(false);
+        }
+    };
 
     const handleUpdateCredentials = async () => {
         if (!auth || !user) return;
@@ -159,7 +207,7 @@ export default function SettingsPage() {
     return (
         <>
             <PageHeader title="Configuración y Perfil" />
-            <main className="flex-1 p-4 sm:p-6 space-y-8 max-w-4xl">
+            <main className="flex-1 p-4 sm:p-6 space-y-8 max-w-4xl mx-auto w-full">
                 
                 {/* 1. PERFIL DEL TALLER */}
                 <Card className="shadow-md">
@@ -185,10 +233,73 @@ export default function SettingsPage() {
                     </Form>
                 </Card>
 
-                {/* 2. SEGURIDAD DE LA CUENTA */}
+                {/* 2. SEGURIDAD DE GERENTE (PIN) */}
+                <Card className="shadow-md border-primary/20 bg-primary/5">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-primary"><KeyRound className="w-5 h-5"/> Clave de Gerente (PIN)</CardTitle>
+                        <CardDescription>Protección para devoluciones, eliminaciones y bloqueos.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className={cn(
+                            "flex items-center justify-between p-4 rounded-lg border transition-all",
+                            isPinRequired ? "bg-white border-primary/20" : "bg-slate-50 border-slate-200"
+                        )}>
+                            <div className="space-y-0.5">
+                                <Label className="text-base">Estado de Protección</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    {isPinRequired ? "Solicitar PIN para autorizar reembolsos y borrados." : "Las acciones de gerente se ejecutarán de inmediato (No recomendado)."}
+                                </p>
+                            </div>
+                            <Switch 
+                                checked={isPinRequired} 
+                                onCheckedChange={setIsPinRequired} 
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <Label className="flex items-center gap-2">PIN Actual <span className="text-destructive">*</span></Label>
+                                <Input 
+                                    type="password" 
+                                    value={currentPinVerify} 
+                                    onChange={(e) => setCurrentPinVerify(e.target.value)} 
+                                    placeholder="Introduce tu clave actual" 
+                                />
+                                <p className="text-[10px] text-muted-foreground italic">Es obligatorio para autorizar cambios en esta sección.</p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Nuevo PIN (Dejar vacío para no cambiar)</Label>
+                                <Input 
+                                    type="password" 
+                                    value={newPin} 
+                                    onChange={(e) => setNewPin(e.target.value)} 
+                                    placeholder="Nueva clave numérica" 
+                                />
+                            </div>
+                        </div>
+
+                        {!profile?.securityPin && (
+                            <div className="p-3 bg-amber-50 border border-amber-200 rounded flex items-center gap-2 text-xs text-amber-800">
+                                <AlertCircle className="w-4 h-4" />
+                                <span>No has configurado un PIN personal. La clave por defecto es <strong>{DEFAULT_PIN}</strong>.</span>
+                            </div>
+                        )}
+                    </CardContent>
+                    <CardFooter className="border-t pt-4">
+                        <Button 
+                            onClick={handleUpdatePinSettings} 
+                            disabled={isUpdatingPin || !currentPinVerify}
+                            className="w-full sm:w-auto"
+                        >
+                            {isUpdatingPin ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : "Guardar Ajustes de Seguridad"}
+                        </Button>
+                    </CardFooter>
+                </Card>
+
+                {/* 3. SEGURIDAD DE LA CUENTA (LOGIN) */}
                 <Card className="shadow-md border-amber-100">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-amber-700"><ShieldCheck className="w-5 h-5"/> Seguridad de Acceso</CardTitle>
+                        <CardTitle className="flex items-center gap-2 text-amber-700"><ShieldCheck className="w-5 h-5"/> Seguridad de Acceso (Login)</CardTitle>
                         <CardDescription>Cambia tu usuario (email) y contraseña de acceso al sistema.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
@@ -211,7 +322,7 @@ export default function SettingsPage() {
                     </CardFooter>
                 </Card>
 
-                {/* 3. TASAS Y MÁRGENES */}
+                {/* 4. TASAS Y MÁRGENES */}
                 <Card className="shadow-md">
                     <Form {...settingsForm}>
                         <form onSubmit={settingsForm.handleSubmit(handleSaveSettings)}>

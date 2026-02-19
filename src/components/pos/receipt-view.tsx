@@ -147,12 +147,20 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                     .item-details { display: flex; justify-content: space-between; font-size: 9pt; font-variant-numeric: tabular-nums; }
                     .totals-section { text-align: right; }
                     .flex-row { display: flex; justify-content: space-between; margin-bottom: 2px; font-variant-numeric: tabular-nums; }
-                    .total-row { margin-top: 4px; padding-top: 4px; border-top: 1px dashed #000 !important; }
+                    .total-row { margin-top: 4px; padding-top: 4px; }
                     .section-title { text-align: center; margin-bottom: 4px; text-transform: uppercase; }
                     .method-name { font-size: 9pt; text-transform: uppercase; flex: 1; }
                     .method-amount { margin-left: 8px; font-size: 9pt; }
                     .footer-section { text-align: center; margin-top: 10px; text-transform: uppercase; }
                     .guarantee-note { font-size: 8pt; margin-top: 4px; font-style: italic; }
+                    
+                    .cut-line { 
+                        border-top: 2px dashed #000 !important; 
+                        margin: 30px 0; 
+                        position: relative;
+                        height: 1px;
+                        width: 100%;
+                    }
                     .mt-2 { margin-top: 0.5rem; }
                     .mt-4 { margin-top: 1rem; }
                     .mt-6 { margin-top: 1.5rem; }

@@ -125,7 +125,6 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                     }
                 }
 
-                // Ajustamos el costo estimado de la reparación para que el descuento sea permanente en el registro
                 const newEstimatedCost = activeRepairJob.estimatedCost - discountToApply;
                 const newPaid = (activeRepairJob.amountPaid || 0) + paidNow;
                 const isFullyPaid = newPaid >= (newEstimatedCost - 0.01);
@@ -151,7 +150,18 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
         });
 
         toast({ title: "Venta Completada" });
-        return { id: saleId, items: cartWithPrices, subtotal, discount, totalAmount: total, payments, transactionDate: new Date().toISOString(), status: 'completed' } as Sale;
+        return { 
+            id: saleId, 
+            items: cartWithPrices, 
+            subtotal, 
+            discount, 
+            totalAmount: total, 
+            payments, 
+            transactionDate: new Date().toISOString(), 
+            status: 'completed',
+            changeGiven,
+            totalChangeInUSD
+        } as Sale;
       } catch (e: any) {
         toast({ variant: "destructive", title: "Error", description: e.message });
         return null;

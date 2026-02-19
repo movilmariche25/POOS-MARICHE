@@ -2,8 +2,11 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, type ReactNode, useCallback } from 'react';
+import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
+import { doc } from 'firebase/firestore';
+import type { UserProfile } from '@/lib/types';
 
-const ADMIN_PASSWORD = "2026";
+const FALLBACK_PIN = "2026";
 const SESSION_STORAGE_KEY = 'app_unlocked';
 
 interface AppLockContextType {
@@ -15,6 +18,13 @@ const AppLockContext = createContext<AppLockContextType | undefined>(undefined);
 
 export function AppLockProvider({ children }: { children: ReactNode }) {
   const [isLocked, setIsLocked] = useState(true);
+  const { firestore, user } = useFirebase();
+
+  const profileRef = useMemoFirebase(() => 
+    (firestore && user) ? doc(firestore, 'users', user.uid) : null,
+    [firestore, user?.uid]
+  );
+  const { data: profile } = useDoc<UserProfile>(profileRef);
 
   useEffect(() => {
     // Check session storage on initial client-side load
@@ -29,7 +39,9 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const unlockApp = useCallback((password: string): boolean => {
-    if (password === ADMIN_PASSWORD) {
+    const requiredPin = profile?.securityPin || FALLBACK_PIN;
+
+    if (password === requiredPin) {
       try {
         sessionStorage.setItem(SESSION_STORAGE_KEY, 'true');
       } catch (error) {
@@ -39,7 +51,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
       return true;
     }
     return false;
-  }, []);
+  }, [profile?.securityPin]);
 
   const value = { isLocked, unlockApp };
 

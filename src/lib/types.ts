@@ -153,4 +153,6 @@ export type UserProfile = {
   lastSessionId?: string;
   updatedAt?: string;
   enabledModules?: UserModule[];
+  securityPin?: string;
+  isPinRequired?: boolean;
 };

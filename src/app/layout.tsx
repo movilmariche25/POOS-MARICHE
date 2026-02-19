@@ -71,7 +71,8 @@ function AppContent({ children }: { children: React.ReactNode }) {
               ? new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString() 
               : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
             createdAt: existingData.createdAt || new Date().toISOString(),
-            enabledModules: ['inventory', 'pos', 'repairs', 'reports', 'analysis']
+            enabledModules: ['inventory', 'pos', 'repairs', 'reports', 'analysis'],
+            isPinRequired: true
           })
         };
 

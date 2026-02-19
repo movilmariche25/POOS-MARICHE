@@ -94,19 +94,17 @@ export function InternalTicket({ repairJob }: RepairTicketProps) {
 
             <div className="notes-section mt-6 mb-10">
                 <p className="bold-header">OBSERVACIONES TÉCNICAS:</p>
-                <div className="line-input"></div>
-                <div className="line-input"></div>
-                <div className="line-input"></div>
+                <div className="line-spacer"></div>
+                <div className="line-spacer"></div>
+                <div className="line-spacer"></div>
             </div>
 
             <div className="signatures-container">
                 <div className="signature-box">
-                    <div className="signature-line"></div>
                     <p className="bold-header">FIRMA RECEPCIÓN</p>
                 </div>
 
                 <div className="signature-box mt-20">
-                    <div className="signature-line"></div>
                     <p className="bold-header">FIRMA ENTREGA</p>
                 </div>
             </div>
@@ -175,17 +173,16 @@ const printStyles = `
     .business-title { text-transform: uppercase; }
     .ticket-type { text-transform: uppercase; }
     .details-section p, .service-info p { margin: 4px 0; line-height: 1.2; }
-    .total-row { border-top: 1px dashed #000 !important; padding-top: 4px; }
+    .total-row { padding-top: 4px; }
     .disclaimer-section { font-size: 8pt; line-height: 1.1; }
-    .footer-thanks { padding-top: 10px; border-top: 1px dashed #000 !important; }
+    .footer-thanks { padding-top: 10px; }
     
     .section-header { margin: 0; }
     .meta-info { font-size: 9pt; }
     .balance-box { border: 1px solid #000 !important; padding: 6px; text-align: center; font-variant-numeric: tabular-nums; }
-    .line-input { border-bottom: 1px solid #000 !important; height: 30px; margin-bottom: 5px; }
+    .line-spacer { height: 30px; }
     
     .signature-box { text-align: center; margin-top: 30px; }
-    .signature-line { border-bottom: 1px solid #000 !important; width: 80%; margin: 0 auto 4px; }
     .signature-box p { font-size: 8pt; margin: 0; }
     
     .sticker-border { border: 2px solid #000 !important; padding: 6px; text-align: center; }
@@ -196,7 +193,7 @@ const printStyles = `
     .sticker-issue-label { font-size: 7pt; margin-bottom: 2px; }
     .sticker-issue-text { font-size: 9pt; line-height: 1.1; }
 
-    .sticker-balance-row { border-top: 1px solid #000 !important; padding-top: 4px; }
+    .sticker-balance-row { padding-top: 4px; }
     .sticker-balance { font-size: 14pt; margin: 0; font-variant-numeric: tabular-nums; }
     
     .cut-line { 
@@ -205,17 +202,6 @@ const printStyles = `
         position: relative;
         height: 1px;
         width: 100%;
-    }
-    .cut-line::after {
-        content: "CORTAR AQUÍ";
-        position: absolute;
-        top: -10px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #fff;
-        padding: 0 10px;
-        font-size: 8pt;
-        font-weight: bold;
     }
     .mt-2 { margin-top: 0.5rem; }
     .mt-4 { margin-top: 1rem; }

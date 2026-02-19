@@ -1,3 +1,4 @@
+
 "use client"
 
 import type { Sale, Payment, Product, CartItem, RepairJob, UserProfile } from "@/lib/types";
@@ -8,7 +9,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { ReceiptView, handlePrintReceipt } from "../pos/receipt-view";
 import { Button } from "../ui/button";
-import { Printer, Undo2 } from "lucide-react";
+import { Printer, Undo2, AlertTriangle } from "lucide-react";
 import React, { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "../ui/skeleton";
@@ -71,31 +72,56 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
     };
     
     if (sale.status === 'refunded') return <Badge variant="secondary">Reembolsado</Badge>;
-    if (sale.reconciliationId) return <Badge variant="outline">Cerrada</Badge>;
     
     return (
-        <>
+        <div className="flex items-center gap-2">
+            {sale.reconciliationId && <Badge variant="outline" className="border-green-600 text-green-600">Cerrada</Badge>}
             <AdminAuthDialog onAuthorized={() => setIsConfirmOpen(true)}>
                 <Button variant="outline" size="sm" className="h-8"><Undo2 className="mr-2 h-4 w-4" /> Reembolsar</Button>
             </AdminAuthDialog>
             <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
                 <AlertDialogContent>
-                    <AlertDialogHeader><AlertDialogTitle>¿Confirmar Reembolso?</AlertDialogTitle></AlertDialogHeader>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Confirmar Reembolso?</AlertDialogTitle>
+                    </AlertDialogHeader>
                     <div className="py-4 space-y-4">
-                        <Label>Motivo</Label>
-                        <Textarea value={refundReason} onChange={(e) => setRefundReason(e.target.value)} />
-                        <RadioGroup value={stockAction} onValueChange={(v: any) => setStockAction(v)}>
-                            <div className="flex items-center space-x-2"><RadioGroupItem value="return" id="r1" /><Label htmlFor="r1">Devolver a stock</Label></div>
-                            <div className="flex items-center space-x-2"><RadioGroupItem value="damage" id="r2" /><Label htmlFor="r2">Mover a dañado</Label></div>
-                        </RadioGroup>
+                        {sale.reconciliationId && (
+                            <div className="p-3 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2">
+                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-800 leading-tight">
+                                    Esta venta ya fue parte de un cierre de caja. El reembolso afectará el inventario pero no modificará el monto histórico del reporte de cierre ya impreso.
+                                </p>
+                            </div>
+                        )}
+                        <div className="space-y-2">
+                            <Label>Motivo de la devolución</Label>
+                            <Textarea 
+                                placeholder="Ej: Cliente desistió de la compra, equipo incompatible..." 
+                                value={refundReason} 
+                                onChange={(e) => setRefundReason(e.target.value)} 
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Acción sobre el inventario</Label>
+                            <RadioGroup value={stockAction} onValueChange={(v: any) => setStockAction(v)}>
+                                <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="return" id="r1" />
+                                    <Label htmlFor="r1" className="font-normal">Devolver a stock (Disponible)</Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <RadioGroupItem value="damage" id="r2" />
+                                    <Label htmlFor="r2" className="font-normal">Mover a dañado/garantía</Label>
+                                </div>
+                            </RadioGroup>
+                        </div>
                     </div>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleRefund} disabled={!refundReason.trim()} className="bg-destructive">Confirmar</AlertDialogAction>
+                        <AlertDialogAction onClick={handleRefund} disabled={!refundReason.trim()} className="bg-destructive">Confirmar Reembolso</AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-        </>
+        </div>
     );
 };
 
@@ -191,6 +217,18 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                         <span>{p.method === 'Efectivo USD' ? '$' : 'Bs '}{formatCurrency(p.amount)}</span>
                                     </div>
                                 ))}
+                                
+                                {sale.changeGiven && sale.changeGiven.length > 0 && (
+                                    <div className="pt-2">
+                                        <span className="text-muted-foreground font-bold">Vuelto Entregado:</span>
+                                        {sale.changeGiven.map((c, i) => (
+                                            <div key={i} className="flex justify-between text-xs pl-4 text-destructive">
+                                                <span>- {c.method}</span>
+                                                <span>{c.method === 'Efectivo USD' ? '$' : 'Bs '}{formatCurrency(c.amount)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </AccordionContent>
