@@ -126,8 +126,8 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                     body { 
                         margin: 0; 
                         padding: 10px 4mm; 
-                        font-family: sans-serif; 
-                        font-size: 12px;
+                        font-family: "Courier New", Courier, monospace; 
+                        font-size: 10pt;
                         line-height: 1.2;
                         background-color: #fff; 
                         color: #000 !important;
@@ -137,9 +137,9 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                         margin: 0 auto; 
                     }
                     .text-center { text-align: center; }
-                    .bold-header { font-weight: bold; font-size: 10pt; }
+                    .bold-header { font-weight: bold; font-size: 12pt; }
                     .business-name { text-transform: uppercase; margin: 0; border-bottom: 2px solid #000; padding-bottom: 4px; }
-                    .meta-info { font-size: 11px; margin: 2px 0; }
+                    .meta-info { font-size: 9pt; margin: 2px 0; }
                     .divider-dashed { border-top: 1px dashed #000; margin: 8px 0; }
                     .divider-solid { border-top: 1px solid #000; margin: 4px 0; }
                     .flex-header { display: flex; text-transform: uppercase; }
@@ -148,16 +148,17 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                     .text-right { text-align: right; }
                     .text-left { text-align: left; }
                     .item-row { margin-bottom: 6px; }
-                    .item-name { font-size: 12px; text-transform: uppercase; line-height: 1.1; }
-                    .item-details { display: flex; justify-content: space-between; font-size: 11px; color: #333; }
+                    .item-name { font-size: 10pt; text-transform: uppercase; line-height: 1.1; }
+                    .item-details { display: flex; justify-content: space-between; font-size: 9pt; color: #333; }
                     .totals-section { text-align: right; }
                     .flex-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
                     .total-row { border-top: 1px solid #000; margin-top: 4px; padding-top: 4px; }
                     .section-title { text-align: center; margin-bottom: 4px; }
-                    .method-name { font-size: 11px; text-transform: uppercase; flex: 1; }
-                    .method-amount { margin-left: 8px; font-size: 11px; }
+                    .method-name { font-size: 9pt; text-transform: uppercase; flex: 1; }
+                    .method-amount { margin-left: 8px; font-size: 10pt; }
                     .footer-section { text-align: center; margin-top: 10px; text-transform: uppercase; }
-                    .guarantee-note { font-size: 10px; margin-top: 4px; font-style: italic; }
+                    .guarantee-note { font-size: 9pt; margin-top: 4px; font-style: italic; }
+                    .underline { text-decoration: underline; }
                 </style>
             </head>
             <body>

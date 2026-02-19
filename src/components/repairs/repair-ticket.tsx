@@ -154,8 +154,8 @@ const printStyles = `
     body { 
         margin: 0; 
         padding: 10px 4mm; 
-        font-family: sans-serif; 
-        font-size: 12px;
+        font-family: "Courier New", Courier, monospace; 
+        font-size: 10pt;
         line-height: 1.2;
         background-color: #fff; 
         color: #000 !important;
@@ -166,31 +166,31 @@ const printStyles = `
     }
     .text-center { text-align: center; }
     .flex-row-between { display: flex; justify-content: space-between; align-items: center; }
-    .bold-header { font-weight: bold; font-size: 10pt; }
+    .bold-header { font-weight: bold; font-size: 12pt; }
     .business-title { text-transform: uppercase; margin: 0; border-bottom: 2px solid #000; padding-bottom: 4px; }
     .ticket-type { text-transform: uppercase; }
     .details-section p, .service-info p { margin: 3px 0; line-height: 1.2; }
     .divider-dashed { border-top: 1px dashed #000; margin: 8px 0; }
     .total-row { border-top: 2px solid #000; padding-top: 4px; margin-top: 4px; }
-    .disclaimer-section { font-size: 11px; line-height: 1.1; }
+    .disclaimer-section { font-size: 9pt; line-height: 1.1; }
     .footer-thanks { border-top: 2px solid #000; }
     
     .section-header { border-bottom: 2px solid #000; margin: 0; }
-    .meta-info { font-size: 11px; }
+    .meta-info { font-size: 9pt; }
     .balance-box { border: 1px solid #000; padding: 6px; text-align: center; }
     .line-input { border-bottom: 1px solid #000; height: 25px; margin-bottom: 5px; }
     
     .signature-box { text-align: center; margin-top: 30px; }
     .signature-line { border-bottom: 1px solid #000; width: 80%; margin: 0 auto 4px; }
-    .signature-box p { font-size: 11px; margin: 0; }
+    .signature-box p { font-size: 9pt; margin: 0; }
     
     .sticker-border { border: 2px solid #000; padding: 6px; text-align: center; }
     .sticker-id { font-size: 14pt; margin: 0; }
     .sticker-text { font-size: 11pt; margin: 2px 0; line-height: 1.1; }
     
     .sticker-issue-box { border: 1px solid #000; margin: 4px 0; padding: 4px; text-align: left; }
-    .sticker-issue-label { font-size: 9px; margin-bottom: 2px; }
-    .sticker-issue-text { font-size: 11px; line-height: 1.1; }
+    .sticker-issue-label { font-size: 8pt; margin-bottom: 2px; }
+    .sticker-issue-text { font-size: 10pt; line-height: 1.1; }
 
     .sticker-balance-row { border-top: 1px solid #000; }
     .sticker-balance { font-size: 16pt; margin: 0; }
@@ -210,9 +210,10 @@ const printStyles = `
         transform: translateX(-50%);
         background: #fff;
         padding: 0 10px;
-        font-size: 10px;
+        font-size: 9pt;
         font-weight: bold;
     }
+    .underline { text-decoration: underline; }
 `;
 
 function iframePrint(html: string) {

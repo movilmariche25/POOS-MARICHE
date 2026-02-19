@@ -112,8 +112,8 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                     body { 
                         margin: 0; 
                         padding: 10px 4mm; 
-                        font-family: sans-serif; 
-                        font-size: 12px;
+                        font-family: "Courier New", Courier, monospace; 
+                        font-size: 10pt;
                         line-height: 1.2;
                         background-color: #fff; 
                         color: #000 !important;
@@ -124,20 +124,20 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                     }
                     .text-center { text-align: center; }
                     .flex-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
-                    .bold-header { font-weight: bold; font-size: 10pt; }
+                    .bold-header { font-weight: bold; font-size: 12pt; }
                     .recon-header { text-transform: uppercase; margin: 0; }
                     .business-name { margin: 2px 0; }
-                    .meta-info { font-size: 11px; margin: 1px 0; }
+                    .meta-info { font-size: 9pt; margin: 1px 0; }
                     .divider-dashed { border-top: 1px dashed #000; margin: 8px 0; }
-                    .summary-section { font-size: 12px; }
-                    .cash-flow-section { font-size: 11px; }
+                    .summary-section { font-size: 10pt; }
+                    .cash-flow-section { font-size: 10pt; }
                     .net-expected { border-top: 1px solid #000; padding-top: 2px; }
                     .section-title { text-align: center; margin-bottom: 6px; }
-                    .method-box { margin-bottom: 8px; font-size: 11px; }
+                    .method-box { margin-bottom: 8px; font-size: 10pt; }
                     .method-name-header { text-align: center; border: 1px solid #000; padding: 2px; margin-bottom: 2px; text-transform: uppercase; }
                     .diff-row { border-top: 1px solid #000; margin-top: 1px; padding-top: 1px; }
                     .grand-total { text-transform: uppercase; border-top: 2px solid #000; margin-top: 4px; padding-top: 4px; }
-                    .footer-note { font-size: 10px; text-transform: uppercase; opacity: 0.8; font-style: italic; }
+                    .footer-note { font-size: 9pt; text-transform: uppercase; opacity: 0.8; font-style: italic; }
                     .uppercase { text-transform: uppercase; }
                     .underline { text-decoration: underline; }
                 </style>
