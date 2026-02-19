@@ -1,16 +1,18 @@
+
 "use client";
 
 import { PageHeader } from "@/components/page-header";
 import { useCollection, useFirebase, useMemoFirebase, updateDocumentNonBlocking, setDocumentNonBlocking, useDoc } from "@/firebase";
 import { collection, doc, writeBatch, getDocs } from "firebase/firestore";
-import type { UserProfile } from "@/lib/types";
+import type { UserProfile, UserModule } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, isAfter, subMinutes } from "date-fns";
+import { es } from "date-fns/locale";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -33,8 +35,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Edit, Mail, Building, Megaphone, Save, Trash2, Loader2 } from "lucide-react";
+import { Edit, Mail, Megaphone, Save, Trash2, Loader2, Circle, Users, LayoutGrid } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
+import { Separator } from "@/components/ui/separator";
+
+const ALL_MODULES: { id: UserModule, label: string }[] = [
+    { id: 'inventory', label: 'Inventario' },
+    { id: 'pos', label: 'Punto de Venta' },
+    { id: 'repairs', label: 'Reparaciones' },
+    { id: 'reports', label: 'Reportes' },
+    { id: 'analysis', label: 'Análisis' },
+];
 
 function AnnouncementEditor() {
     const { firestore } = useFirebase();
@@ -70,7 +82,7 @@ function AnnouncementEditor() {
     return (
         <Card className="border-primary/20 shadow-lg">
             <CardHeader className="bg-primary/5">
-                <CardTitle className="flex items-center gap-2"><Megaphone className="w-5 h-5"/> Anuncio Global</CardTitle>
+                <CardTitle className="flex items-center gap-2 text-primary"><Megaphone className="w-5 h-5"/> Anuncio Global</CardTitle>
                 <CardDescription>Envía un mensaje a todos los talleres registrados.</CardDescription>
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
@@ -106,49 +118,87 @@ function UserEditDialog({ user, onSave, isOpen, onOpenChange }: { user: UserProf
     const [email, setEmail] = useState(user.email || "");
     const [status, setStatus] = useState(user.licenseStatus);
     const [expiry, setExpiry] = useState(user.licenseExpiry?.split('T')[0] || "");
+    const [enabledModules, setEnabledModules] = useState<UserModule[]>(user.enabledModules || ALL_MODULES.map(m => m.id));
+
+    const handleToggleModule = (moduleId: UserModule) => {
+        setEnabledModules(prev => 
+            prev.includes(moduleId) 
+                ? prev.filter(m => m !== moduleId) 
+                : [...prev, moduleId]
+        );
+    };
 
     const handleSave = () => {
         onSave({
             businessName,
             email,
             licenseStatus: status,
-            licenseExpiry: expiry ? new Date(expiry).toISOString() : user.licenseExpiry
+            licenseExpiry: expiry ? new Date(expiry).toISOString() : user.licenseExpiry,
+            enabledModules
         });
         onOpenChange(false);
     };
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Editar Taller: {user.email}</DialogTitle>
-                    <DialogDescription>Modifica los datos del perfil y estado de la licencia.</DialogDescription>
+                    <DialogTitle>Gestionar Taller: {user.email}</DialogTitle>
+                    <DialogDescription>Modifica los datos del perfil, licencia y módulos habilitados.</DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                        <Label>Nombre del Negocio</Label>
-                        <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Ej: Taller Mariche" />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>Email de Contacto</Label>
-                        <Input value={email} onChange={(e) => setEmail(e.target.value)} />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-6 py-4">
+                    {/* Perfil y Licencia */}
+                    <div className="space-y-4">
                         <div className="space-y-2">
-                            <Label>Estado Licencia</Label>
-                            <Select value={status} onValueChange={(val: any) => setStatus(val)}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="active">Activa</SelectItem>
-                                    <SelectItem value="trial">Prueba</SelectItem>
-                                    <SelectItem value="expired">Expirada</SelectItem>
-                                </SelectContent>
-                            </Select>
+                            <Label>Nombre del Negocio</Label>
+                            <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Ej: Poos Mariche Central" />
                         </div>
                         <div className="space-y-2">
-                            <Label>Vencimiento</Label>
-                            <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} />
+                            <Label>Email de Contacto</Label>
+                            <Input value={email} onChange={(e) => setEmail(e.target.value)} />
                         </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Estado Licencia</Label>
+                                <Select value={status} onValueChange={(val: any) => setStatus(val)}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="active">Activa</SelectItem>
+                                        <SelectItem value="trial">Prueba</SelectItem>
+                                        <SelectItem value="expired">Expirada</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Vencimiento</Label>
+                                <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} />
+                            </div>
+                        </div>
+                    </div>
+
+                    <Separator />
+
+                    {/* Gestión de Módulos */}
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-primary font-bold">
+                            <LayoutGrid className="w-4 h-4" />
+                            <span>Módulos Habilitados para este Taller</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {ALL_MODULES.map((module) => (
+                                <div key={module.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+                                    <Label htmlFor={`module-${module.id}`} className="cursor-pointer font-medium">{module.label}</Label>
+                                    <Switch 
+                                        id={`module-${module.id}`}
+                                        checked={enabledModules.includes(module.id)}
+                                        onCheckedChange={() => handleToggleModule(module.id)}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground italic">
+                            * Deshabilitar un módulo ocultará la pestaña correspondiente en la barra lateral de este usuario.
+                        </p>
                     </div>
                 </div>
                 <DialogFooter>
@@ -223,37 +273,66 @@ export default function AdminPage() {
         }
     };
 
+    const sortedUsers = useMemo(() => {
+        if (!users) return [];
+        return [...users].sort((a, b) => {
+            const dateA = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+            const dateB = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+            return dateB - dateA;
+        });
+    }, [users]);
+
+    const activeNowCount = useMemo(() => {
+        if (!users) return 0;
+        const now = new Date();
+        const threshold = subMinutes(now, 3);
+        return users.filter(u => u.updatedAt && isAfter(new Date(u.updatedAt), threshold)).length;
+    }, [users]);
+
     if (isLoading) {
-        return <div className="p-8 text-center">Cargando panel de control...</div>;
+        return <div className="p-8 text-center flex flex-col items-center gap-4">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            Cargando panel de administración central...
+        </div>;
     }
 
     return (
         <>
             <PageHeader title="Administración Central" />
-            <main className="flex-1 p-4 sm:p-6 space-y-6">
+            <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-7xl mx-auto w-full">
                 <div className="grid gap-6 md:grid-cols-3">
-                    <div className="md:col-span-2 grid gap-4 md:grid-cols-3">
+                    <div className="md:col-span-2 grid gap-4 grid-cols-2 sm:grid-cols-4">
                         <Card>
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium">Total Talleres</CardTitle>
+                                <CardTitle className="text-[10px] uppercase font-bold text-muted-foreground">Total Talleres</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="text-2xl font-bold">{users?.length || 0}</div>
                             </CardContent>
                         </Card>
-                        <Card>
+                        <Card className="border-green-200 bg-green-50/30">
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium">Licencias Activas</CardTitle>
+                                <CardTitle className="text-[10px] uppercase font-bold text-green-700 flex items-center gap-1.5">
+                                    <Circle className="w-2 h-2 fill-green-500 animate-pulse" /> Activos Ya
+                                </CardTitle>
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold text-green-600">
-                                    {users?.filter(u => u.licenseStatus === 'active' || u.isAdmin).length || 0}
+                                <div className="text-2xl font-bold text-green-600">{activeNowCount}</div>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="text-[10px] uppercase font-bold text-muted-foreground">Suscripciones</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="text-2xl font-bold text-primary">
+                                    {users?.filter(u => u.licenseStatus === 'active' && !u.isAdmin).length || 0}
                                 </div>
                             </CardContent>
                         </Card>
                         <Card>
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-medium">En Prueba</CardTitle>
+                                <CardTitle className="text-[10px] uppercase font-bold text-muted-foreground">En Prueba</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="text-2xl font-bold text-blue-600">
@@ -267,90 +346,116 @@ export default function AdminPage() {
                     </div>
                 </div>
 
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Talleres Registrados</CardTitle>
-                        <CardDescription>Administra el acceso, nombres de negocio y licencias de la plataforma.</CardDescription>
+                <Card className="shadow-md">
+                    <CardHeader className="border-b bg-slate-50/50">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2"><Users className="w-5 h-5"/> Usuarios del Sistema</CardTitle>
+                                <CardDescription>Supervisión de actividad, accesos y licencias.</CardDescription>
+                            </div>
+                        </div>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="p-0">
                         <Table>
                             <TableHeader>
-                                <TableRow>
-                                    <TableHead>Negocio / Dueño</TableHead>
-                                    <TableHead>Estado Licencia</TableHead>
-                                    <TableHead>Vencimiento</TableHead>
+                                <TableRow className="bg-slate-50">
+                                    <TableHead className="w-[100px]">Estado</TableHead>
+                                    <TableHead>Taller / Correo</TableHead>
+                                    <TableHead>Plan / Licencia</TableHead>
+                                    <TableHead>Última Actividad</TableHead>
                                     <TableHead className="text-right">Acciones</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {users?.map((user) => (
-                                    <TableRow key={user.uid}>
-                                        <TableCell>
-                                            <div className="font-bold flex items-center gap-2">
-                                                <Building className="w-3 h-3 text-muted-foreground" />
-                                                {user.businessName || "Sin nombre configurado"}
-                                            </div>
-                                            <div className="text-sm text-muted-foreground flex items-center gap-2">
-                                                <Mail className="w-3 h-3" /> {user.email}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant={
-                                                user.licenseStatus === 'active' ? 'default' :
-                                                user.licenseStatus === 'trial' ? 'secondary' : 'destructive'
-                                            }>
-                                                {user.licenseStatus.toUpperCase()}
-                                            </Badge>
-                                            {user.isAdmin && <Badge className="ml-2 bg-amber-500 text-white border-0 shadow-sm">ADMIN TOTAL</Badge>}
-                                        </TableCell>
-                                        <TableCell className="text-sm font-mono">
-                                            {user.licenseExpiry ? format(parseISO(user.licenseExpiry), "dd/MM/yyyy") : '---'}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <div className="flex justify-end gap-2">
-                                                <Button variant="outline" size="sm" onClick={() => setEditingUser(user)}>
-                                                    <Edit className="w-4 h-4 mr-1" /> Editar
-                                                </Button>
-                                                
-                                                {user.uid !== currentUser?.uid && (
-                                                    <AlertDialog>
-                                                        <AlertDialogTrigger asChild>
-                                                            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10">
-                                                                <Trash2 className="w-4 h-4" />
-                                                            </Button>
-                                                        </AlertDialogTrigger>
-                                                        <AlertDialogContent>
-                                                            <AlertDialogHeader>
-                                                                <AlertDialogTitle>¿Eliminar taller y TODOS sus datos?</AlertDialogTitle>
-                                                                <AlertDialogDescription className="space-y-3">
-                                                                    <p>Esta acción es <strong>irreversible</strong> y realizará lo siguiente:</p>
-                                                                    <ul className="list-disc pl-5 text-xs space-y-1">
-                                                                        <li>Borrará el perfil de acceso de <strong>{user.email}</strong>.</li>
-                                                                        <li>Eliminará todo su inventario de productos.</li>
-                                                                        <li>Borrará el historial completo de ventas y transacciones.</li>
-                                                                        <li>Eliminará todos los registros de reparaciones y clientes.</li>
-                                                                    </ul>
-                                                                    <p className="font-bold text-destructive">¿Estás absolutamente seguro de querer proceder?</p>
-                                                                </AlertDialogDescription>
-                                                            </AlertDialogHeader>
-                                                            <AlertDialogFooter>
-                                                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                                                <AlertDialogAction 
-                                                                    onClick={() => handleDeleteUserWithData(user.uid, user.email)}
-                                                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                                                    disabled={isDeleting}
-                                                                >
-                                                                    {isDeleting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                                                                    Eliminar Todo Permanentemente
-                                                                </AlertDialogAction>
-                                                            </AlertDialogFooter>
-                                                        </AlertDialogContent>
-                                                    </AlertDialog>
+                                {sortedUsers.map((user) => {
+                                    const isOnline = user.updatedAt && isAfter(new Date(user.updatedAt), subMinutes(new Date(), 3));
+                                    
+                                    return (
+                                        <TableRow key={user.uid} className={cn(isOnline && "bg-green-50/20")}>
+                                            <TableCell>
+                                                {isOnline ? (
+                                                    <div className="flex items-center gap-2 text-green-600 font-bold text-xs">
+                                                        <Circle className="w-2.5 h-2.5 fill-green-500 animate-pulse" />
+                                                        <span>ONLINE</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                                                        <Circle className="w-2.5 h-2.5 fill-muted-foreground/30" />
+                                                        <span>OFFLINE</span>
+                                                    </div>
                                                 )}
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold text-sm">{user.businessName || "Sin nombre configurado"}</span>
+                                                    <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                                                        <Mail className="w-3 h-3" /> {user.email}
+                                                    </span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <Badge variant={
+                                                            user.licenseStatus === 'active' ? 'default' :
+                                                            user.licenseStatus === 'trial' ? 'secondary' : 'destructive'
+                                                        } className="text-[10px] h-5">
+                                                            {user.licenseStatus.toUpperCase()}
+                                                        </Badge>
+                                                        {user.isAdmin && <Badge className="bg-amber-500 text-white border-0 text-[10px] h-5">ADMIN</Badge>}
+                                                    </div>
+                                                    <span className="text-[10px] text-muted-foreground">
+                                                        Vence: {user.licenseExpiry ? format(parseISO(user.licenseExpiry), "dd/MM/yy") : 'N/A'}
+                                                    </span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="text-xs font-medium">
+                                                    {user.updatedAt ? format(parseISO(user.updatedAt), "dd/MM/yy - hh:mm a", { locale: es }) : 'Nunca'}
+                                                </div>
+                                                <div className="text-[9px] text-muted-foreground font-mono">
+                                                    ID: {user.lastSessionId?.slice(0, 8)}...
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                <div className="flex justify-end gap-2">
+                                                    <Button variant="outline" size="sm" onClick={() => setEditingUser(user)} className="h-8">
+                                                        <Edit className="w-3.5 h-3.5 mr-1.5" /> Gestionar
+                                                    </Button>
+                                                    
+                                                    {user.uid !== currentUser?.uid && (
+                                                        <AlertDialog>
+                                                            <AlertDialogTrigger asChild>
+                                                                <Button variant="ghost" size="sm" className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+                                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                                </Button>
+                                                            </AlertDialogTrigger>
+                                                            <AlertDialogContent>
+                                                                <AlertDialogHeader>
+                                                                    <AlertDialogTitle>¿Eliminar taller permanentemente?</AlertDialogTitle>
+                                                                    <AlertDialogDescription className="space-y-3">
+                                                                        <p>Se borrarán todos los datos asociados a <strong>{user.email}</strong> incluyendo inventario, ventas y reparaciones.</p>
+                                                                        <p className="font-bold text-destructive">Esta acción no se puede deshacer.</p>
+                                                                    </AlertDialogDescription>
+                                                                </AlertDialogHeader>
+                                                                <AlertDialogFooter>
+                                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                                    <AlertDialogAction 
+                                                                        onClick={() => handleDeleteUserWithData(user.uid, user.email)}
+                                                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                                                        disabled={isDeleting}
+                                                                    >
+                                                                        Eliminar Todo
+                                                                    </AlertDialogAction>
+                                                                </AlertDialogFooter>
+                                                            </AlertDialogContent>
+                                                        </AlertDialog>
+                                                    )}
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
                             </TableBody>
                         </Table>
                     </CardContent>

@@ -27,27 +27,51 @@ import { cn } from '@/lib/utils';
 import { Separator } from './ui/separator';
 import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
+import type { UserProfile, UserModule } from '@/lib/types';
 
-const navItems = [
+type NavItem = {
+    href: string;
+    icon: any;
+    label: string;
+    module?: UserModule;
+};
+
+const navItems: NavItem[] = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Panel de control' },
-  { href: '/dashboard/inventory', icon: Package, label: 'Inventario' },
-  { href: '/dashboard/repairs', icon: Wrench, label: 'Reparaciones' },
-  { href: '/dashboard/pos', icon: ShoppingCart, label: 'Punto de Venta' },
-  { href: '/dashboard/reports', icon: BarChart2, label: 'Reportes' },
-  { href: '/dashboard/analysis', icon: TrendingUp, label: 'Análisis' },
+  { href: '/dashboard/inventory', icon: Package, label: 'Inventario', module: 'inventory' },
+  { href: '/dashboard/repairs', icon: Wrench, label: 'Reparaciones', module: 'repairs' },
+  { href: '/dashboard/pos', icon: ShoppingCart, label: 'Punto de Venta', module: 'pos' },
+  { href: '/dashboard/reports', icon: BarChart2, label: 'Reportes', module: 'reports' },
+  { href: '/dashboard/analysis', icon: TrendingUp, label: 'Análisis', module: 'analysis' },
 ];
 
 export function SidebarNav() {
   const pathname = usePathname();
   const { firestore, user } = useFirebase();
 
-  // Verificar si es administrador mediante la coleccion roles_admin
-  const adminRoleRef = useMemoFirebase(() => 
-    (firestore && user) ? doc(firestore, 'roles_admin', user.uid) : null,
+  const profileRef = useMemoFirebase(() => 
+    (firestore && user) ? doc(firestore, 'users', user.uid) : null,
     [firestore, user?.uid]
   );
-  const { data: adminRole } = useDoc(adminRoleRef);
-  const isAdmin = !!adminRole;
+  const { data: profile } = useDoc<UserProfile>(profileRef);
+
+  const isAdmin = !!profile?.isAdmin;
+  
+  // Filtrar items basado en los módulos habilitados del perfil
+  const filteredNavItems = navItems.filter(item => {
+      // El dashboard siempre es visible
+      if (!item.module) return true;
+      
+      // Si no hay perfil aún, no mostramos nada opcional por seguridad
+      if (!profile) return false;
+
+      // Los administradores ven todo siempre
+      if (profile.isAdmin) return true;
+
+      // Verificar si el módulo está en la lista de habilitados del taller
+      const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis'];
+      return enabledModules.includes(item.module);
+  });
 
   return (
     <Sidebar>
@@ -64,7 +88,7 @@ export function SidebarNav() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarMenu>
-          {navItems.map((item) => (
+          {filteredNavItems.map((item) => (
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
                 asChild

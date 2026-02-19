@@ -139,6 +139,8 @@ export type AppSettings = {
     lastUpdated?: string;
 };
 
+export type UserModule = 'inventory' | 'pos' | 'repairs' | 'reports' | 'analysis';
+
 export type UserProfile = {
   id?: string;
   uid: string;
@@ -149,4 +151,6 @@ export type UserProfile = {
   createdAt: string;
   isAdmin?: boolean;
   lastSessionId?: string;
+  updatedAt?: string;
+  enabledModules?: UserModule[];
 };

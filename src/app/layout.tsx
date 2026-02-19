@@ -3,7 +3,7 @@
 
 import { Toaster } from '@/components/ui/toaster';
 import { cn } from '@/lib/utils';
-import { FirebaseClientProvider, useFirebase } from '@/firebase';
+import { FirebaseClientProvider, useFirebase, updateDocumentNonBlocking } from '@/firebase';
 import { AuthView } from '@/components/auth-view';
 import { useEffect, useRef, useState } from 'react';
 import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
@@ -55,37 +55,37 @@ function AppContent({ children }: { children: React.ReactNode }) {
         const isAdmin = adminRoleSnap.exists();
 
         // 4. Registro de Sesión (Atómico)
-        // Obtenemos el perfil actual para no sobrescribir datos de licencia si ya existen
         const profileSnap = await getDoc(profileRef);
+        const existingData = profileSnap.exists() ? profileSnap.data() : {};
+
         const profileData = {
           uid: user.uid,
           email: user.email,
           isAdmin: isAdmin,
           lastSessionId: sessionId,
           updatedAt: new Date().toISOString(),
-          ...(!profileSnap.exists() && {
+          // Si el usuario es nuevo o no tiene módulos, establecemos por defecto
+          ...((!profileSnap.exists() || !existingData.enabledModules) && {
             licenseStatus: isAdmin ? 'active' : 'trial',
             licenseExpiry: isAdmin 
               ? new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString() 
               : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-            createdAt: new Date().toISOString(),
+            createdAt: existingData.createdAt || new Date().toISOString(),
+            enabledModules: ['inventory', 'pos', 'repairs', 'reports', 'analysis']
           })
         };
 
         await setDoc(profileRef, profileData, { merge: true });
 
         // 5. Iniciar Vigilante de Sesión Única
-        // Solo activamos la vigilancia después de haber registrado nuestra sesión exitosamente
         unsubscribeRef.current = onSnapshot(profileRef, (snap) => {
           if (snap.exists()) {
             const data = snap.data();
-            // Si el ID en la DB es distinto al nuestro, significa que se inició sesión en otro lugar
             if (data.lastSessionId && data.lastSessionId !== sessionId) {
               handleAutoSignOut();
             }
           }
         }, (err) => {
-          // Si el error es de permisos, probablemente es porque estamos en proceso de salida
           if (err.code !== 'permission-denied') {
             console.error("Session Watcher Error:", err);
           }
@@ -94,7 +94,6 @@ function AppContent({ children }: { children: React.ReactNode }) {
         setIsInitializing(false);
       } catch (serverError: any) {
         console.error("Session sync failed:", serverError);
-        // Emitir error contextual para depuración de reglas
         if (user) {
             const permissionError = new FirestorePermissionError({
                 path: `users/${user.uid}`,
@@ -107,24 +106,15 @@ function AppContent({ children }: { children: React.ReactNode }) {
     };
 
     const handleAutoSignOut = async () => {
-      // Congelar la UI para evitar que el usuario haga algo mientras cerramos
       setIsKickingOut(true);
-      
-      // Detener el escuchador inmediatamente
       if (unsubscribeRef.current) {
         unsubscribeRef.current();
         unsubscribeRef.current = null;
       }
-
       try {
-        // Limpiar datos locales y cerrar sesión en Firebase
         sessionStorage.removeItem('mm_active_session_id');
         await signOut(auth);
-        
-        // Pequeña pausa para asegurar que el estado de Firebase se propague
-        setTimeout(() => {
-          window.location.href = '/'; 
-        }, 500);
+        setTimeout(() => { window.location.href = '/'; }, 500);
       } catch (e) {
         window.location.href = '/';
       }
@@ -140,7 +130,18 @@ function AppContent({ children }: { children: React.ReactNode }) {
     };
   }, [user, firestore, auth]);
 
-  // Pantalla de carga inicial del sistema
+  // Heartbeat para marcar presencia en tiempo real (Admin Dashboard)
+  useEffect(() => {
+    if (!user || !firestore || isInitializing) return;
+
+    const interval = setInterval(() => {
+        const profileRef = doc(firestore, 'users', user.uid);
+        updateDocumentNonBlocking(profileRef, { updatedAt: new Date().toISOString() });
+    }, 120000); // Cada 2 minutos
+
+    return () => clearInterval(interval);
+  }, [user, firestore, isInitializing]);
+
   if (isUserLoading || isInitializing) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -152,7 +153,6 @@ function AppContent({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Pantalla de transición al ser expulsado por sesión única
   if (isKickingOut) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -171,12 +171,10 @@ function AppContent({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // Si no hay sesión activa, mostramos la vista de login
   if (!user) {
     return <AuthView />;
   }
 
-  // Si todo está correcto, renderizamos la aplicación
   return <>{children}</>;
 }
 
