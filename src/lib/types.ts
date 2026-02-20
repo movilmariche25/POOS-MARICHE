@@ -58,6 +58,7 @@ export type RepairJob = {
   reservedParts?: ReservedPart[];
   completedAt?: string;
   warrantyEndDate?: string;
+  partsConsumed?: boolean; // Nueva bandera para evitar doble deducción de stock
 };
 
 export type CartItem = {
@@ -104,6 +105,7 @@ export type Sale = {
   reconciliationId?: string;
   totalChangeInUSD?: number;
   changeGiven?: Payment[];
+  actualPaidAmount?: number;
 };
 
 export type ReconciliationPaymentMethodSummary = {

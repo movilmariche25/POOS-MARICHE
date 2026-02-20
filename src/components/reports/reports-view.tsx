@@ -1,4 +1,3 @@
-
 "use client"
 
 import type { Product, Sale, DailyReconciliation, RepairJob } from "@/lib/types"
@@ -60,8 +59,9 @@ export function ReportsView({ sales, products, repairJobs, isLoading }: ReportsV
                  <CashReconciliationDialog openSales={todaySales} />
                  
                  <DateRangeReport 
-                    sales={sales} 
-                    products={products} 
+                    sales={sales || []} 
+                    products={products || []} 
+                    repairJobs={repairJobs || []}
                     reconciliations={reconciliations || []}
                     isLoading={isLoading || reconciliationsLoading}
                  />
@@ -72,7 +72,7 @@ export function ReportsView({ sales, products, repairJobs, isLoading }: ReportsV
                         <CardDescription>Exporta un registro de ventas en formato Excel para un rango de fechas seleccionado.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <ExportSalesButton sales={sales} products={products} repairJobs={repairJobs || []} />
+                        <ExportSalesButton sales={sales || []} products={products || []} repairJobs={repairJobs || []} />
                     </CardContent>
                  </Card>
             </TabsContent>
@@ -86,7 +86,7 @@ export function ReportsView({ sales, products, repairJobs, isLoading }: ReportsV
                         <CardDescription>Un registro completo de todas las ventas, incluyendo las cerradas y reembolsadas.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <TransactionList sales={sales} isLoading={isLoading} />
+                        <TransactionList sales={sales || []} isLoading={isLoading} />
                     </CardContent>
                 </Card>
             </TabsContent>

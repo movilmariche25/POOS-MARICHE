@@ -1,8 +1,7 @@
-
 "use client";
 
 import { useState, useMemo } from "react";
-import type { Sale, Product, DailyReconciliation } from "@/lib/types";
+import type { Sale, Product, DailyReconciliation, RepairJob } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { DateRange } from "react-day-picker";
 import { format, startOfDay, endOfDay, isWithinInterval } from "date-fns";
@@ -19,24 +18,20 @@ type DateRangeReportProps = {
     sales: Sale[];
     products: Product[];
     reconciliations: DailyReconciliation[];
+    repairJobs: RepairJob[];
     isLoading?: boolean;
 };
 
-export function DateRangeReport({ sales, products, reconciliations, isLoading }: DateRangeReportProps) {
+export function DateRangeReport({ sales, products, reconciliations, repairJobs, isLoading }: DateRangeReportProps) {
     const { format: formatCurrency, getSymbol } = useCurrency();
     const [date, setDate] = useState<DateRange | undefined>({
         from: startOfDay(new Date()),
         to: endOfDay(new Date()),
     });
 
-    const {
-        totalSales,
-        totalProfit,
-        totalReconciliationDifference,
-        adjustedTotalSales,
-        transactionCount,
-    } = useMemo(() => {
-        if (!date?.from) {
+    const stats = useMemo(() => {
+        // Validación de seguridad para evitar errores de "find of undefined"
+        if (!date?.from || !sales || !repairJobs || !products) {
             return { totalSales: 0, totalProfit: 0, totalReconciliationDifference: 0, adjustedTotalSales: 0, transactionCount: 0 };
         }
 
@@ -49,45 +44,60 @@ export function DateRangeReport({ sales, products, reconciliations, isLoading }:
             return isWithinInterval(saleDate, { start: from, end: to });
         });
         
-        const filteredReconciliations = reconciliations.filter(r => {
+        const filteredReconciliations = (reconciliations || []).filter(r => {
              const reconDate = new Date(r.date);
-             const fromUTC = startOfDay(date.from!);
-             const toUTC = endOfDay(date.to || date.from!);
-             return reconDate >= fromUTC && reconDate <= toUTC;
+             return reconDate >= from && reconDate <= to;
         });
 
-        const totalSales = filteredSales.reduce((sum, s) => sum + s.totalAmount, 0);
+        // 1. Ingresos totales reales recibidos en el periodo
+        const totalIncome = filteredSales.reduce((sum, s) => sum + (s.actualPaidAmount ?? s.totalAmount), 0);
 
-        const totalProfit = filteredSales.reduce((totalProfit, sale) => {
-            const costOfGoods = sale.items.reduce((cost, item) => {
-                if (item.isRepair) return cost;
-                if (item.isCustom) {
-                    return cost + ((item.customCostPrice || 0) * item.quantity);
+        // 2. Cálculo de Costos de Productos y Ventas Rápidas
+        let totalProductCosts = 0;
+        const involvedRepairs = new Set<string>();
+
+        filteredSales.forEach(sale => {
+            sale.items.forEach(item => {
+                if (item.isRepair || sale.repairJobId) {
+                    // Si es reparación, solo guardamos el ID para calcular su costo después (consolidado)
+                    involvedRepairs.add(sale.repairJobId || item.productId);
+                } else if (item.isCustom) {
+                    totalProductCosts += (item.customCostPrice || 0) * item.quantity;
+                } else {
+                    const product = products.find(p => p.id === item.productId);
+                    totalProductCosts += (product?.costPrice || 0) * item.quantity;
                 }
-                const product = products.find(p => p.id === item.productId);
-                return cost + (product ? product.costPrice * item.quantity : 0);
-            }, 0);
-            return totalProfit + (sale.totalAmount - costOfGoods);
-        }, 0);
+            });
+        });
 
+        // 3. Cálculo de Costos de Repuestos de Reparaciones (Una sola vez por trabajo involucrado)
+        let totalRepairPartCosts = 0;
+        involvedRepairs.forEach(rid => {
+            const repair = repairJobs.find(rj => rj.id === rid);
+            if (repair && repair.reservedParts) {
+                totalRepairPartCosts += repair.reservedParts.reduce((sum, p) => sum + (p.costPrice * p.quantity), 0);
+            }
+        });
+
+        const totalProfit = totalIncome - totalProductCosts - totalRepairPartCosts;
         const totalReconciliationDifference = filteredReconciliations.reduce((sum, r) => sum + r.totalDifference, 0);
 
         return {
-            totalSales,
+            totalSales: totalIncome,
             totalProfit,
             totalReconciliationDifference,
-            adjustedTotalSales: totalSales + totalReconciliationDifference,
+            adjustedTotalSales: totalIncome + totalReconciliationDifference,
             transactionCount: filteredSales.length,
         };
 
-    }, [date, sales, products, reconciliations]);
+    }, [date, sales, products, reconciliations, repairJobs]);
 
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Reporte Financiero por Rango</CardTitle>
+                <CardTitle>Reporte Financiero Consolidado</CardTitle>
                 <CardDescription>
-                    Selecciona un rango de fechas para ver el resumen financiero de ventas completadas y cierres de caja.
+                    Resumen de ingresos y ganancias. Las reparaciones se agrupan por equipo para mayor precisión.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -129,7 +139,7 @@ export function DateRangeReport({ sales, products, reconciliations, isLoading }:
                         />
                         </PopoverContent>
                     </Popover>
-                    <p className="text-sm text-muted-foreground">{transactionCount} transacciones en el período.</p>
+                    <p className="text-sm text-muted-foreground">{stats.transactionCount} transacciones en el período.</p>
                 </div>
                 
                 {isLoading ? (
@@ -141,30 +151,28 @@ export function DateRangeReport({ sales, products, reconciliations, isLoading }:
                     </div>
                 ) : (
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                         <div className="p-4 rounded-lg bg-muted">
-                            <p className="text-sm font-medium text-muted-foreground">Total de Ventas</p>
-                            <p className="text-2xl font-bold">{getSymbol()}{formatCurrency(totalSales)}</p>
+                         <div className="p-4 rounded-lg bg-muted border-l-4 border-primary">
+                            <p className="text-[10px] font-bold uppercase text-muted-foreground">Ingresos en Caja ($)</p>
+                            <p className="text-2xl font-black">{getSymbol()}{formatCurrency(stats.totalSales)}</p>
                         </div>
-                        <div className="p-4 rounded-lg bg-muted">
-                            <p className="text-sm font-medium text-muted-foreground">Ganancia Estimada</p>
-                            <p className={cn("text-2xl font-bold", totalProfit > 0 ? "text-green-600" : "text-destructive")}>
-                                {getSymbol()}{formatCurrency(totalProfit)}
+                        <div className="p-4 rounded-lg bg-muted border-l-4 border-green-500">
+                            <p className="text-[10px] font-bold uppercase text-muted-foreground">Ganancia Est. ($)</p>
+                            <p className={cn("text-2xl font-black", stats.totalProfit > 0 ? "text-green-600" : "text-destructive")}>
+                                {getSymbol()}{formatCurrency(stats.totalProfit)}
                             </p>
                         </div>
-                        <div className="p-4 rounded-lg bg-muted">
-                            <p className="text-sm font-medium text-muted-foreground">Diferencia de Cierres</p>
-                            <p className={cn("text-2xl font-bold", totalReconciliationDifference >= 0 ? "text-green-600" : "text-destructive")}>
-                                {totalReconciliationDifference >= 0 ? '+' : ''}{getSymbol()}{formatCurrency(totalReconciliationDifference)}
+                        <div className="p-4 rounded-lg bg-muted border-l-4 border-amber-500">
+                            <p className="text-[10px] font-bold uppercase text-muted-foreground">Dif. Cierres ($)</p>
+                            <p className={cn("text-2xl font-black", stats.totalReconciliationDifference >= 0 ? "text-green-600" : "text-destructive")}>
+                                {stats.totalReconciliationDifference >= 0 ? '+' : ''}{getSymbol()}{formatCurrency(stats.totalReconciliationDifference)}
                             </p>
                         </div>
-                        <div className="p-4 rounded-lg bg-primary text-primary-foreground">
-                            <p className="text-sm font-medium text-primary-foreground/80">Ingreso Real Estimado</p>
-                             <p className="text-2xl font-bold">{getSymbol()}{formatCurrency(adjustedTotalSales)}</p>
+                        <div className="p-4 rounded-lg bg-primary text-primary-foreground shadow-md">
+                            <p className="text-[10px] font-bold uppercase text-primary-foreground/70 tracking-widest">Resultado Neto</p>
+                             <p className="text-2xl font-black">{getSymbol()}{formatCurrency(stats.adjustedTotalSales)}</p>
                         </div>
                     </div>
                 )}
-
-
             </CardContent>
         </Card>
     );

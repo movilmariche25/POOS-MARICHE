@@ -83,7 +83,6 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
       const saleId = generateSaleId();
       const cartWithPrices = cart.map(item => ({ ...item, price: getPrice(item) }));
 
-      // Calcular cuánto se pagó realmente en USD para esta transacción
       const totalPaidInUSD = payments.reduce((acc, p) => {
           return acc + (p.method === 'Efectivo USD' ? p.amount : convert(p.amount, 'Bs', 'USD'));
       }, 0);
@@ -91,24 +90,25 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
 
       try {
         await runTransaction(firestore, async (transaction) => {
+            const currentRepairJob = repairJobId && activeRepairJob ? (await transaction.get(repairJobRef!)).data() as RepairJob : null;
+            
             for (const item of cartWithPrices) {
                 if (item.isCustom || item.productId.startsWith('abono-')) continue;
 
-                if (item.isRepair && activeRepairJob?.reservedParts) {
-                    for (const part of activeRepairJob.reservedParts) {
+                if (item.isRepair && currentRepairJob?.reservedParts && !currentRepairJob.partsConsumed) {
+                    // Solo descontamos stock si NO ha sido descontado antes (evita duplicados por abonos)
+                    for (const part of currentRepairJob.reservedParts) {
                         const pRef = doc(firestore, 'users', user.uid, 'products', part.productId);
                         const pDoc = await transaction.get(pRef);
                         if (pDoc.exists()) {
                             const data = pDoc.data() as Product;
-                            // Solo descontamos stock físico si el pago se completa o si es una entrega
-                            // Pero aquí, al ser POS, asumimos que se consume la pieza.
                             transaction.update(pRef, { 
                                 stockLevel: data.stockLevel - part.quantity,
                                 reservedStock: Math.max(0, (data.reservedStock || 0) - part.quantity)
                             });
                         }
                     }
-                } else {
+                } else if (!item.isRepair) {
                     const pRef = doc(firestore, 'users', user.uid, 'products', item.productId);
                     const pDoc = await transaction.get(pRef);
                     if (pDoc.exists()) {
@@ -118,11 +118,8 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 }
             }
 
-            if (repairJobId && activeRepairJob) {
+            if (repairJobId && currentRepairJob) {
                 const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJobId);
-                
-                // Determinamos cuánto de este pago neto se aplica a la reparación
-                // Si hay otros artículos físicos en el carrito, priorizamos pagarlos primero
                 const otherItemsTotal = cartWithPrices
                     .filter(i => !i.isRepair)
                     .reduce((sum, i) => sum + (i.price * i.quantity), 0);
@@ -131,8 +128,8 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 
                 let discountToApply = 0;
                 const repairItem = cartWithPrices.find(i => i.isRepair);
-                if (repairItem?.isPromo && activeRepairJob.reservedParts?.[0]) {
-                    const partId = activeRepairJob.reservedParts[0].productId;
+                if (repairItem?.isPromo && currentRepairJob.reservedParts?.[0]) {
+                    const partId = currentRepairJob.reservedParts[0].productId;
                     const product = allProducts.find(p => p.id === partId);
                     if (product && product.promoPrice && product.promoPrice > 0) {
                         const retailPriceOfPart = getFinalPrice(product);
@@ -140,15 +137,16 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                     }
                 }
 
-                const newEstimatedCost = activeRepairJob.estimatedCost - discountToApply;
-                const newPaidTotal = (activeRepairJob.amountPaid || 0) + paidToRepair;
+                const newEstimatedCost = currentRepairJob.estimatedCost - discountToApply;
+                const newPaidTotal = (currentRepairJob.amountPaid || 0) + paidToRepair;
                 const isFullyPaid = newPaidTotal >= (newEstimatedCost - 0.01);
 
                 transaction.update(jobRef, { 
                     estimatedCost: Number(newEstimatedCost.toFixed(2)),
                     amountPaid: Number(newPaidTotal.toFixed(2)), 
                     isPaid: isFullyPaid,
-                    status: isFullyPaid ? 'Pagado' : activeRepairJob.status
+                    status: isFullyPaid ? 'Pagado' : currentRepairJob.status,
+                    partsConsumed: true // Marcamos que las piezas ya salieron del stock
                 });
             }
 
@@ -160,12 +158,13 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 paymentMethod: payments.map(p => p.method).join(', '),
                 transactionDate: new Date().toISOString(),
                 payments, status: 'completed',
+                repairJobId: repairJobId || null,
                 ...(changeGiven.length > 0 && { changeGiven, totalChangeInUSD }),
-                actualPaidAmount: actualNetPaidInUSD // Guardamos lo que realmente entró a caja
+                actualPaidAmount: actualNetPaidInUSD
             });
         });
 
-        toast({ title: isPartialPayment ? "Abono Registrado" : "Venta Completada" });
+        toast({ title: totalPaidInUSD < total - 0.01 ? "Abono Registrado" : "Venta Completada" });
         return { 
             id: saleId, 
             items: cartWithPrices, 
@@ -176,15 +175,14 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
             transactionDate: new Date().toISOString(), 
             status: 'completed',
             changeGiven,
-            totalChangeInUSD
+            totalChangeInUSD,
+            repairJobId: repairJobId || null
         } as Sale;
       } catch (e: any) {
         toast({ variant: "destructive", title: "Error", description: e.message });
         return null;
       }
   };
-
-  const isPartialPayment = total > 0 && (cart.some(i => i.isRepair));
 
   return (
     <div className="flex flex-col h-full bg-slate-50">

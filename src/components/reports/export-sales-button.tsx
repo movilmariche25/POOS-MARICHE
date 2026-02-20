@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -33,11 +32,11 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
   const { bcvRate } = useCurrency();
 
   const handleExport = () => {
-    if (!date?.from) {
+    if (!date?.from || !sales || !repairJobs || !products) {
       toast({
         variant: "destructive",
-        title: "Error",
-        description: "Por favor, selecciona un rango de fechas.",
+        title: "Error de Datos",
+        description: "Asegúrate de seleccionar fechas y que los datos hayan cargado.",
       });
       return;
     }
@@ -45,7 +44,6 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
     const from = startOfDay(date.from);
     const to = date.to ? endOfDay(date.to) : endOfDay(date.from);
 
-    // Filtramos por fecha y que la venta esté completada (sin reembolsos)
     const filteredSales = sales.filter((sale) => {
       if (!sale.transactionDate || sale.status !== 'completed') return false;
       const saleDate = new Date(sale.transactionDate);
@@ -60,56 +58,118 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
         return;
     }
     
-    const dataToExport = filteredSales.flatMap(sale => {
-        return sale.items.map(item => {
-            let productName = item.name;
-            let costPrice = 0;
+    // Map para consolidar actividad por ID de reparación
+    const repairsActivity = new Map<string, {
+        revenue: number,
+        repairJob: RepairJob,
+        lastDate: string,
+        lastSaleId: string,
+        paymentMethods: Set<string>
+    }>();
 
-            if (item.isRepair) {
-                const repairJob = repairJobs.find(job => job.id === sale.repairJobId);
-                if (repairJob && repairJob.reservedParts && repairJob.reservedParts.length > 0) {
-                    const mainPart = repairJob.reservedParts[0];
-                    productName = `Reparación: ${item.name} (${mainPart.productName})`;
-                    costPrice = mainPart.costPrice;
-                }
-            } else if (item.isCustom) {
-                costPrice = item.customCostPrice || 0;
-            } else {
-                const product = products.find(p => p.id === item.productId);
-                costPrice = product?.costPrice || 0;
-            }
+    const productLines: any[] = [];
 
+    filteredSales.forEach(sale => {
+        const otherItemsInSale = sale.items.filter(i => !i.isRepair);
+        const otherItemsTotalRequested = otherItemsInSale.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+        
+        // Calculamos cuánto del pago total recibido corresponde a la reparación
+        const totalReceivedInSale = sale.actualPaidAmount ?? sale.totalAmount;
+        const repairRevenueInSale = Math.max(0, totalReceivedInSale - otherItemsTotalRequested);
+
+        // 1. Procesar productos estándar y artículos manuales
+        otherItemsInSale.forEach(item => {
+            const costPrice = item.isCustom 
+                ? (item.customCostPrice || 0) 
+                : (products.find(p => p.id === item.productId)?.costPrice || 0);
+            
             const totalUSD = item.price * item.quantity;
-            const totalProfit = (item.price - costPrice) * item.quantity;
-            const totalBs = totalUSD * bcvRate;
-
-            return {
+            
+            productLines.push({
                 'Fecha': format(new Date(sale.transactionDate), 'dd/MM/yyyy HH:mm'),
-                'Producto/Servicio': productName,
-                'Costo ($)': costPrice,
-                'Precio Venta ($)': item.price,
+                'Producto/Servicio': item.name,
+                'ID Transacción': sale.id,
+                'Costo Repuestos ($)': (costPrice * item.quantity).toFixed(2),
+                'Precio Venta ($)': item.price.toFixed(2),
                 'Cantidad': item.quantity,
-                'Total ($)': totalUSD,
-                'Ganancia ($)': totalProfit,
-                'Total (Bs)': totalBs,
-                'Tasa Aplicada': bcvRate,
+                'Ingreso Recibido ($)': totalUSD.toFixed(2),
+                'Ganancia Est. ($)': ((item.price - costPrice) * item.quantity).toFixed(2),
+                'Total (Bs)': (totalUSD * bcvRate).toFixed(2),
+                'Tasa BCV': bcvRate.toFixed(2),
                 'Método de Pago': sale.paymentMethod
+            });
+        });
+
+        // 2. Procesar abonos de reparación (Consolidar por Repair ID)
+        const repairItem = sale.items.find(i => i.isRepair);
+        const rId = sale.repairJobId || repairItem?.productId;
+        
+        if (rId && repairRevenueInSale > 0) {
+            const repairJob = repairJobs.find(job => job.id === rId);
+            if (repairJob) {
+                const existing = repairsActivity.get(rId);
+                if (existing) {
+                    existing.revenue += repairRevenueInSale;
+                    existing.paymentMethods.add(sale.paymentMethod);
+                    if (new Date(sale.transactionDate) > new Date(existing.lastDate)) {
+                        existing.lastDate = sale.transactionDate;
+                        existing.lastSaleId = sale.id!;
+                    }
+                } else {
+                    repairsActivity.set(rId, {
+                        revenue: repairRevenueInSale,
+                        repairJob,
+                        lastDate: sale.transactionDate,
+                        lastSaleId: sale.id!,
+                        paymentMethods: new Set([sale.paymentMethod])
+                    });
+                }
             }
-        })
+        }
+    });
+
+    // Convertir reparaciones consolidadas en líneas únicas de reporte
+    const consolidatedRepairLines = Array.from(repairsActivity.values()).map(entry => {
+        const repair = entry.repairJob;
+        // Costo total de todas las piezas (una sola vez)
+        const totalPartsCost = (repair.reservedParts || []).reduce((sum, p) => sum + (p.costPrice * p.quantity), 0);
+        
+        const income = entry.revenue;
+        const profit = income - totalPartsCost;
+
+        return {
+            'Fecha': format(new Date(entry.lastDate), 'dd/MM/yyyy HH:mm'),
+            'Producto/Servicio': `REPARACIÓN: ${repair.deviceMake} ${repair.deviceModel} (${repair.customerName})`,
+            'ID Transacción': entry.lastSaleId,
+            'Costo Repuestos ($)': totalPartsCost.toFixed(2),
+            'Precio Venta ($)': income.toFixed(2),
+            'Cantidad': 1,
+            'Ingreso Recibido ($)': income.toFixed(2),
+            'Ganancia Est. ($)': profit.toFixed(2),
+            'Total (Bs)': (income * bcvRate).toFixed(2),
+            'Tasa BCV': bcvRate.toFixed(2),
+            'Método de Pago': Array.from(entry.paymentMethods).join(' + ')
+        };
+    });
+
+    const dataToExport = [...productLines, ...consolidatedRepairLines].sort((a, b) => {
+        const dateA = new Date(a['Fecha'].split(' ')[0].split('/').reverse().join('-') + ' ' + a['Fecha'].split(' ')[1]).getTime();
+        const dateB = new Date(b['Fecha'].split(' ')[0].split('/').reverse().join('-') + ' ' + b['Fecha'].split(' ')[1]).getTime();
+        return dateA - dateB;
     });
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte_Financiero");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte_PoosMariche");
     
-    // Ajuste automático de ancho de columnas
+    // Auto-ajuste de ancho de columnas
     const cols = Object.keys(dataToExport[0] || {});
     const colWidths = cols.map(col => ({
         wch: Math.max(...dataToExport.map(row => (row[col as keyof typeof row] ?? '').toString().length), col.length + 2)
     }));
     worksheet["!cols"] = colWidths;
 
-    XLSX.writeFile(workbook, `Reporte_Financiero_${format(from, "yyyy-MM-dd")}.xlsx`);
+    XLSX.writeFile(workbook, `Reporte_Consolidado_${format(from, "yyyy-MM-dd")}.xlsx`);
   };
 
   return (
@@ -150,7 +210,7 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
       </Popover>
       <Button onClick={handleExport} disabled={!date?.from}>
         <FileDown className="mr-2 h-4 w-4" />
-        Generar Reporte Detallado
+        Generar Excel Consolidado
       </Button>
     </div>
   );

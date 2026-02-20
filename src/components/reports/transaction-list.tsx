@@ -43,7 +43,12 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
                     const repairJobRef = doc(firestore, 'users', user.uid, 'repair_jobs', sale.repairJobId);
                     const repairJobDoc = await transaction.get(repairJobRef);
                     if (repairJobDoc.exists()) {
-                        transaction.update(repairJobRef, { status: 'Pendiente', isPaid: false, amountPaid: 0 });
+                        transaction.update(repairJobRef, { 
+                            status: 'Pendiente', 
+                            isPaid: false, 
+                            amountPaid: 0,
+                            partsConsumed: false // Permitimos que vuelvan a deducirse si se vuelve a pagar
+                        });
                     }
                 }
 
