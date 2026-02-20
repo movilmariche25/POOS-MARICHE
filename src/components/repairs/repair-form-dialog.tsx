@@ -25,21 +25,22 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import type { RepairJob, RepairStatus, Product } from "@/lib/types";
-import { useState, useEffect, ReactNode } from "react";
+import { useState, useEffect, ReactNode, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useCurrency } from "@/hooks/use-currency";
 import { Label } from "../ui/label";
 import { useFirebase, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, doc, runTransaction } from "firebase/firestore";
+import { collection, doc, runTransaction, query, orderBy } from "firebase/firestore";
 import { handlePrintAllTickets } from "./repair-ticket";
-import { DollarSign, Search, PlusCircle, CheckCircle2, AlertCircle } from "lucide-react";
+import { DollarSign, Search, PlusCircle, CheckCircle2, AlertCircle, UserCheck, Gift } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { format } from "date-fns";
 import { ProductFormDialog } from "../inventory/product-form-dialog";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 
 const repairStatuses: RepairStatus[] = ['Pendiente', 'Pagado', 'Completado'];
 
@@ -62,15 +63,23 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
   const [open, setOpen] = useState(false);
   const [partsPopoverOpen, setPartsPopoverOpen] = useState(false);
   const { toast } = useToast();
-  const { getFinalPrice, format: formatCurrency, bcvRate } = useCurrency();
+  const { getFinalPrice, format: formatCurrency, bcvRate, getSymbol } = useCurrency();
   const [mainPart, setMainPart] = useState<Product | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Cargar productos para repuestos
   const productsCollection = useMemoFirebase(() => 
     (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null, 
     [firestore, user?.uid]
   );
   const { data: products } = useCollection<Product>(productsCollection);
+
+  // Cargar reparaciones previas para autocompletado de clientes
+  const repairsCollection = useMemoFirebase(() => 
+    (firestore && user) ? query(collection(firestore, 'users', user.uid, 'repair_jobs'), orderBy('createdAt', 'desc')) : null,
+    [firestore, user?.uid]
+  );
+  const { data: allRepairs } = useCollection<RepairJob>(repairsCollection);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -87,6 +96,32 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
         reservedParts: [],
     }
   });
+
+  const currentID = form.watch("customerID");
+  const currentCost = form.watch("estimatedCost");
+
+  // Lógica de búsqueda de cliente frecuente
+  const foundCustomer = useMemo(() => {
+    if (!currentID || currentID.length < 5 || !allRepairs) return null;
+    const match = allRepairs.find(r => r.customerID?.toLowerCase() === currentID.toLowerCase());
+    if (match) {
+        return {
+            name: match.customerName,
+            phone: match.customerPhone,
+            address: match.customerAddress || ""
+        };
+    }
+    return null;
+  }, [currentID, allRepairs]);
+
+  const handleApplyCustomerData = () => {
+    if (foundCustomer) {
+        form.setValue("customerName", foundCustomer.name, { shouldValidate: true });
+        form.setValue("customerPhone", foundCustomer.phone, { shouldValidate: true });
+        form.setValue("customerAddress", foundCustomer.address, { shouldValidate: true });
+        toast({ title: "Datos cargados", description: `Se han aplicado los datos de ${foundCustomer.name}` });
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -123,6 +158,13 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
       form.setValue('estimatedCost', price, { shouldValidate: true });
       form.setValue('reservedParts', [{ productId: p.id!, productName: p.name, quantity: 1, costPrice: p.costPrice }], { shouldValidate: true });
       setPartsPopoverOpen(false);
+  };
+
+  const applyPromoPrice = () => {
+      if (mainPart && mainPart.promoPrice && mainPart.promoPrice > 0) {
+          form.setValue('estimatedCost', mainPart.promoPrice, { shouldValidate: true });
+          toast({ title: "Precio Oferta Aplicado", description: `Se ha establecido el precio de ${getSymbol()}${mainPart.promoPrice}` });
+      }
   };
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
@@ -190,6 +232,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
   const currentPaid = repairJob?.amountPaid || 0;
   const currentTotal = form.watch('estimatedCost') || 0;
   const currentPending = Math.max(0, currentTotal - currentPaid);
+  const hasPromoAvailable = mainPart && mainPart.promoPrice && mainPart.promoPrice > 0;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -206,10 +249,37 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 max-h-[75vh] overflow-y-auto px-1 pr-3">
               <div className="space-y-4 p-3 border rounded-md bg-muted/5">
-                  <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Datos del Cliente</p>
+                  <div className="flex justify-between items-center">
+                    <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Datos del Cliente</p>
+                    {foundCustomer && !repairJob && (
+                        <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-6 text-[10px] text-blue-600 bg-blue-50 hover:bg-blue-100 flex items-center gap-1 font-bold animate-pulse"
+                            onClick={handleApplyCustomerData}
+                        >
+                            <UserCheck className="w-3 h-3" />
+                            ¿CARGAR DATOS DE {foundCustomer.name.toUpperCase()}?
+                        </Button>
+                    )}
+                  </div>
+                  
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField control={form.control} name="customerName" render={({field}) => <FormItem><FormLabel>Nombre y Apellido</FormLabel><Input placeholder="Ej: Juan Perez" {...field}/><FormMessage /></FormItem>} />
-                      <FormField control={form.control} name="customerID" render={({field}) => <FormItem><FormLabel>Cédula / RIF</FormLabel><Input placeholder="V-12345678" {...field}/><FormMessage /></FormItem>} />
+                      <FormField control={form.control} name="customerID" render={({field}) => (
+                          <FormItem>
+                              <FormLabel>Cédula / RIF</FormLabel>
+                              <Input placeholder="V-12345678" {...field}/>
+                              <FormMessage />
+                          </FormItem>
+                      )} />
+                      <FormField control={form.control} name="customerName" render={({field}) => (
+                          <FormItem>
+                              <FormLabel>Nombre y Apellido</FormLabel>
+                              <Input placeholder="Ej: Juan Perez" {...field}/>
+                              <FormMessage />
+                          </FormItem>
+                      )} />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <FormField control={form.control} name="customerPhone" render={({field}) => <FormItem><FormLabel>Teléfono</FormLabel><Input placeholder="0414-1234567" {...field}/><FormMessage /></FormItem>} />
@@ -280,27 +350,50 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                   </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                   <FormField control={form.control} name="estimatedCost" render={({field}) => (
                       <FormItem>
                           <FormLabel>Costo Estimado ($)</FormLabel>
-                          <div className="relative">
-                              <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                              <Input type="number" step="0.01" {...field} className="pl-8" />
+                          <div className="relative flex items-center">
+                              <DollarSign className="absolute left-2.5 h-4 w-4 text-muted-foreground" />
+                              <Input type="number" step="0.01" {...field} className="pl-8 pr-10" />
+                              {hasPromoAvailable && (
+                                  <TooltipProvider>
+                                      <Tooltip>
+                                          <TooltipTrigger asChild>
+                                              <Button 
+                                                type="button" 
+                                                variant="ghost" 
+                                                size="icon" 
+                                                className="absolute right-1 h-8 w-8 text-blue-600 hover:bg-blue-100"
+                                                onClick={applyPromoPrice}
+                                              >
+                                                  <Gift className="h-4 w-4" />
+                                              </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                              <p>Aplicar Precio Oferta (${mainPart.promoPrice})</p>
+                                          </TooltipContent>
+                                      </Tooltip>
+                                  </TooltipProvider>
+                              )}
                           </div>
                           <FormMessage />
                       </FormItem>
                   )} />
-                  <FormField control={form.control} name="status" render={({field}) => (
-                      <FormItem>
-                          <FormLabel>Estado del Trabajo</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value} disabled={repairJob?.isPaid && repairJob?.status === 'Completado'}>
-                              <SelectTrigger><SelectValue/></SelectTrigger>
-                              <SelectContent>{repairStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                          </Select>
-                          <FormMessage />
-                      </FormItem>
-                  )} />
+                  
+                  {repairJob && (
+                      <FormField control={form.control} name="status" render={({field}) => (
+                          <FormItem>
+                              <FormLabel>Estado del Trabajo</FormLabel>
+                              <Select onValueChange={field.onChange} value={field.value} disabled={repairJob?.isPaid && repairJob?.status === 'Completado'}>
+                                  <SelectTrigger><SelectValue/></SelectTrigger>
+                                  <SelectContent>{repairStatuses.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+                              </Select>
+                              <FormMessage />
+                          </FormItem>
+                      )} />
+                  )}
               </div>
 
               {repairJob && (
