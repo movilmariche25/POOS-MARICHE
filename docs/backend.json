@@ -1,6 +1,20 @@
-
 {
   "entities": {
+    "User": {
+      "title": "User",
+      "description": "Perfil del usuario y configuración de su taller.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "businessName": { "type": "string" },
+        "licenseStatus": { "type": "string", "enum": ["active", "trial", "expired"] },
+        "licenseExpiry": { "type": "string", "format": "date-time" },
+        "isAdmin": { "type": "boolean" },
+        "lastSessionId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "Product": {
       "title": "Product",
       "type": "object",
@@ -10,7 +24,9 @@
         "category": { "type": "string" },
         "sku": { "type": "string" },
         "costPrice": { "type": "number" },
-        "stockLevel": { "type": "number" }
+        "stockLevel": { "type": "number" },
+        "reservedStock": { "type": "number" },
+        "damagedStock": { "type": "number" }
       }
     },
     "RepairJob": {
@@ -19,7 +35,11 @@
       "properties": {
         "id": { "type": "string" },
         "customerName": { "type": "string" },
-        "status": { "type": "string" }
+        "customerID": { "type": "string" },
+        "customerAddress": { "type": "string" },
+        "status": { "type": "string" },
+        "amountPaid": { "type": "number" },
+        "estimatedCost": { "type": "number" }
       }
     },
     "Sale": {
@@ -27,7 +47,8 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "totalAmount": { "type": "number" }
+        "totalAmount": { "type": "number" },
+        "transactionDate": { "type": "string" }
       }
     },
     "DailyReconciliation": {
@@ -38,16 +59,6 @@
         "date": { "type": "string" },
         "totalSales": { "type": "number" },
         "totalDifference": { "type": "number" }
-      }
-    },
-    "SystemAnnouncement": {
-      "title": "SystemAnnouncement",
-      "type": "object",
-      "properties": {
-        "message": { "type": "string" },
-        "type": { "type": "string", "enum": ["info", "warning", "critical"] },
-        "active": { "type": "boolean" },
-        "updatedAt": { "type": "string" }
       }
     }
   },
@@ -60,42 +71,28 @@
         "path": "/users/{userId}",
         "definition": {
           "entityName": "User",
-          "description": "Perfil del usuario y dueño del taller."
+          "description": "Perfil del taller."
         }
       },
       {
         "path": "/users/{userId}/products/{productId}",
         "definition": {
           "entityName": "Product",
-          "description": "Inventario personal del usuario."
+          "description": "Inventario del taller."
         }
       },
       {
         "path": "/users/{userId}/repair_jobs/{jobId}",
         "definition": {
           "entityName": "RepairJob",
-          "description": "Trabajos de reparación del taller del usuario."
+          "description": "Trabajos técnicos."
         }
       },
       {
         "path": "/users/{userId}/sale_transactions/{saleId}",
         "definition": {
           "entityName": "Sale",
-          "description": "Ventas realizadas por el taller del usuario."
-        }
-      },
-      {
-        "path": "/users/{userId}/daily_reconciliations/{reconId}",
-        "definition": {
-          "entityName": "DailyReconciliation",
-          "description": "Cierres de caja diarios por taller."
-        }
-      },
-      {
-        "path": "/system/announcements",
-        "definition": {
-          "entityName": "SystemAnnouncement",
-          "description": "Mensajes globales del administrador para todos los usuarios."
+          "description": "Ventas y abonos."
         }
       }
     ]

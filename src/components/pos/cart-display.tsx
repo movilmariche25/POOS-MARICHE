@@ -83,6 +83,12 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
       const saleId = generateSaleId();
       const cartWithPrices = cart.map(item => ({ ...item, price: getPrice(item) }));
 
+      // Calcular cuánto se pagó realmente en USD para esta transacción
+      const totalPaidInUSD = payments.reduce((acc, p) => {
+          return acc + (p.method === 'Efectivo USD' ? p.amount : convert(p.amount, 'Bs', 'USD'));
+      }, 0);
+      const actualNetPaidInUSD = totalPaidInUSD - totalChangeInUSD;
+
       try {
         await runTransaction(firestore, async (transaction) => {
             for (const item of cartWithPrices) {
@@ -94,6 +100,8 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                         const pDoc = await transaction.get(pRef);
                         if (pDoc.exists()) {
                             const data = pDoc.data() as Product;
+                            // Solo descontamos stock físico si el pago se completa o si es una entrega
+                            // Pero aquí, al ser POS, asumimos que se consume la pieza.
                             transaction.update(pRef, { 
                                 stockLevel: data.stockLevel - part.quantity,
                                 reservedStock: Math.max(0, (data.reservedStock || 0) - part.quantity)
@@ -112,10 +120,17 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
 
             if (repairJobId && activeRepairJob) {
                 const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJobId);
-                const repairItem = cartWithPrices.find(i => i.isRepair);
-                const paidNow = repairItem?.price || 0;
+                
+                // Determinamos cuánto de este pago neto se aplica a la reparación
+                // Si hay otros artículos físicos en el carrito, priorizamos pagarlos primero
+                const otherItemsTotal = cartWithPrices
+                    .filter(i => !i.isRepair)
+                    .reduce((sum, i) => sum + (i.price * i.quantity), 0);
+                
+                const paidToRepair = Math.max(0, actualNetPaidInUSD - otherItemsTotal);
                 
                 let discountToApply = 0;
+                const repairItem = cartWithPrices.find(i => i.isRepair);
                 if (repairItem?.isPromo && activeRepairJob.reservedParts?.[0]) {
                     const partId = activeRepairJob.reservedParts[0].productId;
                     const product = allProducts.find(p => p.id === partId);
@@ -126,12 +141,12 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 }
 
                 const newEstimatedCost = activeRepairJob.estimatedCost - discountToApply;
-                const newPaid = (activeRepairJob.amountPaid || 0) + paidNow;
-                const isFullyPaid = newPaid >= (newEstimatedCost - 0.01);
+                const newPaidTotal = (activeRepairJob.amountPaid || 0) + paidToRepair;
+                const isFullyPaid = newPaidTotal >= (newEstimatedCost - 0.01);
 
                 transaction.update(jobRef, { 
                     estimatedCost: Number(newEstimatedCost.toFixed(2)),
-                    amountPaid: Number(newPaid.toFixed(2)), 
+                    amountPaid: Number(newPaidTotal.toFixed(2)), 
                     isPaid: isFullyPaid,
                     status: isFullyPaid ? 'Pagado' : activeRepairJob.status
                 });
@@ -145,11 +160,12 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 paymentMethod: payments.map(p => p.method).join(', '),
                 transactionDate: new Date().toISOString(),
                 payments, status: 'completed',
-                ...(changeGiven.length > 0 && { changeGiven, totalChangeInUSD })
+                ...(changeGiven.length > 0 && { changeGiven, totalChangeInUSD }),
+                actualPaidAmount: actualNetPaidInUSD // Guardamos lo que realmente entró a caja
             });
         });
 
-        toast({ title: "Venta Completada" });
+        toast({ title: isPartialPayment ? "Abono Registrado" : "Venta Completada" });
         return { 
             id: saleId, 
             items: cartWithPrices, 
@@ -167,6 +183,8 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
         return null;
       }
   };
+
+  const isPartialPayment = total > 0 && (cart.some(i => i.isRepair));
 
   return (
     <div className="flex flex-col h-full bg-slate-50">

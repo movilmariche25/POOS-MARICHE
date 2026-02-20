@@ -5,7 +5,7 @@ import type { CartItem, Payment, PaymentMethod, Sale, Product, UserProfile } fro
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { useState, type ReactNode, useMemo, useEffect } from "react";
-import { CreditCard, Landmark, Smartphone, DollarSign, Printer, Trash2, Banknote } from "lucide-react";
+import { CreditCard, Landmark, Smartphone, DollarSign, Printer, Trash2, Banknote, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ReceiptView, handlePrintReceipt } from "./receipt-view";
 import { useCurrency } from "@/hooks/use-currency";
@@ -17,6 +17,7 @@ import { useRouter } from "next/navigation";
 import { Checkbox } from "../ui/checkbox";
 import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
 import { doc } from "firebase/firestore";
+import { Badge } from "../ui/badge";
 
 type CheckoutDialogProps = {
   cart: CartItem[];
@@ -90,6 +91,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
   }, [changePayments, convert, currencyLoading]);
 
   const potentialChangeInUSD = useMemo(() => (totalPaid > total ? totalPaid - total : 0), [totalPaid, total]);
+  const isPartialPayment = totalPaid < total - 0.01;
   const requiredChangeInUSD = isGivingChange ? potentialChangeInUSD : 0;
   const changeDifference = useMemo(() => requiredChangeInUSD - totalGivenInUSD, [requiredChangeInUSD, totalGivenInUSD]);
   
@@ -203,10 +205,13 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                 <DialogTitle>Completar Venta</DialogTitle>
             </DialogHeader>
             <div className="py-4 space-y-4">
-                <div className="text-center p-4 bg-muted rounded-lg">
+                <div className="text-center p-4 bg-muted rounded-lg relative">
                     <p className="text-sm text-muted-foreground">Monto Total a Pagar</p>
                     <p className="text-4xl font-bold">{getSymbol('USD')}{formatCurrency(total, 'USD')}</p>
                     <p className="text-sm text-muted-foreground">o ~Bs {formatCurrency(convert(total, 'USD', 'Bs'), 'Bs')}</p>
+                    {isPartialPayment && (
+                        <Badge variant="destructive" className="absolute top-2 right-2 animate-pulse">PAGO PARCIAL / ABONO</Badge>
+                    )}
                 </div>
                  <div className="space-y-2">
                     <p className="font-medium">Añadir Pagos</p>
@@ -264,7 +269,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                 )}
 
                  <div className="text-center p-3 rounded-lg bg-secondary text-secondary-foreground">
-                    {totalPaid >= total ? (
+                    {totalPaid >= total - 0.01 ? (
                         <>
                         <p className="text-sm">Vuelto</p>
                         <div className="font-bold text-green-600">
@@ -276,7 +281,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                         </>
                     ) : (
                         <>
-                        <p className="text-sm">Monto Restante</p>
+                        <p className="text-sm">Monto Restante (Pendiente)</p>
                         <div className="font-bold text-destructive">
                             <p className="text-2xl">{getSymbol('USD')}{formatCurrency(total - totalPaid, 'USD')}</p>
                             <p className="text-xs text-secondary-foreground/80">
@@ -286,6 +291,13 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                         </>
                     )}
                  </div>
+
+                 {isPartialPayment && isRepairSale && (
+                     <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-md text-blue-800 text-[10px] font-bold">
+                         <AlertCircle className="w-3 h-3 shrink-0" />
+                         <span>ESTE MONTO SE REGISTRARÁ COMO ABONO AL TRABAJO DE REPARACIÓN.</span>
+                     </div>
+                 )}
 
                  {potentialChangeInUSD > 0.001 && (
                     <div className="space-y-4 pt-4 border-t">
