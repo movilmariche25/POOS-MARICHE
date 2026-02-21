@@ -12,6 +12,7 @@ import {
   Settings,
   TrendingUp,
   ShieldCheck,
+  HandCoins,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -43,6 +44,7 @@ const navItems: NavItem[] = [
   { href: '/dashboard/pos', icon: ShoppingCart, label: 'Punto de Venta', module: 'pos' },
   { href: '/dashboard/reports', icon: BarChart2, label: 'Reportes', module: 'reports' },
   { href: '/dashboard/analysis', icon: TrendingUp, label: 'Análisis', module: 'analysis' },
+  { href: '/dashboard/fiados', icon: HandCoins, label: 'Fiados / Créditos', module: 'fiados' },
 ];
 
 export function SidebarNav() {
@@ -57,18 +59,11 @@ export function SidebarNav() {
 
   const isAdmin = !!profile?.isAdmin;
   
-  // Filtrar items basado en los módulos habilitados del perfil
   const filteredNavItems = navItems.filter(item => {
-      // El dashboard siempre es visible
       if (!item.module) return true;
-      
-      // Si no hay perfil aún, no mostramos nada opcional por seguridad
       if (!profile) return false;
-
-      // Los administradores ven todo siempre
-      if (profile.isAdmin) return true;
-
-      // Verificar si el módulo está en la lista de habilitados del taller
+      
+      // Respetamos los módulos habilitados incluso para el admin para permitir pruebas de visualización
       const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis'];
       return enabledModules.includes(item.module);
   });

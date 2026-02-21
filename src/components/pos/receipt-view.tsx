@@ -6,6 +6,9 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { renderToString } from 'react-dom/server';
 import { useCurrency } from "@/hooks/use-currency";
+import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
+import { doc } from "firebase/firestore";
+import type { UserProfile } from "@/lib/types";
 
 type ReceiptViewProps = {
     sale: Sale;
@@ -15,6 +18,13 @@ type ReceiptViewProps = {
 
 export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) {
     const { format: formatCurrency, getSymbol } = currency;
+    const { firestore, user } = useFirebase();
+
+    const profileRef = useMemoFirebase(() => 
+        (firestore && user) ? doc(firestore, 'users', user.uid) : null,
+        [firestore, user?.uid]
+    );
+    const { data: profile } = useDoc<UserProfile>(profileRef);
 
     const getPaymentAmountInCorrectCurrency = (payment: Payment) => {
         const isUSD = payment.method === 'Efectivo USD';
@@ -22,10 +32,18 @@ export function ReceiptView({ sale, currency, businessName }: ReceiptViewProps) 
         return `${symbol}${formatCurrency(payment.amount, isUSD ? 'USD' : 'Bs')}`;
     };
 
+    const showInfo = profile?.showInfoOnReceipt;
+
     return (
          <div className="receipt-content">
             <div className="text-center mb-4">
                 <h3 className="business-name bold-header">{businessName || 'POOS MARICHE'}</h3>
+                {showInfo && profile?.businessRIF && (
+                    <p className="meta-info font-bold">RIF: {profile.businessRIF.toUpperCase()}</p>
+                )}
+                {showInfo && profile?.businessAddress && (
+                    <p className="meta-info text-[8pt] italic leading-tight">{profile.businessAddress}</p>
+                )}
                 <p className="meta-info mt-2">{format(parseISO(sale.transactionDate), "dd/MM/yy hh:mm a", { locale: es })}</p>
                 <p className="meta-info">ID: {sale.id}</p>
             </div>

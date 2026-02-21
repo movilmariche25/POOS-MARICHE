@@ -5,21 +5,25 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, LogOut, ShieldCheck, UserCog, Mail, Lock, KeyRound, AlertCircle } from "lucide-react";
+import { Loader2, LogOut, ShieldCheck, UserCog, Mail, Lock, KeyRound, AlertCircle, FileSpreadsheet, DownloadCloud, UploadCloud, Database, RefreshCcw, MapPin, Hash, ReceiptText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { useDoc, useFirebase, useMemoFirebase, setDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase";
-import { doc } from "firebase/firestore";
-import { useEffect, useState } from "react";
-import type { AppSettings, UserProfile } from "@/lib/types";
+import { useDoc, useFirebase, useMemoFirebase, setDocumentNonBlocking, updateDocumentNonBlocking, useCollection } from "@/firebase";
+import { doc, collection, writeBatch } from "firebase/firestore";
+import { useEffect, useState, useRef } from "react";
+import type { AppSettings, UserProfile, Product, RepairJob, Sale, Fiado } from "@/lib/types";
 import { Switch } from "@/components/ui/switch";
 import { signOut } from "firebase/auth";
 import { updateUserEmail, updateUserPassword } from "@/firebase/non-blocking-login";
 import { cn } from "@/lib/utils";
+import * as XLSX from "xlsx";
+import { format, parseISO } from "date-fns";
+import { AdminAuthDialog } from "@/components/admin-auth-dialog";
+import { Separator } from "@/components/ui/separator";
 
 const settingsSchema = z.object({
     bcvRate: z.coerce.number().positive(),
@@ -31,6 +35,9 @@ const settingsSchema = z.object({
 
 const profileSchema = z.object({
     businessName: z.string().min(2, "Mínimo 2 caracteres"),
+    businessAddress: z.string().optional(),
+    businessRIF: z.string().optional(),
+    showInfoOnReceipt: z.boolean().default(false),
 });
 
 const DEFAULT_PIN = "2026";
@@ -40,6 +47,8 @@ export default function SettingsPage() {
     const { firestore, auth, user } = useFirebase();
     const [isUpdatingCredentials, setIsUpdatingCredentials] = useState(false);
     const [isUpdatingPin, setIsUpdatingPin] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     
     // Configuración del sistema
     const settingsRef = useMemoFirebase(() => 
@@ -55,6 +64,17 @@ export default function SettingsPage() {
     );
     const { data: profile } = useDoc<UserProfile>(userProfileRef);
 
+    // Colecciones para Exportación
+    const productsCol = useMemoFirebase(() => (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null, [firestore, user?.uid]);
+    const repairsCol = useMemoFirebase(() => (firestore && user) ? collection(firestore, 'users', user.uid, 'repair_jobs') : null, [firestore, user?.uid]);
+    const salesCol = useMemoFirebase(() => (firestore && user) ? collection(firestore, 'users', user.uid, 'sale_transactions') : null, [firestore, user?.uid]);
+    const fiadosCol = useMemoFirebase(() => (firestore && user) ? collection(firestore, 'users', user.uid, 'fiados') : null, [firestore, user?.uid]);
+
+    const { data: products } = useCollection<Product>(productsCol);
+    const { data: repairs } = useCollection<RepairJob>(repairsCol);
+    const { data: sales } = useCollection<Sale>(salesCol);
+    const { data: fiados } = useCollection<Fiado>(fiadosCol);
+
     const settingsForm = useForm<z.infer<typeof settingsSchema>>({
         resolver: zodResolver(settingsSchema),
         defaultValues: { bcvRate: 1, parallelRate: 1, profitMargin: 100, autoUpdateBcv: false }
@@ -62,7 +82,7 @@ export default function SettingsPage() {
 
     const profileForm = useForm<z.infer<typeof profileSchema>>({
         resolver: zodResolver(profileSchema),
-        defaultValues: { businessName: "" }
+        defaultValues: { businessName: "", businessAddress: "", businessRIF: "", showInfoOnReceipt: false }
     });
 
     const [newEmail, setNewEmail] = useState("");
@@ -83,7 +103,12 @@ export default function SettingsPage() {
             });
         }
         if (profile) {
-            profileForm.reset({ businessName: profile.businessName || "" });
+            profileForm.reset({ 
+                businessName: profile.businessName || "",
+                businessAddress: profile.businessAddress || "",
+                businessRIF: profile.businessRIF || "",
+                showInfoOnReceipt: profile.showInfoOnReceipt || false
+            });
             if (!initialEmailSet) {
                 setNewEmail(profile.email || "");
                 setInitialEmailSet(true);
@@ -154,45 +179,188 @@ export default function SettingsPage() {
 
         setIsUpdatingCredentials(true);
         try {
-            // Actualizar Correo
             if (newEmail && newEmail !== user.email) {
                 await updateUserEmail(auth, newEmail);
                 if (userProfileRef) {
                     setDocumentNonBlocking(userProfileRef, { email: newEmail }, { merge: true });
                 }
             }
-            
-            // Actualizar Contraseña
             if (newPassword) {
                 if (newPassword.length < 6) {
                     throw new Error("La contraseña debe tener al menos 6 caracteres.");
                 }
                 await updateUserPassword(auth, newPassword);
             }
-
-            toast({ 
-                title: "Credenciales Actualizadas", 
-                description: "Tus datos de acceso han sido modificados con éxito." 
-            });
+            toast({ title: "Credenciales Actualizadas", description: "Tus datos de acceso han sido modificados." });
             setNewPassword("");
         } catch (e: any) {
-            console.error("Credential update error:", e);
             let description = e.message;
-            
             if (e.code === 'auth/requires-recent-login') {
-                description = "Por seguridad, debes haber iniciado sesión recientemente para realizar esta acción. Por favor, cierra sesión y vuelve a entrar.";
-            } else if (e.code === 'auth/email-already-in-use') {
-                description = "Este correo electrónico ya está en uso por otra cuenta.";
+                description = "Por seguridad, debes haber iniciado sesión recientemente. Cierra sesión y vuelve a entrar.";
             }
-
-            toast({ 
-                variant: "destructive", 
-                title: "Error de Seguridad", 
-                description
-            });
+            toast({ variant: "destructive", title: "Error de Seguridad", description });
         } finally {
             setIsUpdatingCredentials(false);
         }
+    };
+
+    // --- FUNCIÓN DE EXPORTACIÓN UNIFICADA ---
+    const handleExportSystemBackup = () => {
+        const wb = XLSX.utils.book_new();
+
+        // 1. Inventario
+        const inventoryData = (products || []).map(p => ({
+            'ID': p.id,
+            'SKU': p.sku,
+            'Nombre': p.name,
+            'Categoria': p.category,
+            'Costo': p.costPrice,
+            'Venta_Fija': p.fixedPrice || 0,
+            'Stock_Fisico': p.stockLevel,
+            'Reservado': p.reservedStock || 0,
+            'Dañado': p.damagedStock || 0,
+            'Margen_Indiv': p.customMargin || 0
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inventoryData), "Inventario");
+
+        // 2. Reparaciones
+        const repairsData = (repairs || []).map(r => ({
+            'ID': r.id,
+            'Cliente': r.customerName,
+            'Cedula': r.customerID,
+            'Telefono': r.customerPhone,
+            'Equipo': `${r.deviceMake} ${r.deviceModel}`,
+            'Falla': r.reportedIssue,
+            'Total': r.estimatedCost,
+            'Pagado': r.amountPaid,
+            'Estado': r.status,
+            'Fecha': r.createdAt
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(repairsData), "Reparaciones");
+
+        // 3. Ventas
+        const salesData = (sales || []).map(s => ({
+            'ID': s.id,
+            'Fecha': s.transactionDate,
+            'Total': s.totalAmount,
+            'Metodo': s.paymentMethod,
+            'Detalle': s.items.map(i => `${i.quantity}x ${i.name}`).join(', '),
+            'Estado': s.status
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(salesData), "Ventas");
+
+        // 4. Fiados
+        const fiadosData = (fiados || []).map(f => ({
+            'ID': f.id,
+            'Cliente': f.customerName,
+            'Cedula': f.customerID,
+            'Concepto': f.concept,
+            'Total': f.totalAmount,
+            'Abonado': f.amountPaid,
+            'Estado': f.status,
+            'Fecha': f.createdAt,
+            'Vencimiento': f.dueDate || ''
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fiadosData), "Fiados");
+
+        XLSX.writeFile(wb, `Respaldo_Sistema_PoosMariche_${format(new Date(), 'dd-MM-yyyy')}.xlsx`);
+        toast({ title: "Respaldo Generado", description: "Se ha descargado el archivo consolidado." });
+    };
+
+    // --- FUNCIÓN DE IMPORTACIÓN MASIVA ---
+    const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !firestore || !user) return;
+
+        setIsImporting(true);
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const data = event.target?.result;
+                const workbook = XLSX.read(data, { type: 'binary' });
+                const batch = writeBatch(firestore);
+                let totalRecords = 0;
+
+                // 1. Procesar Inventario
+                if (workbook.SheetNames.includes("Inventario")) {
+                    const sheet = XLSX.utils.sheet_to_json(workbook.Sheets["Inventario"]);
+                    sheet.forEach((row: any) => {
+                        const ref = doc(firestore, 'users', user.uid, 'products', row.ID || doc(collection(firestore, 'temp')).id);
+                        batch.set(ref, {
+                            id: ref.id,
+                            sku: row.SKU || '',
+                            name: row.Nombre || '',
+                            category: row.Categoria || 'General',
+                            costPrice: Number(row.Costo) || 0,
+                            fixedPrice: Number(row.Venta_Fija) || 0,
+                            stockLevel: Number(row.Stock_Fisico) || 0,
+                            reservedStock: Number(row.Reservado) || 0,
+                            damagedStock: Number(row.Dañado) || 0,
+                            customMargin: Number(row.Margen_Indiv) || 0,
+                            isFixedPrice: (row.Venta_Fija > 0),
+                            hasCustomMargin: (row.Margen_Indiv > 0),
+                            lowStockThreshold: 1
+                        }, { merge: true });
+                        totalRecords++;
+                    });
+                }
+
+                // 2. Procesar Reparaciones
+                if (workbook.SheetNames.includes("Reparaciones")) {
+                    const sheet = XLSX.utils.sheet_to_json(workbook.Sheets["Reparaciones"]);
+                    sheet.forEach((row: any) => {
+                        const ref = doc(firestore, 'users', user.uid, 'repair_jobs', row.ID || doc(collection(firestore, 'temp')).id);
+                        const [make, ...modelParts] = (row.Equipo || "").split(" ");
+                        batch.set(ref, {
+                            id: ref.id,
+                            customerName: row.Cliente || '',
+                            customerID: row.Cedula || '',
+                            customerPhone: row.Telefono || '',
+                            deviceMake: make || 'Genérico',
+                            deviceModel: modelParts.join(" ") || 'N/A',
+                            reportedIssue: row.Falla || 'Revisión',
+                            estimatedCost: Number(row.Total) || 0,
+                            amountPaid: Number(row.Pagado) || 0,
+                            status: row.Estado || 'Pendiente',
+                            createdAt: row.Fecha || new Date().toISOString(),
+                            isPaid: (Number(row.Pagado) >= Number(row.Total))
+                        }, { merge: true });
+                        totalRecords++;
+                    });
+                }
+
+                // 3. Procesar Fiados
+                if (workbook.SheetNames.includes("Fiados")) {
+                    const sheet = XLSX.utils.sheet_to_json(workbook.Sheets["Fiados"]);
+                    sheet.forEach((row: any) => {
+                        const ref = doc(firestore, 'users', user.uid, 'fiados', row.ID || doc(collection(firestore, 'temp')).id);
+                        batch.set(ref, {
+                            id: ref.id,
+                            customerName: row.Cliente || '',
+                            customerID: row.Cedula || '',
+                            concept: row.Concepto || '',
+                            totalAmount: Number(row.Total) || 0,
+                            amountPaid: Number(row.Abonado) || 0,
+                            status: row.Estado || 'Pendiente',
+                            createdAt: row.Fecha || new Date().toISOString(),
+                            dueDate: row.Vencimiento || null,
+                            customerPhone: ''
+                        }, { merge: true });
+                        totalRecords++;
+                    });
+                }
+
+                await batch.commit();
+                toast({ title: "Importación Exitosa", description: `Se han restaurado ${totalRecords} registros correctamente.` });
+            } catch (error) {
+                console.error("Import error:", error);
+                toast({ variant: "destructive", title: "Error al Importar", description: "El archivo no tiene el formato correcto." });
+            } finally {
+                setIsImporting(false);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+            }
+        };
+        reader.readAsBinaryString(file);
     };
 
     const handleSignOut = () => {
@@ -209,20 +377,51 @@ export default function SettingsPage() {
             <PageHeader title="Configuración y Perfil" />
             <main className="flex-1 p-4 sm:p-6 space-y-8 max-w-4xl mx-auto w-full">
                 
-                {/* 1. PERFIL DEL TALLER */}
+                {/* 1. PERFIL DEL NEGOCIO */}
                 <Card className="shadow-md">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><UserCog className="w-5 h-5"/> Perfil del Taller</CardTitle>
-                        <CardDescription>Datos públicos de tu negocio.</CardDescription>
+                        <CardTitle className="flex items-center gap-2"><UserCog className="w-5 h-5"/> Perfil del Negocio</CardTitle>
+                        <CardDescription>Datos comerciales de tu negocio para facturación y reportes.</CardDescription>
                     </CardHeader>
                     <Form {...profileForm}>
                         <form onSubmit={profileForm.handleSubmit(handleSaveProfile)}>
-                            <CardContent className="space-y-4">
+                            <CardContent className="space-y-6">
                                 <FormField control={profileForm.control} name="businessName" render={({ field }) => (
                                     <FormItem>
                                         <FormLabel>Nombre Comercial</FormLabel>
                                         <FormControl><Input {...field} placeholder="Ej: Poos Mariche Central" /></FormControl>
                                         <FormMessage />
+                                    </FormItem>
+                                )} />
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <FormField control={profileForm.control} name="businessRIF" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="flex items-center gap-2"><Hash className="w-3 h-3" /> RIF / Identificación Fiscal</FormLabel>
+                                            <FormControl><Input {...field} placeholder="Ej: J-12345678-9" /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={profileForm.control} name="businessAddress" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="flex items-center gap-2"><MapPin className="w-3 h-3" /> Dirección Física</FormLabel>
+                                            <FormControl><Input {...field} placeholder="Ej: Av. Principal, Local 5" /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                </div>
+
+                                <Separator />
+
+                                <FormField control={profileForm.control} name="showInfoOnReceipt" render={({ field }) => (
+                                    <FormItem className="flex items-center justify-between rounded-lg border p-4 bg-muted/20">
+                                        <div className="space-y-0.5">
+                                            <FormLabel className="flex items-center gap-2"><ReceiptText className="w-4 h-4 text-primary" /> Datos en Recibos</FormLabel>
+                                            <FormDescription>Mostrar RIF y Dirección en los tickets impresos.</FormDescription>
+                                        </div>
+                                        <FormControl>
+                                            <Switch checked={field.value} onCheckedChange={field.onChange} />
+                                        </FormControl>
                                     </FormItem>
                                 )} />
                             </CardContent>
@@ -233,21 +432,85 @@ export default function SettingsPage() {
                     </Form>
                 </Card>
 
-                {/* 2. SEGURIDAD DE GERENTE (PIN) */}
+                {/* 2. GESTIÓN DE RESPALDOS (IMPORT/EXPORT UNIFICADO) */}
                 <Card className="shadow-md border-primary/20 bg-primary/5">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-primary"><KeyRound className="w-5 h-5"/> Clave de Gerente (PIN)</CardTitle>
-                        <CardDescription>Protección para devoluciones, eliminaciones y bloqueos.</CardDescription>
+                        <CardTitle className="flex items-center gap-2 text-primary">
+                            <Database className="w-5 h-5" /> Centro de Datos y Respaldo
+                        </CardTitle>
+                        <CardDescription>
+                            Descarga un solo archivo con toda tu información o restaura un respaldo previo.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* BOTÓN EXPORTAR TODO */}
+                            <Button 
+                                variant="outline" 
+                                className="h-20 justify-start gap-4 border-primary/30 bg-white hover:bg-primary/5"
+                                onClick={handleExportSystemBackup}
+                            >
+                                <div className="p-3 bg-primary/10 rounded-full">
+                                    <DownloadCloud className="w-6 h-6 text-primary" />
+                                </div>
+                                <div className="text-left">
+                                    <p className="font-bold text-sm">Descargar Todo (Excel)</p>
+                                    <p className="text-[10px] text-muted-foreground">Inventario, Ventas, Reparaciones y Fiados.</p>
+                                </div>
+                            </Button>
+
+                            {/* BOTÓN IMPORTAR TODO (PROTEGIDO) */}
+                            <AdminAuthDialog onAuthorized={() => fileInputRef.current?.click()}>
+                                <Button 
+                                    variant="outline" 
+                                    className="h-20 justify-start gap-4 border-amber-300 bg-white hover:bg-amber-50"
+                                    disabled={isImporting}
+                                >
+                                    <div className="p-3 bg-amber-100 rounded-full">
+                                        {isImporting ? <RefreshCcw className="w-6 h-6 text-amber-600 animate-spin" /> : <UploadCloud className="w-6 h-6 text-amber-600" />}
+                                    </div>
+                                    <div className="text-left">
+                                        <p className="font-bold text-sm text-amber-700">Importar Respaldo</p>
+                                        <p className="text-[10px] text-muted-foreground">Sube un archivo Excel para restaurar datos.</p>
+                                    </div>
+                                </Button>
+                            </AdminAuthDialog>
+                            <input 
+                                type="file" 
+                                ref={fileInputRef} 
+                                className="hidden" 
+                                accept=".xlsx, .xls"
+                                onChange={handleImportBackup}
+                            />
+                        </div>
+
+                        <div className="p-4 bg-white/50 border rounded-lg flex items-start gap-3">
+                            <AlertCircle className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                            <div className="text-xs space-y-1">
+                                <p className="font-bold text-primary">Información Importante:</p>
+                                <p className="text-muted-foreground italic">
+                                    Para una importación exitosa, asegúrate de que el archivo Excel tenga las pestañas correctas (Inventario, Reparaciones, Fiados). Si subes un registro con un ID ya existente, este se actualizará con la nueva información.
+                                </p>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* 3. SEGURIDAD DE GERENTE (PIN) */}
+                <Card className="shadow-md border-slate-200">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-slate-800"><KeyRound className="w-5 h-5"/> Clave de Gerente (PIN)</CardTitle>
+                        <CardDescription>Protección para restauraciones, reembolsos y eliminaciones.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className={cn(
                             "flex items-center justify-between p-4 rounded-lg border transition-all",
-                            isPinRequired ? "bg-white border-primary/20" : "bg-slate-50 border-slate-200"
+                            isPinRequired ? "bg-primary/5 border-primary/20" : "bg-slate-50 border-slate-200"
                         )}>
                             <div className="space-y-0.5">
                                 <Label className="text-base">Estado de Protección</Label>
                                 <p className="text-xs text-muted-foreground">
-                                    {isPinRequired ? "Solicitar PIN para autorizar reembolsos y borrados." : "Las acciones de gerente se ejecutarán de inmediato (No recomendado)."}
+                                    {isPinRequired ? "Se solicita PIN para acciones críticas." : "Las acciones de gerente se ejecutarán de inmediato (No recomendado)."}
                                 </p>
                             </div>
                             <Switch 
@@ -265,10 +528,9 @@ export default function SettingsPage() {
                                     onChange={(e) => setCurrentPinVerify(e.target.value)} 
                                     placeholder="Introduce tu clave actual" 
                                 />
-                                <p className="text-[10px] text-muted-foreground italic">Es obligatorio para autorizar cambios en esta sección.</p>
                             </div>
                             <div className="space-y-2">
-                                <Label>Nuevo PIN (Dejar vacío para no cambiar)</Label>
+                                <Label>Nuevo PIN (Opcional)</Label>
                                 <Input 
                                     type="password" 
                                     value={newPin} 
@@ -277,26 +539,18 @@ export default function SettingsPage() {
                                 />
                             </div>
                         </div>
-
-                        {!profile?.securityPin && (
-                            <div className="p-3 bg-amber-50 border border-amber-200 rounded flex items-center gap-2 text-xs text-amber-800">
-                                <AlertCircle className="w-4 h-4" />
-                                <span>No has configurado un PIN personal. La clave por defecto es <strong>{DEFAULT_PIN}</strong>.</span>
-                            </div>
-                        )}
                     </CardContent>
                     <CardFooter className="border-t pt-4">
                         <Button 
                             onClick={handleUpdatePinSettings} 
                             disabled={isUpdatingPin || !currentPinVerify}
-                            className="w-full sm:w-auto"
                         >
                             {isUpdatingPin ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : "Guardar Ajustes de Seguridad"}
                         </Button>
                     </CardFooter>
                 </Card>
 
-                {/* 3. SEGURIDAD DE LA CUENTA (LOGIN) */}
+                {/* 4. SEGURIDAD DE LA CUENTA (LOGIN) */}
                 <Card className="shadow-md border-amber-100">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-amber-700"><ShieldCheck className="w-5 h-5"/> Seguridad de Acceso (Login)</CardTitle>
@@ -313,7 +567,6 @@ export default function SettingsPage() {
                                 <Input type="password" placeholder="Mínimo 6 caracteres" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
                             </div>
                         </div>
-                        <p className="text-xs text-muted-foreground italic">Nota: Si cambias el email, deberás usar el nuevo para entrar en tu próxima sesión.</p>
                     </CardContent>
                     <CardFooter className="border-t pt-4">
                         <Button variant="outline" onClick={handleUpdateCredentials} disabled={isUpdatingCredentials}>
@@ -322,13 +575,13 @@ export default function SettingsPage() {
                     </CardFooter>
                 </Card>
 
-                {/* 4. TASAS Y MÁRGENES */}
+                {/* 5. TASAS Y MÁRGENES */}
                 <Card className="shadow-md">
                     <Form {...settingsForm}>
                         <form onSubmit={settingsForm.handleSubmit(handleSaveSettings)}>
                             <CardHeader>
                                 <CardTitle>Tasas y Márgenes</CardTitle>
-                                <CardDescription>Configuración económica global del taller.</CardDescription>
+                                <CardDescription>Configuración económica global del negocio.</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-6">
                                 <FormField control={settingsForm.control} name="autoUpdateBcv" render={({ field }) => (

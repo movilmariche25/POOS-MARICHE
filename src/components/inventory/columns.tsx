@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ArrowUpDown, MoreHorizontal, Edit, Trash2, TicketPercent, PackagePlus, Lock, Percent, Info } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Edit, Trash2, TicketPercent, PackagePlus, Lock, Percent, Info, Clock, AlertTriangle } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { ProductFormDialog } from "./product-form-dialog"
 import { useToast } from "@/hooks/use-toast"
@@ -34,6 +34,7 @@ import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { Checkbox } from "../ui/checkbox"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip"
+import { differenceInDays, parseISO } from "date-fns"
 
 const ActionsCell = ({ product }: { product: Product }) => {
     const { toast } = useToast();
@@ -130,6 +131,51 @@ export const columns: ColumnDef<Product>[] = [
     enableHiding: false,
   },
   {
+    id: "age",
+    header: () => <div className="text-center">Antigüedad</div>,
+    cell: ({ row, table }) => {
+        const product = row.original;
+        const showAging = (table.options.meta as any)?.showAging;
+        
+        if (!showAging) return null;
+        if (!product.createdAt) return <div className="text-center text-muted-foreground text-[10px] italic">N/A</div>;
+        
+        const days = differenceInDays(new Date(), parseISO(product.createdAt));
+        
+        let colorClass = "bg-green-100 text-green-700 border-green-200";
+        let label = "Nuevo";
+        let Icon = Clock;
+
+        if (days > 30) {
+            colorClass = "bg-destructive/10 text-destructive border-destructive/20 animate-pulse";
+            label = "Estancado";
+            Icon = AlertTriangle;
+        } else if (days > 15) {
+            colorClass = "bg-amber-100 text-amber-700 border-amber-200";
+            label = "Rotación Lenta";
+        }
+
+        return (
+            <TooltipProvider>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <div className={cn("flex flex-col items-center px-2 py-1 rounded-md border text-[10px] font-bold cursor-help", colorClass)}>
+                            <div className="flex items-center gap-1">
+                                <Icon className="w-3 h-3" />
+                                <span>{days === 0 ? 'Hoy' : `${days} d.`}</span>
+                            </div>
+                        </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="text-center">
+                        <p className="font-bold">{label}</p>
+                        <p className="text-xs">Ingresó al almacén hace {days} días.</p>
+                    </TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+        );
+    }
+  },
+  {
     accessorKey: "sku",
     header: "SKU",
   },
@@ -159,7 +205,7 @@ export const columns: ColumnDef<Product>[] = [
                 </div>
                 {compatibleModels.length > 0 && (
                     <div className="text-xs text-muted-foreground truncate" title={compatibleModels.join(', ')}>
-                        Compatible: {compatibleModels.join(', ')}
+                        Info Adicional: {compatibleModels.join(', ')}
                     </div>
                 )}
             </div>
@@ -235,17 +281,14 @@ export const columns: ColumnDef<Product>[] = [
                             {availableStock}
                         </Badge>
                     </TooltipTrigger>
-                    <TooltipContent className="p-3 space-y-1">
+                    <TooltipContent className="p-3 space-y-1" side="left">
                         <p className="font-bold text-xs">Desglose de Stock:</p>
                         <div className="text-[10px] space-y-0.5">
                             <div className="flex justify-between gap-4"><span>Físico en estante:</span><span className="font-mono">{product.stockLevel}</span></div>
-                            <div className="flex justify-between gap-4 text-amber-500"><span>Reservado (En taller):</span><span className="font-mono">-{product.reservedStock || 0}</span></div>
-                            <div className="flex justify-between gap-4 text-destructive"><span>Dañado/Garantía:</span><span className="font-mono">-{product.damagedStock || 0}</span></div>
+                            <div className="flex justify-between gap-4 text-amber-500"><span>Reservado / En uso:</span><span className="font-mono">-{product.reservedStock || 0}</span></div>
+                            <div className="flex justify-between gap-4 text-destructive"><span>Dañado / Devolución:</span><span className="font-mono">-{product.damagedStock || 0}</span></div>
                             <div className="border-t pt-1 flex justify-between gap-4 font-bold"><span>Disponible real:</span><span className="font-mono">{availableStock}</span></div>
                         </div>
-                        {availableStock < 0 && (
-                            <p className="text-[9px] text-destructive mt-2 italic">* Tienes más reparaciones que piezas físicas.</p>
-                        )}
                     </TooltipContent>
                 </Tooltip>
             </TooltipProvider>

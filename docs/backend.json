@@ -1,8 +1,9 @@
+
 {
   "entities": {
     "User": {
       "title": "User",
-      "description": "Perfil del usuario y configuración de su taller.",
+      "description": "Perfil del usuario y configuración de su negocio.",
       "type": "object",
       "properties": {
         "uid": { "type": "string" },
@@ -12,6 +13,7 @@
         "licenseExpiry": { "type": "string", "format": "date-time" },
         "isAdmin": { "type": "boolean" },
         "lastSessionId": { "type": "string" },
+        "enabledModules": { "type": "array", "items": { "type": "string" } },
         "createdAt": { "type": "string", "format": "date-time" }
       }
     },
@@ -36,10 +38,22 @@
         "id": { "type": "string" },
         "customerName": { "type": "string" },
         "customerID": { "type": "string" },
-        "customerAddress": { "type": "string" },
         "status": { "type": "string" },
         "amountPaid": { "type": "number" },
         "estimatedCost": { "type": "number" }
+      }
+    },
+    "Fiado": {
+      "title": "Fiado",
+      "description": "Registro de deuda de cliente.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerID": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "amountPaid": { "type": "number" },
+        "status": { "type": "string" }
       }
     },
     "Sale": {
@@ -50,16 +64,6 @@
         "totalAmount": { "type": "number" },
         "transactionDate": { "type": "string" }
       }
-    },
-    "DailyReconciliation": {
-      "title": "DailyReconciliation",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "date": { "type": "string" },
-        "totalSales": { "type": "number" },
-        "totalDifference": { "type": "number" }
-      }
     }
   },
   "auth": {
@@ -69,31 +73,23 @@
     "structure": [
       {
         "path": "/users/{userId}",
-        "definition": {
-          "entityName": "User",
-          "description": "Perfil del taller."
-        }
+        "definition": { "entityName": "User", "description": "Perfil del negocio." }
       },
       {
         "path": "/users/{userId}/products/{productId}",
-        "definition": {
-          "entityName": "Product",
-          "description": "Inventario del taller."
-        }
+        "definition": { "entityName": "Product", "description": "Inventario." }
       },
       {
         "path": "/users/{userId}/repair_jobs/{jobId}",
-        "definition": {
-          "entityName": "RepairJob",
-          "description": "Trabajos técnicos."
-        }
+        "definition": { "entityName": "RepairJob", "description": "Trabajos técnicos." }
+      },
+      {
+        "path": "/users/{userId}/fiados/{fiadoId}",
+        "definition": { "entityName": "Fiado", "description": "Créditos a clientes." }
       },
       {
         "path": "/users/{userId}/sale_transactions/{saleId}",
-        "definition": {
-          "entityName": "Sale",
-          "description": "Ventas y abonos."
-        }
+        "definition": { "entityName": "Sale", "description": "Ventas y abonos." }
       }
     ]
   }

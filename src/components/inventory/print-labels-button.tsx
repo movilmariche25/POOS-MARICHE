@@ -20,7 +20,7 @@ export const handlePrint = (
   onError: (message: string) => void
 ) => {
   const labelsHtml = renderToString(
-    <div className="grid grid-cols-4 gap-x-0 gap-y-0">
+    <div className="labels-grid">
       {products.map((product) => (
         <ProductLabel key={product.id} product={product} currency={currency} />
       ))}
@@ -30,55 +30,93 @@ export const handlePrint = (
   const fullHtml = `
         <html>
             <head>
-                <title>Etiquetas de Productos</title>
+                <title>Etiquetas de Productos - Poos Mariche</title>
                 <style>
                     @media print {
                         @page {
                             size: letter;
                             margin: 0.5in;
                         }
+                        body {
+                            -webkit-print-color-adjust: exact !important;
+                            print-color-adjust: exact !important;
+                        }
                     }
                     body {
                         margin: 0;
-                        font-family: sans-serif;
+                        padding: 0;
+                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                        background-color: #fff;
                     }
-                    .grid {
+                    .labels-grid {
                         display: grid;
-                    }
-                    .grid-cols-4 {
                         grid-template-columns: repeat(4, 1fr);
+                        gap: 0;
                     }
-                    .gap-x-0 { column-gap: 0; }
-                    .gap-y-0 { row-gap: 0; }
                     .label-container {
                         border: 1px dotted #ccc;
-                        padding: 8px 4px;
+                        padding: 10px 6px;
                         width: 1.75in;
-                        height: 1in;
+                        height: 1.1in;
                         box-sizing: border-box;
-                        overflow: hidden;
                         display: flex;
                         flex-direction: column;
                         justify-content: space-between;
                         align-items: center;
                         text-align: center;
+                        overflow: hidden;
+                        position: relative;
                     }
                     .product-name {
                         font-size: 10px;
-                        font-weight: bold;
-                        line-height: 1.2;
-                        margin-bottom: 4px;
-                        max-height: 3.6em; /* 3 lines */
+                        font-weight: 800;
+                        line-height: 1.1;
+                        margin: 0;
+                        color: #000;
+                        text-transform: uppercase;
+                        display: -webkit-box;
+                        -webkit-line-clamp: 2;
+                        -webkit-box-orient: vertical;
                         overflow: hidden;
+                    }
+                    .sku-box {
+                        border: 1px solid #000;
+                        padding: 1px 4px;
+                        margin: 4px 0;
+                        display: inline-block;
                     }
                     .product-sku {
                         font-size: 8px;
-                        margin: 2px 0;
-                    }
-                    .product-price {
-                        font-size: 12px;
+                        font-family: monospace;
                         font-weight: bold;
-                        margin: 0;
+                        letter-spacing: 1px;
+                    }
+                    .label-footer {
+                        width: 100%;
+                        border-top: 1px solid #eee;
+                        padding-top: 4px;
+                    }
+                    .price-usd-row {
+                        display: flex;
+                        justify-content: center;
+                        align-items: baseline;
+                        gap: 1px;
+                        color: #000;
+                    }
+                    .currency-symbol {
+                        font-size: 10px;
+                        font-weight: bold;
+                    }
+                    .price-value {
+                        font-size: 18px;
+                        font-weight: 900;
+                    }
+                    .ref-only-text {
+                        font-size: 6px;
+                        font-weight: bold;
+                        color: #666;
+                        margin-top: -2px;
+                        text-transform: uppercase;
                     }
                 </style>
             </head>
@@ -88,7 +126,6 @@ export const handlePrint = (
         </html>
     `;
 
-  // SOLUCIÓN IFRAME OCULTO
   const iframe = document.createElement('iframe');
   iframe.style.position = 'absolute';
   iframe.style.width = '0';
@@ -102,7 +139,6 @@ export const handlePrint = (
     doc.write(fullHtml);
     doc.close();
 
-    // Esperar a que el contenido cargue antes de imprimir
     setTimeout(() => {
         iframe.contentWindow?.focus();
         iframe.contentWindow?.print();
@@ -126,8 +162,8 @@ export function PrintLabelsButton({ table }: PrintLabelsButtonProps) {
         if(selectedProducts.length === 0) {
             toast({
                 variant: 'destructive',
-                title: 'No hay productos seleccionados',
-                description: 'Por favor, selecciona al menos un producto para imprimir etiquetas.'
+                title: 'Sin selección',
+                description: 'Marca los productos que deseas etiquetar en la tabla.'
             });
             return;
         }
@@ -142,7 +178,7 @@ export function PrintLabelsButton({ table }: PrintLabelsButtonProps) {
     }
 
     return (
-        <Button variant="outline" onClick={handlePrintClick} disabled={selectedRows.length === 0}>
+        <Button variant="outline" onClick={handlePrintClick} disabled={selectedRows.length === 0} className="font-bold">
             <Printer className="mr-2 h-4 w-4" />
             Imprimir Etiquetas ({selectedRows.length})
         </Button>

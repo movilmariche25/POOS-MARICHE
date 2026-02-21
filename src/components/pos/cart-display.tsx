@@ -10,7 +10,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { ScrollArea } from "../ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
-import { doc, runTransaction } from "firebase/firestore";
+import { doc, runTransaction, type DocumentSnapshot } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { format } from 'date-fns';
 import { cn } from "@/lib/utils";
@@ -90,31 +90,56 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
 
       try {
         await runTransaction(firestore, async (transaction) => {
-            const currentRepairJob = repairJobId && activeRepairJob ? (await transaction.get(repairJobRef!)).data() as RepairJob : null;
-            
-            for (const item of cartWithPrices) {
-                if (item.isCustom || item.productId.startsWith('abono-')) continue;
+            // 1. RECOLECCIÓN DE IDs PARA LECTURA
+            const productIdsToGet = new Set<string>();
+            const currentRepairJobSnap = repairJobId ? await transaction.get(repairJobRef!) : null;
+            const currentRepairJob = currentRepairJobSnap?.exists() ? currentRepairJobSnap.data() as RepairJob : null;
 
-                if (item.isRepair && currentRepairJob?.reservedParts && !currentRepairJob.partsConsumed) {
-                    // Solo descontamos stock si NO ha sido descontado antes (evita duplicados por abonos)
-                    for (const part of currentRepairJob.reservedParts) {
-                        const pRef = doc(firestore, 'users', user.uid, 'products', part.productId);
-                        const pDoc = await transaction.get(pRef);
-                        if (pDoc.exists()) {
-                            const data = pDoc.data() as Product;
-                            transaction.update(pRef, { 
-                                stockLevel: data.stockLevel - part.quantity,
-                                reservedStock: Math.max(0, (data.reservedStock || 0) - part.quantity)
-                            });
-                        }
-                    }
-                } else if (!item.isRepair) {
-                    const pRef = doc(firestore, 'users', user.uid, 'products', item.productId);
-                    const pDoc = await transaction.get(pRef);
-                    if (pDoc.exists()) {
-                        const data = pDoc.data() as Product;
-                        transaction.update(pRef, { stockLevel: data.stockLevel - item.quantity });
-                    }
+            if (currentRepairJob?.reservedParts && !currentRepairJob.partsConsumed) {
+                currentRepairJob.reservedParts.forEach(p => productIdsToGet.add(p.productId));
+            }
+            cartWithPrices.filter(i => !i.isRepair && !i.isCustom).forEach(i => productIdsToGet.add(i.productId));
+
+            // 2. LECTURAS (Todos los gets antes de cualquier write)
+            const productSnapshots = new Map<string, DocumentSnapshot>();
+            for (const id of Array.from(productIdsToGet)) {
+                const snap = await transaction.get(doc(firestore, 'users', user.uid, 'products', id));
+                productSnapshots.set(id, snap);
+            }
+
+            // 3. AGREGACIÓN DE CAMBIOS (Para evitar múltiples escrituras al mismo doc)
+            const stockDeductions = new Map<string, { stock: number, reserved: number }>();
+
+            // Deducciones por partes de reparación
+            if (currentRepairJob?.reservedParts && !currentRepairJob.partsConsumed) {
+                for (const part of currentRepairJob.reservedParts) {
+                    const current = stockDeductions.get(part.productId) || { stock: 0, reserved: 0 };
+                    stockDeductions.set(part.productId, { 
+                        stock: current.stock + part.quantity, 
+                        reserved: current.reserved + part.quantity 
+                    });
+                }
+            }
+
+            // Deducciones por productos directos en el carrito
+            for (const item of cartWithPrices) {
+                if (item.isRepair || item.isCustom || item.productId.startsWith('abono-')) continue;
+                const current = stockDeductions.get(item.productId) || { stock: 0, reserved: 0 };
+                stockDeductions.set(item.productId, { 
+                    stock: current.stock + item.quantity, 
+                    reserved: current.reserved 
+                });
+            }
+
+            // 4. ESCRITURAS (Solo después de todas las lecturas)
+            for (const [pid, ded] of Array.from(stockDeductions.entries())) {
+                const pSnap = productSnapshots.get(pid);
+                if (pSnap?.exists()) {
+                    const data = pSnap.data() as Product;
+                    transaction.update(pSnap.ref, { 
+                        stockLevel: data.stockLevel - ded.stock,
+                        reservedStock: Math.max(0, (data.reservedStock || 0) - ded.reserved)
+                    });
                 }
             }
 
@@ -146,7 +171,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                     amountPaid: Number(newPaidTotal.toFixed(2)), 
                     isPaid: isFullyPaid,
                     status: isFullyPaid ? 'Pagado' : currentRepairJob.status,
-                    partsConsumed: true // Marcamos que las piezas ya salieron del stock
+                    partsConsumed: true 
                 });
             }
 
@@ -179,7 +204,8 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
             repairJobId: repairJobId || null
         } as Sale;
       } catch (e: any) {
-        toast({ variant: "destructive", title: "Error", description: e.message });
+        console.error("Transaction Error:", e);
+        toast({ variant: "destructive", title: "Error de Transacción", description: "No se pudo completar la facturación múltiple." });
         return null;
       }
   };

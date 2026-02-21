@@ -24,16 +24,16 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import type { Product, ComboItem } from "@/lib/types";
+import type { Product, ComboItem, UserProfile } from "@/lib/types";
 import { useState, type ReactNode, useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useFirebase, setDocumentNonBlocking, useCollection, useMemoFirebase } from "@/firebase";
+import { useFirebase, setDocumentNonBlocking, useCollection, useMemoFirebase, useDoc } from "@/firebase";
 import { collection, doc } from "firebase/firestore";
 import { Checkbox } from "../ui/checkbox";
 import { Textarea } from "../ui/textarea";
 import { useCurrency } from "@/hooks/use-currency";
 import { Separator } from "../ui/separator";
-import { Info, PackagePlus, Search, Trash2, Percent, Lock, Check, ChevronsUpDown } from "lucide-react";
+import { Info, PackagePlus, Search, Trash2, Percent, Lock, Check, ChevronsUpDown, CalendarIcon, Gift } from "lucide-react";
 import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
@@ -63,6 +63,7 @@ const formSchema = z.object({
   isCombo: z.boolean().optional(),
   comboItems: z.array(comboItemSchema).optional(),
   isGiftable: z.boolean().optional(),
+  createdAt: z.string(),
 });
 
 type ProductFormData = z.infer<typeof formSchema>;
@@ -86,6 +87,12 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
   const { toast } = useToast();
   const { getDynamicPrice, convert, format: formatCurrency, getSymbol, profitMargin } = useCurrency();
+
+  const profileRef = useMemoFirebase(() => 
+    (firestore && user) ? doc(firestore, 'users', user.uid) : null,
+    [firestore, user?.uid]
+  );
+  const { data: profile } = useDoc<UserProfile>(profileRef);
 
   const productsCollection = useMemoFirebase(() => 
     (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null, 
@@ -120,6 +127,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
       isCombo: false,
       comboItems: [],
       isGiftable: false,
+      createdAt: new Date().toISOString().split('T')[0],
     },
   });
 
@@ -138,6 +146,8 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
   const comboItems = form.watch("comboItems");
   const isEditing = !!product;
   
+  const showAging = profile?.enabledModules?.includes('inventory_aging') ?? false;
+
   const comboCost = useMemo(() => {
     if (!isCombo || !comboItems || !allProducts) return 0;
     return comboItems.reduce((total, item) => {
@@ -175,7 +185,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
             form.reset({
               ...product,
               compatibleModels: product.compatibleModels ? product.compatibleModels.join(", ") : "",
-              hasPromoPrice: product.promoPrice && product.promoPrice > 0,
+              hasPromoPrice: !!(product.promoPrice && product.promoPrice > 0),
               promoPrice: product.promoPrice || 0,
               isCombo: product.isCombo || false,
               comboItems: product.comboItems || [],
@@ -185,6 +195,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
               fixedPrice: product.fixedPrice || 0,
               hasCustomMargin: product.hasCustomMargin || false,
               customMargin: String(product.customMargin || 0),
+              createdAt: product.createdAt || new Date().toISOString().split('T')[0],
             });
         } else {
             form.reset({
@@ -205,6 +216,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                 isCombo: false,
                 comboItems: [],
                 isGiftable: false,
+                createdAt: new Date().toISOString().split('T')[0],
             });
         }
     }
@@ -237,6 +249,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
         fixedPrice: values.isFixedPrice ? Number(values.fixedPrice) : 0,
         hasCustomMargin: values.hasCustomMargin || false,
         customMargin: values.hasCustomMargin ? Number(values.customMargin) : 0,
+        createdAt: values.createdAt,
     };
 
     if (product && product.id) {
@@ -256,7 +269,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[450px]">
         <DialogHeader>
           <DialogTitle>{isEditing ? 'Editar Producto' : 'Añadir Nuevo Producto'}</DialogTitle>
           <DialogDescription>
@@ -280,7 +293,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                 <FormItem>
                   <FormLabel>Nombre del Producto</FormLabel>
                   <FormControl>
-                    <Input placeholder="ej. Pantalla iPhone 14" {...field} />
+                    <Input placeholder="ej. Pan de Jamón, Pantalla iPhone 14" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -291,11 +304,10 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
               name="compatibleModels"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Modelos Compatibles</FormLabel>
+                  <FormLabel>Información Adicional / Modelos</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="ej. iPhone X, iPhone XS, A2097" {...field} />
+                    <Textarea placeholder="ej. Ingredientes, Notas de proveedor, Compatibilidad..." {...field} />
                   </FormControl>
-                  <FormDescription>Separa los modelos con comas.</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -333,9 +345,6 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                                  size="sm" 
                                  className="w-full justify-start text-xs"
                                  onClick={() => {
-                                    // El valor actual del input del Command se puede usar aquí si fuera necesario
-                                    // Pero el CommandInput de shadcn no expone fácilmente su valor interno
-                                    // Así que permitiremos que el usuario simplemente escriba en el input de abajo
                                     setCategoryPopoverOpen(false);
                                  }}
                                >
@@ -397,6 +406,29 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                 )}
               />
             </div>
+
+            {showAging && (
+                <div className="p-3 border rounded-md bg-muted/10">
+                    <FormField
+                        control={form.control}
+                        name="createdAt"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel className="flex items-center gap-2">
+                                    <CalendarIcon className="w-3.5 h-3.5" /> Fecha de Ingreso a Almacén
+                                </FormLabel>
+                                <FormControl>
+                                    <Input type="date" {...field} />
+                                </FormControl>
+                                <FormDescription className="text-[10px]">
+                                    Permite al sistema avisarte si la mercancía lleva mucho tiempo en estante.
+                                </FormDescription>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                </div>
+            )}
 
             <Separator />
             <div className="flex flex-wrap gap-4 pt-2">
@@ -614,7 +646,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                 <div className="p-3 rounded-md bg-muted/50 text-sm border-l-4 border-primary">
                     <div className="flex items-center gap-2 mb-2">
                         <Info className="w-4 h-4 text-primary"/>
-                        <p className="font-semibold">
+                        <p className="font-semibold text-[11px] uppercase tracking-wider">
                             {isFixedPrice ? "Precio Fijo Actual" : (hasCustomMargin ? "Precio con Margen Individual" : "Precio con Margen Global")}
                         </p>
                     </div>
@@ -712,7 +744,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
               )}
             />
             <DialogFooter>
-              <Button type="submit">{isEditing ? 'Guardar Cambios' : 'Añadir Producto'}</Button>
+              <Button type="submit" className="w-full">{isEditing ? 'Guardar Cambios' : 'Añadir Producto'}</Button>
             </DialogFooter>
           </form>
         </Form>

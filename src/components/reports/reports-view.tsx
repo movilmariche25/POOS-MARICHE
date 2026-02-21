@@ -1,3 +1,4 @@
+
 "use client"
 
 import type { Product, Sale, DailyReconciliation, RepairJob } from "@/lib/types"

@@ -1,14 +1,21 @@
+
 "use client";
 
 import { PageHeader } from "@/components/page-header";
 import { AnalysisView } from "@/components/analysis/analysis-view";
-import { useCollection, useFirebase, useMemoFirebase } from "@/firebase";
-import type { Product, Sale, RepairJob } from "@/lib/types";
-import { collection } from "firebase/firestore";
+import { useCollection, useFirebase, useMemoFirebase, useDoc } from "@/firebase";
+import type { Product, Sale, RepairJob, UserProfile } from "@/lib/types";
+import { collection, doc } from "firebase/firestore";
 
 export default function AnalysisPage() {
     const { firestore, user } = useFirebase();
     
+    const profileRef = useMemoFirebase(() => 
+        (firestore && user) ? doc(firestore, 'users', user.uid) : null,
+        [firestore, user?.uid]
+    );
+    const { data: profile } = useDoc<UserProfile>(profileRef);
+
     const salesCollection = useMemoFirebase(() => 
         (firestore && user) ? collection(firestore, "users", user.uid, "sale_transactions") : null, 
         [firestore, user?.uid]
@@ -36,6 +43,8 @@ export default function AnalysisPage() {
                     products={products || []} 
                     repairJobs={repairJobs || []}
                     isLoading={salesLoading || productsLoading || repairsLoading}
+                    enabledModules={profile?.enabledModules}
+                    isAdmin={profile?.isAdmin}
                 />
             </main>
         </>

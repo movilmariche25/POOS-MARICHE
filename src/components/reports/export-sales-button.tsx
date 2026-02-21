@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -58,7 +59,6 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
         return;
     }
     
-    // Map para consolidar actividad por ID de reparación
     const repairsActivity = new Map<string, {
         revenue: number,
         repairJob: RepairJob,
@@ -73,11 +73,9 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
         const otherItemsInSale = sale.items.filter(i => !i.isRepair);
         const otherItemsTotalRequested = otherItemsInSale.reduce((sum, i) => sum + (i.price * i.quantity), 0);
         
-        // Calculamos cuánto del pago total recibido corresponde a la reparación
         const totalReceivedInSale = sale.actualPaidAmount ?? sale.totalAmount;
         const repairRevenueInSale = Math.max(0, totalReceivedInSale - otherItemsTotalRequested);
 
-        // 1. Procesar productos estándar y artículos manuales
         otherItemsInSale.forEach(item => {
             const costPrice = item.isCustom 
                 ? (item.customCostPrice || 0) 
@@ -100,7 +98,6 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
             });
         });
 
-        // 2. Procesar abonos de reparación (Consolidar por Repair ID)
         const repairItem = sale.items.find(i => i.isRepair);
         const rId = sale.repairJobId || repairItem?.productId;
         
@@ -128,10 +125,8 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
         }
     });
 
-    // Convertir reparaciones consolidadas en líneas únicas de reporte
     const consolidatedRepairLines = Array.from(repairsActivity.values()).map(entry => {
         const repair = entry.repairJob;
-        // Costo total de todas las piezas (una sola vez)
         const totalPartsCost = (repair.reservedParts || []).reduce((sum, p) => sum + (p.costPrice * p.quantity), 0);
         
         const income = entry.revenue;
@@ -162,7 +157,6 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte_PoosMariche");
     
-    // Auto-ajuste de ancho de columnas
     const cols = Object.keys(dataToExport[0] || {});
     const colWidths = cols.map(col => ({
         wch: Math.max(...dataToExport.map(row => (row[col as keyof typeof row] ?? '').toString().length), col.length + 2)

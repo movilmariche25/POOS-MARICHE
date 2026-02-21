@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { Product, Sale, RepairJob } from "@/lib/types";
+import type { Product, Sale, RepairJob, UserModule } from "@/lib/types";
 import { useMemo, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
@@ -17,6 +17,8 @@ type AnalysisViewProps = {
     products: Product[];
     repairJobs: RepairJob[];
     isLoading?: boolean;
+    enabledModules?: UserModule[];
+    isAdmin?: boolean;
 };
 
 type ProductSaleInfo = {
@@ -42,9 +44,15 @@ type DeviceRepairInfo = {
 
 type DateRangeFilter = '7d' | '30d' | 'this_month' | 'all';
 
-export function AnalysisView({ sales, products, repairJobs, isLoading }: AnalysisViewProps) {
+export function AnalysisView({ sales, products, repairJobs, isLoading, enabledModules, isAdmin }: AnalysisViewProps) {
     const [dateRange, setDateRange] = useState<DateRangeFilter>('30d');
     const { format: formatCurrency, getSymbol } = useCurrency();
+
+    // Verificamos qué secciones mostrar basándonos en los módulos activos
+    // Se quita el "isAdmin ||" para que el admin vea la interfaz tal cual la configuró
+    const showRepairsAnalysis = (enabledModules?.includes('repairs') ?? true);
+    const showInventoryAnalysis = (enabledModules?.includes('inventory') ?? true);
+    const showSalesAnalysis = (enabledModules?.includes('pos') ?? true);
 
     const { topProfitableProducts, topSellingProducts, topUsedParts, topRepairedDevices } = useMemo(() => {
         if (isLoading || !sales || !products || !repairJobs) {
@@ -78,7 +86,7 @@ export function AnalysisView({ sales, products, repairJobs, isLoading }: Analysi
             : repairJobs;
 
 
-        // 1. Top Profitable Products from POS
+        // 1. Top Profitable Products from POS / Ventas
         const productSalesMap = new Map<string, ProductSaleInfo>();
         filteredSales
             .filter(s => s.status === 'completed')
@@ -103,6 +111,24 @@ export function AnalysisView({ sales, products, repairJobs, isLoading }: Analysi
                                     lowStockThreshold: product.lowStockThreshold
                                 });
                             }
+                        } else if (item.isCustom) {
+                            // Análisis para artículos manuales sin inventario
+                            const profit = (item.customPrice! - (item.customCostPrice || 0)) * item.quantity;
+                            const existing = productSalesMap.get(item.productId);
+                            if (existing) {
+                                existing.quantitySold += item.quantity;
+                                existing.totalProfit += profit;
+                            } else {
+                                productSalesMap.set(item.productId, {
+                                    productId: item.productId,
+                                    name: item.name,
+                                    sku: 'MANUAL',
+                                    quantitySold: item.quantity,
+                                    totalProfit: profit,
+                                    stockLevel: 0,
+                                    lowStockThreshold: 0
+                                });
+                            }
                         }
                     }
                 });
@@ -112,50 +138,55 @@ export function AnalysisView({ sales, products, repairJobs, isLoading }: Analysi
         const topSellingProducts = Array.from(productSalesMap.values()).sort((a,b) => b.quantitySold - a.quantitySold).slice(0, 10);
 
 
-        // 2. Top Used Parts in all repairs (reserved)
-        const partUsageMap = new Map<string, PartUsageInfo>();
-        filteredRepairJobs
-            .forEach(job => {
-                job.reservedParts?.forEach(part => {
-                    const existing = partUsageMap.get(part.productId);
+        // 2. Top Used Parts in all repairs (Si el módulo está activo)
+        const topUsedParts: PartUsageInfo[] = [];
+        if (showRepairsAnalysis) {
+            const partUsageMap = new Map<string, PartUsageInfo>();
+            filteredRepairJobs
+                .forEach(job => {
+                    job.reservedParts?.forEach(part => {
+                        const existing = partUsageMap.get(part.productId);
+                        if (existing) {
+                            existing.quantityUsed += part.quantity;
+                        } else {
+                            partUsageMap.set(part.productId, {
+                                productId: part.productId,
+                                name: part.productName,
+                                quantityUsed: part.quantity,
+                            });
+                        }
+                    });
+                });
+            topUsedParts.push(...Array.from(partUsageMap.values()).sort((a, b) => b.quantityUsed - a.quantityUsed).slice(0, 10));
+        }
+
+        // 3. Top Repaired Device Models (Si el módulo está activo)
+        const topRepairedDevices: DeviceRepairInfo[] = [];
+        if (showRepairsAnalysis) {
+            const deviceRepairMap = new Map<string, DeviceRepairInfo>();
+            filteredRepairJobs.forEach(job => {
+                const deviceName = `${job.deviceMake} ${job.deviceModel}`.trim();
+                if (deviceName) {
+                    const existing = deviceRepairMap.get(deviceName);
                     if (existing) {
-                        existing.quantityUsed += part.quantity;
+                        existing.count += 1;
                     } else {
-                        partUsageMap.set(part.productId, {
-                            productId: part.productId,
-                            name: part.productName,
-                            quantityUsed: part.quantity,
+                        deviceRepairMap.set(deviceName, {
+                            device: deviceName,
+                            count: 1,
                         });
                     }
-                });
-            });
-        
-        const topUsedParts = Array.from(partUsageMap.values()).sort((a, b) => b.quantityUsed - a.quantityUsed).slice(0, 10);
-
-        // 3. Top Repaired Device Models
-        const deviceRepairMap = new Map<string, DeviceRepairInfo>();
-        filteredRepairJobs.forEach(job => {
-            const deviceName = `${job.deviceMake} ${job.deviceModel}`.trim();
-            if (deviceName) {
-                const existing = deviceRepairMap.get(deviceName);
-                if (existing) {
-                    existing.count += 1;
-                } else {
-                    deviceRepairMap.set(deviceName, {
-                        device: deviceName,
-                        count: 1,
-                    });
                 }
-            }
-        });
-
-        const topRepairedDevices = Array.from(deviceRepairMap.values()).sort((a, b) => b.count - a.count).slice(0, 10);
+            });
+            topRepairedDevices.push(...Array.from(deviceRepairMap.values()).sort((a, b) => b.count - a.count).slice(0, 10));
+        }
 
         return { topProfitableProducts, topSellingProducts, topUsedParts, topRepairedDevices };
 
-    }, [sales, products, repairJobs, isLoading, dateRange]);
+    }, [sales, products, repairJobs, isLoading, dateRange, showRepairsAnalysis]);
 
-    const getStockBadge = (stock: number, threshold: number) => {
+    const getStockBadge = (stock: number, threshold: number, sku: string) => {
+        if (sku === 'MANUAL') return <Badge variant="outline">N/A</Badge>;
         if (stock <= 0) return <Badge variant="destructive">Agotado</Badge>;
         if (stock <= threshold) return <Badge className="bg-yellow-500 text-black">Bajo</Badge>;
         return <Badge className="bg-green-500 text-white">Saludable</Badge>;
@@ -163,7 +194,10 @@ export function AnalysisView({ sales, products, repairJobs, isLoading }: Analysi
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-end">
+            <div className="flex justify-between items-center">
+                <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">
+                    {isAdmin ? "Vista de Administrador Global" : "Análisis Personalizado para tu Negocio"}
+                </h2>
                 <Select value={dateRange} onValueChange={(value) => setDateRange(value as DateRangeFilter)}>
                     <SelectTrigger className="w-[200px]">
                         <SelectValue placeholder="Seleccionar rango de fechas" />
@@ -176,100 +210,115 @@ export function AnalysisView({ sales, products, repairJobs, isLoading }: Analysi
                     </SelectContent>
                 </Select>
             </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                 {/* SIEMPRE VISIBLE: Rentabilidad de Ventas */}
                  <Card className="lg:col-span-2">
                     <CardHeader>
-                        <CardTitle>Análisis de Rentabilidad por Producto (POS)</CardTitle>
-                        <CardDescription>Productos más rentables vendidos en el punto de venta, ordenados por ganancia total.</CardDescription>
+                        <CardTitle>Rentabilidad por Producto / Servicio</CardTitle>
+                        <CardDescription>Items que generan mayor margen de ganancia neta en tu negocio.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <AnalysisTable
-                            headers={["Producto", "Vendido", "Ganancia Est.", "Stock Actual"]}
+                            headers={["Producto / Concepto", "Cant. Vendida", "Ganancia Total Est.", "Estado Stock"]}
                             data={topProfitableProducts}
                             renderRow={(item: ProductSaleInfo) => (
                                 <TableRow key={item.productId}>
                                     <TableCell>
                                         <div className="font-medium">{item.name}</div>
-                                        <div className="text-xs text-muted-foreground">{item.sku}</div>
+                                        <div className="text-[10px] text-muted-foreground font-mono uppercase">{item.sku}</div>
                                     </TableCell>
                                      <TableCell className="text-center">{item.quantitySold}</TableCell>
-                                    <TableCell className="text-right font-medium text-green-600">{getSymbol()}{formatCurrency(item.totalProfit)}</TableCell>
-                                    <TableCell className="text-center">{getStockBadge(item.stockLevel, item.lowStockThreshold)}</TableCell>
+                                    <TableCell className="text-right font-bold text-green-600">
+                                        {getSymbol()}{formatCurrency(item.totalProfit)}
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        {getStockBadge(item.stockLevel, item.lowStockThreshold, item.sku)}
+                                    </TableCell>
                                 </TableRow>
                             )}
                             isLoading={isLoading}
-                            emptyMessage="No hay suficientes datos de ventas para este período."
+                            emptyMessage="No hay datos de ventas registrados para este período."
                         />
                     </CardContent>
                 </Card>
 
-                <Card className="lg:col-span-1">
-                    <CardHeader>
-                        <CardTitle>Piezas Más Usadas en Reparaciones</CardTitle>
-                        <CardDescription>Top 10 piezas más reservadas en trabajos de reparación.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <AnalysisTable
-                            headers={["Pieza", "Usada"]}
-                            data={topUsedParts}
-                            renderRow={(item: PartUsageInfo) => (
-                                <TableRow key={item.productId}>
-                                    <TableCell className="font-medium">{item.name}</TableCell>
-                                    <TableCell className="text-right">
-                                        <Badge variant="secondary">{item.quantityUsed}</Badge>
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            isLoading={isLoading}
-                            emptyMessage="No hay suficientes datos de reparaciones para este período."
-                        />
-                    </CardContent>
-                </Card>
-                <div className="lg:col-span-1 space-y-6 flex flex-col">
-                    <Card>
+                {/* CONDICIONAL: Solo si usa el módulo de Reparaciones */}
+                {showRepairsAnalysis && (
+                    <Card className="lg:col-span-1">
                         <CardHeader>
-                            <CardTitle>Productos Más Vendidos (por Cantidad)</CardTitle>
-                            <CardDescription>Top 10 productos más vendidos en el POS.</CardDescription>
+                            <CardTitle>Insumos más Utilizados</CardTitle>
+                            <CardDescription>Repuestos o materiales con mayor rotación en el área técnica.</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <AnalysisTable
-                                headers={["Producto", "Vendido"]}
+                                headers={["Insumo / Repuesto", "Uso (Cant.)"]}
+                                data={topUsedParts}
+                                renderRow={(item: PartUsageInfo) => (
+                                    <TableRow key={item.productId}>
+                                        <TableCell className="font-medium">{item.name}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Badge variant="secondary" className="font-bold">{item.quantityUsed}</Badge>
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                                isLoading={isLoading}
+                                emptyMessage="No hay registros de repuestos usados."
+                            />
+                        </CardContent>
+                    </Card>
+                )}
+
+                <div className={cn("space-y-6 flex flex-col", showRepairsAnalysis ? "lg:col-span-1" : "lg:col-span-2")}>
+                    {/* SIEMPRE VISIBLE: Rotación de Inventario */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Productos con Mayor Rotación</CardTitle>
+                            <CardDescription>Items que salen más rápido de tu inventario.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <AnalysisTable
+                                headers={["Producto", "Cantidad"]}
                                 data={topSellingProducts}
                                 renderRow={(item: ProductSaleInfo) => (
                                     <TableRow key={item.productId}>
                                         <TableCell className="font-medium">{item.name}</TableCell>
                                         <TableCell className="text-right">
-                                            <Badge>{item.quantitySold}</Badge>
+                                            <Badge className="bg-primary">{item.quantitySold}</Badge>
                                         </TableCell>
                                     </TableRow>
                                 )}
                                 isLoading={isLoading}
-                                emptyMessage="No hay suficientes datos de ventas."
+                                emptyMessage="Sin datos de rotación."
                             />
                         </CardContent>
                     </Card>
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Modelos Más Reparados</CardTitle>
-                            <CardDescription>Top 10 modelos de dispositivos que más ingresan al taller.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <AnalysisTable
-                                headers={["Dispositivo", "Frecuencia"]}
-                                data={topRepairedDevices}
-                                renderRow={(item: DeviceRepairInfo) => (
-                                    <TableRow key={item.device}>
-                                        <TableCell className="font-medium">{item.device}</TableCell>
-                                        <TableCell className="text-right">
-                                            <Badge variant="outline">{item.count}</Badge>
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                                isLoading={isLoading}
-                                emptyMessage="No hay suficientes datos de reparaciones para este período."
-                            />
-                        </CardContent>
-                    </Card>
+
+                    {/* CONDICIONAL: Solo si usa el módulo de Reparaciones */}
+                    {showRepairsAnalysis && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Frecuencia de Modelos</CardTitle>
+                                <CardDescription>Modelos de equipos que más ingresan a tu taller.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <AnalysisTable
+                                    headers={["Modelo de Equipo", "Casos"]}
+                                    data={topRepairedDevices}
+                                    renderRow={(item: DeviceRepairInfo) => (
+                                        <TableRow key={item.device}>
+                                            <TableCell className="font-medium">{item.device}</TableCell>
+                                            <TableCell className="text-right">
+                                                <Badge variant="outline" className="font-bold">{item.count}</Badge>
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                    isLoading={isLoading}
+                                    emptyMessage="Sin historial técnico aún."
+                                />
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
             </div>
         </div>
@@ -311,8 +360,8 @@ function AnalysisTable<T>({ headers, data, renderRow, isLoading, emptyMessage = 
                 <TableRow>
                     {headers.map((header, index) => (
                         <TableHead key={header} className={cn(
-                            (header.startsWith("Vendido") || header.startsWith("Stock")) && "text-center",
-                            (header.startsWith("Ganancia") || header.startsWith("Usada") || header.startsWith("Frecuencia")) && "text-right"
+                            (header.includes("Cant") || header.includes("Stock")) && "text-center",
+                            (header.includes("Ganancia") || header.includes("Uso") || header.includes("Casos") || header.includes("Cantidad")) && "text-right"
                         )}>{header}</TableHead>
                     ))}
                 </TableRow>
@@ -323,5 +372,3 @@ function AnalysisTable<T>({ headers, data, renderRow, isLoading, emptyMessage = 
         </Table>
     );
 }
-
-    

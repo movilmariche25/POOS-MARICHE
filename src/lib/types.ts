@@ -26,6 +26,7 @@ export type Product = {
   fixedPrice?: number;
   hasCustomMargin?: boolean;
   customMargin?: number;
+  createdAt?: string; // Fecha de ingreso al inventario
 };
 
 export type ReservedPart = {
@@ -58,7 +59,31 @@ export type RepairJob = {
   reservedParts?: ReservedPart[];
   completedAt?: string;
   warrantyEndDate?: string;
-  partsConsumed?: boolean; // Nueva bandera para evitar doble deducción de stock
+  partsConsumed?: boolean; 
+};
+
+export type FiadoStatus = 'Pendiente' | 'Pagado';
+
+export type FiadoItem = {
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: number;
+};
+
+export type Fiado = {
+  id?: string;
+  customerName: string;
+  customerID: string;
+  customerPhone: string;
+  concept: string; // Descripción de por qué se fío (ej: Pantalla + Mica)
+  totalAmount: number;
+  amountPaid: number;
+  status: FiadoStatus;
+  createdAt: string;
+  dueDate?: string; // Fecha límite de pago (Alerta)
+  notes?: string;
+  items?: FiadoItem[];
 };
 
 export type CartItem = {
@@ -92,6 +117,7 @@ export type Sale = {
   id?: string;
   items: (CartItem & { price: number })[];
   repairJobId?: string;
+  fiadoId?: string; // Vinculación con fiados
   consumedParts?: ReservedPart[];
   subtotal: number;
   discount: number;
@@ -141,13 +167,16 @@ export type AppSettings = {
     lastUpdated?: string;
 };
 
-export type UserModule = 'inventory' | 'pos' | 'repairs' | 'reports' | 'analysis';
+export type UserModule = 'inventory' | 'pos' | 'repairs' | 'reports' | 'analysis' | 'fiados' | 'inventory_aging';
 
 export type UserProfile = {
   id?: string;
   uid: string;
   email: string;
   businessName?: string;
+  businessAddress?: string;
+  businessRIF?: string;
+  showInfoOnReceipt?: boolean;
   licenseStatus: 'active' | 'expired' | 'trial';
   licenseExpiry: string;
   createdAt: string;

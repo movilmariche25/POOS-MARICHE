@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useCurrency } from "@/hooks/use-currency";
@@ -25,9 +24,18 @@ export function ExchangeRateReminder() {
     const [isOnline, setIsOnline] = useState(true);
 
     useEffect(() => {
+        // Detectar estado de conexión inicial
         setIsOnline(navigator.onLine);
-        const handleOnline = () => setIsOnline(true);
-        const handleOffline = () => setIsOnline(false);
+
+        const handleOnline = () => {
+            setIsOnline(true);
+            toast({ title: "Conexión Restaurada", description: "El sistema está sincronizando datos con la nube.", variant: "default" });
+        };
+        
+        const handleOffline = () => {
+            setIsOnline(false);
+            toast({ title: "Modo Offline Activo", description: "Puedes seguir trabajando. Los cambios se guardarán localmente.", variant: "destructive" });
+        };
 
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
@@ -36,7 +44,7 @@ export function ExchangeRateReminder() {
             window.removeEventListener('online', handleOnline);
             window.removeEventListener('offline', handleOffline);
         };
-    }, []);
+    }, [toast]);
 
     const fetchApiRate = async () => {
         if (typeof window === 'undefined' || !navigator.onLine) return null;
@@ -94,7 +102,7 @@ export function ExchangeRateReminder() {
         };
 
         checkAndSync();
-        const interval = setInterval(checkAndSync, 3600000);
+        const interval = setInterval(checkAndSync, 3600000); // Revisar cada hora
         return () => clearInterval(interval);
 
     }, [settings?.autoUpdateBcv, isLoading, firestore, user?.uid, toast]);
@@ -135,12 +143,13 @@ export function ExchangeRateReminder() {
         <div className="flex flex-col border-b sticky top-0 z-[40] bg-white shadow-sm">
             <div className="bg-primary/5 px-4 py-2 flex flex-wrap items-center justify-between gap-y-2">
                 <div className="flex items-center gap-4 sm:gap-8 overflow-x-auto no-scrollbar">
+                    {/* INDICADOR DE ESTADO DE RED */}
                     <div className={cn(
-                        "flex items-center gap-1.5 px-2 py-1 rounded-md transition-all shrink-0",
-                        isOnline ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700 animate-pulse border border-red-200"
+                        "flex items-center gap-1.5 px-2 py-1 rounded-md transition-all shrink-0 border",
+                        isOnline ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 animate-pulse border-red-200 shadow-[0_0_10px_rgba(220,38,38,0.3)]"
                     )}>
                         {isOnline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-                        <span className="text-[10px] font-bold uppercase tracking-wider">
+                        <span className="text-[10px] font-black uppercase tracking-wider">
                             {isOnline ? "En Línea" : "Sin Internet"}
                         </span>
                     </div>

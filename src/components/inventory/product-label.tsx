@@ -10,16 +10,30 @@ type ProductLabelProps = {
 export function ProductLabel({ product, currency }: ProductLabelProps) {
     const { format, getSymbol, getFinalPrice } = currency;
     
-    let price = getFinalPrice(product);
+    let priceUsd = getFinalPrice(product);
     if (product.promoPrice && product.promoPrice > 0) {
-        price = product.promoPrice;
+        priceUsd = product.promoPrice;
     }
 
     return (
         <div className="label-container">
-            <p className="product-name">{product.name}</p>
-            <p className="product-sku">{product.sku}</p>
-            <p className="product-price">{getSymbol()}{format(price)}</p>
+            <div className="label-header">
+                <p className="product-name">{product.name}</p>
+            </div>
+            <div className="label-middle">
+                <div className="sku-box">
+                    <span className="product-sku">{product.sku}</span>
+                </div>
+            </div>
+            <div className="label-footer">
+                <div className="price-usd-row">
+                    <span className="currency-symbol">{getSymbol('USD')}</span>
+                    <span className="price-value">{format(priceUsd)}</span>
+                </div>
+                <div className="ref-only-text">
+                    PRECIO REF. EN DIVISAS
+                </div>
+            </div>
         </div>
     )
 }

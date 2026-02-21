@@ -58,7 +58,8 @@ export function CustomerTicket({ repairJob, businessName }: RepairTicketProps) {
 
             <div className="disclaimer-section mt-6 italic">
                 <p><span className="bold-header">GARANTÍA:</span> 4 DÍAS POR EL SERVICIO REALIZADO.</p>
-                <p><span>RETIRO:</span> 7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL TALLER NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.</p>
+                <p><span>RETIRO:</span> 7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL NEGOCIO NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.</p>
+                <p className="mt-2"><span className="bold-header">AVISO:</span> NO NOS HACEMOS RESPONSABLES POR TELÉFONOS MOJADOS O QUE SUFRIERON CAÍDAS.</p>
                 <p className="text-center uppercase mt-4 bold-header">INDISPENSABLE PRESENTAR TICKET</p>
             </div>
             <div className="text-center mt-6 footer-thanks">
@@ -92,20 +93,10 @@ export function InternalTicket({ repairJob }: RepairTicketProps) {
                 <div className="balance-box mt-4 bold-header">SALDO: ${saldo.toFixed(2)}</div>
             </div>
 
-            <div className="notes-section mt-6 mb-10">
-                <p className="bold-header">OBSERVACIONES TÉCNICAS:</p>
-                <div className="line-spacer"></div>
-                <div className="line-spacer"></div>
-                <div className="line-spacer"></div>
-            </div>
-
-            <div className="signatures-container">
-                <div className="signature-box">
-                    <p className="bold-header">FIRMA RECEPCIÓN</p>
-                </div>
-
-                <div className="signature-box mt-20">
-                    <p className="bold-header">FIRMA ENTREGA</p>
+            <div className="signatures-container mt-12">
+                <div className="signature-box" style={{ borderTop: '1px solid #000', paddingTop: '8px' }}>
+                    <p className="bold-header">FIRMA CLIENTE</p>
+                    <p className="text-xs mt-1">ACEPTO TÉRMINOS Y GARANTÍA</p>
                 </div>
             </div>
         </div>
@@ -203,13 +194,14 @@ const printStyles = `
         height: 1px;
         width: 100%;
     }
+    .mt-1 { margin-top: 0.25rem; }
     .mt-2 { margin-top: 0.5rem; }
     .mt-4 { margin-top: 1rem; }
     .mt-6 { margin-top: 1.5rem; }
-    .mt-20 { margin-top: 5rem; }
+    .mt-12 { margin-top: 3rem; }
+    .mb-2 { margin-bottom: 0.5rem; }
     .mb-3 { margin-bottom: 0.75rem; }
     .mb-4 { margin-bottom: 1rem; }
-    .mb-10 { margin-bottom: 2.5rem; }
 `;
 
 function iframePrint(html: string) {

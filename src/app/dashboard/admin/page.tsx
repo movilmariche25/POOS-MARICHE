@@ -35,10 +35,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Edit, Mail, Megaphone, Save, Trash2, Loader2, Circle, Users, LayoutGrid } from "lucide-react";
+import { Edit, Mail, Megaphone, Save, Trash2, Loader2, Circle, Users, LayoutGrid, AlertTriangle, RotateCcw } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
+import { AdminAuthDialog } from "@/components/admin-auth-dialog";
 
 const ALL_MODULES: { id: UserModule, label: string }[] = [
     { id: 'inventory', label: 'Inventario' },
@@ -46,6 +47,8 @@ const ALL_MODULES: { id: UserModule, label: string }[] = [
     { id: 'repairs', label: 'Reparaciones' },
     { id: 'reports', label: 'Reportes' },
     { id: 'analysis', label: 'Análisis' },
+    { id: 'fiados', label: 'Fiados / Créditos' },
+    { id: 'inventory_aging', label: 'Antigüedad / Vencimiento' },
 ];
 
 function AnnouncementEditor() {
@@ -76,14 +79,14 @@ function AnnouncementEditor() {
             active,
             updatedAt: new Date().toISOString()
         }, { merge: true });
-        toast({ title: "Anuncio Actualizado", description: "Todos los usuarios verán este mensaje." });
+        toast({ title: "Anuncio Actualizado", description: "Todos los negocios verán este mensaje." });
     };
 
     return (
         <Card className="border-primary/20 shadow-lg">
             <CardHeader className="bg-primary/5">
                 <CardTitle className="flex items-center gap-2 text-primary"><Megaphone className="w-5 h-5"/> Anuncio Global</CardTitle>
-                <CardDescription>Envía un mensaje a todos los talleres registrados.</CardDescription>
+                <CardDescription>Envía un mensaje a todos los negocios registrados.</CardDescription>
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
                 <div className="space-y-2">
@@ -143,11 +146,10 @@ function UserEditDialog({ user, onSave, isOpen, onOpenChange }: { user: UserProf
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle>Gestionar Taller: {user.email}</DialogTitle>
+                    <DialogTitle>Gestionar Negocio: {user.email}</DialogTitle>
                     <DialogDescription>Modifica los datos del perfil, licencia y módulos habilitados.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-6 py-4">
-                    {/* Perfil y Licencia */}
                     <div className="space-y-4">
                         <div className="space-y-2">
                             <Label>Nombre del Negocio</Label>
@@ -178,11 +180,10 @@ function UserEditDialog({ user, onSave, isOpen, onOpenChange }: { user: UserProf
 
                     <Separator />
 
-                    {/* Gestión de Módulos */}
                     <div className="space-y-4">
                         <div className="flex items-center gap-2 text-primary font-bold">
                             <LayoutGrid className="w-4 h-4" />
-                            <span>Módulos Habilitados para este Taller</span>
+                            <span>Módulos Habilitados para este Negocio</span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {ALL_MODULES.map((module) => (
@@ -196,9 +197,6 @@ function UserEditDialog({ user, onSave, isOpen, onOpenChange }: { user: UserProf
                                 </div>
                             ))}
                         </div>
-                        <p className="text-[10px] text-muted-foreground italic">
-                            * Deshabilitar un módulo ocultará la pestaña correspondiente en la barra lateral de este usuario.
-                        </p>
                     </div>
                 </div>
                 <DialogFooter>
@@ -229,6 +227,48 @@ export default function AdminPage() {
         toast({ title: "Usuario Actualizado", description: "Los cambios se han guardado correctamente." });
     };
 
+    const handleResetUserData = async (userId: string, email: string) => {
+        if (!firestore || isDeleting) return;
+        
+        setIsDeleting(true);
+        try {
+            const batch = writeBatch(firestore);
+            const subcollections = [
+                'products', 
+                'repair_jobs', 
+                'sale_transactions', 
+                'daily_reconciliations', 
+                'app-settings', 
+                'held_sales',
+                'fiados'
+            ];
+
+            for (const sub of subcollections) {
+                const colRef = collection(firestore, 'users', userId, sub);
+                const snapshot = await getDocs(colRef);
+                snapshot.forEach(d => {
+                    batch.delete(doc(firestore, 'users', userId, sub, d.id));
+                });
+            }
+
+            await batch.commit();
+
+            toast({ 
+                title: "Datos Reiniciados", 
+                description: `Se han borrado todos los registros operativos de ${email}. El negocio está como nuevo.` 
+            });
+        } catch (error: any) {
+            console.error("Error resetting user data:", error);
+            toast({ 
+                variant: "destructive",
+                title: "Error al reiniciar", 
+                description: "No se pudieron borrar todos los datos." 
+            });
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
     const handleDeleteUserWithData = async (userId: string, email: string) => {
         if (!firestore || isDeleting) return;
         
@@ -241,7 +281,8 @@ export default function AdminPage() {
                 'sale_transactions', 
                 'daily_reconciliations', 
                 'app-settings', 
-                'held_sales'
+                'held_sales',
+                'fiados'
             ];
 
             for (const sub of subcollections) {
@@ -258,7 +299,7 @@ export default function AdminPage() {
             await batch.commit();
 
             toast({ 
-                title: "Taller Eliminado", 
+                title: "Negocio Eliminado", 
                 description: `Se han borrado el acceso y todos los datos asociados a ${email}.` 
             });
         } catch (error: any) {
@@ -266,7 +307,7 @@ export default function AdminPage() {
             toast({ 
                 variant: "destructive",
                 title: "Error al eliminar", 
-                description: "No se pudieron borrar todos los datos. El perfil ha sido mantenido por seguridad." 
+                description: "No se pudieron borrar todos los datos." 
             });
         } finally {
             setIsDeleting(false);
@@ -304,7 +345,7 @@ export default function AdminPage() {
                     <div className="md:col-span-2 grid gap-4 grid-cols-2 sm:grid-cols-4">
                         <Card>
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-[10px] uppercase font-bold text-muted-foreground">Total Talleres</CardTitle>
+                                <CardTitle className="text-[10px] uppercase font-bold text-muted-foreground">Total Negocios</CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <div className="text-2xl font-bold">{users?.length || 0}</div>
@@ -360,7 +401,7 @@ export default function AdminPage() {
                             <TableHeader>
                                 <TableRow className="bg-slate-50">
                                     <TableHead className="w-[100px]">Estado</TableHead>
-                                    <TableHead>Taller / Correo</TableHead>
+                                    <TableHead>Negocio / Correo</TableHead>
                                     <TableHead>Plan / Licencia</TableHead>
                                     <TableHead>Última Actividad</TableHead>
                                     <TableHead className="text-right">Acciones</TableHead>
@@ -387,7 +428,7 @@ export default function AdminPage() {
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col">
-                                                    <span className="font-bold text-sm">{user.businessName || "Sin nombre configurado"}</span>
+                                                    <span className="font-bold text-sm">{user.businessName || "Sin nombre"}</span>
                                                     <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                                                         <Mail className="w-3 h-3" /> {user.email}
                                                     </span>
@@ -413,9 +454,6 @@ export default function AdminPage() {
                                                 <div className="text-xs font-medium">
                                                     {user.updatedAt ? format(parseISO(user.updatedAt), "dd/MM/yy - hh:mm a", { locale: es }) : 'Nunca'}
                                                 </div>
-                                                <div className="text-[9px] text-muted-foreground font-mono">
-                                                    ID: {user.lastSessionId?.slice(0, 8)}...
-                                                </div>
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-2">
@@ -423,26 +461,31 @@ export default function AdminPage() {
                                                         <Edit className="w-3.5 h-3.5 mr-1.5" /> Gestionar
                                                     </Button>
                                                     
+                                                    {/* El reinicio de datos está habilitado para todos los usuarios, incluyendo el admin logueado */}
+                                                    <AdminAuthDialog onAuthorized={() => handleResetUserData(user.uid, user.email)}>
+                                                        <Button variant="ghost" size="sm" className="h-8 text-amber-600" title="Reiniciar Datos (Wipe)">
+                                                            <AlertTriangle className="w-3.5 h-3.5" />
+                                                        </Button>
+                                                    </AdminAuthDialog>
+
+                                                    {/* Solo permitimos borrar la CUENTA de otros usuarios, no de nosotros mismos */}
                                                     {user.uid !== currentUser?.uid && (
                                                         <AlertDialog>
                                                             <AlertDialogTrigger asChild>
-                                                                <Button variant="ghost" size="sm" className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+                                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive">
                                                                     <Trash2 className="w-3.5 h-3.5" />
                                                                 </Button>
                                                             </AlertDialogTrigger>
                                                             <AlertDialogContent>
                                                                 <AlertDialogHeader>
-                                                                    <AlertDialogTitle>¿Eliminar taller permanentemente?</AlertDialogTitle>
-                                                                    <AlertDialogDescription className="space-y-3">
-                                                                        <p>Se borrarán todos los datos asociados a <strong>{user.email}</strong> incluyendo inventario, ventas y reparaciones.</p>
-                                                                        <p className="font-bold text-destructive">Esta acción no se puede deshacer.</p>
-                                                                    </AlertDialogDescription>
+                                                                    <AlertDialogTitle>¿Eliminar negocio permanentemente?</AlertDialogTitle>
+                                                                    <AlertDialogDescription>Se borrarán el acceso y todos los datos asociados a {user.email}.</AlertDialogDescription>
                                                                 </AlertDialogHeader>
                                                                 <AlertDialogFooter>
                                                                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
                                                                     <AlertDialogAction 
                                                                         onClick={() => handleDeleteUserWithData(user.uid, user.email)}
-                                                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                                                        className="bg-destructive"
                                                                         disabled={isDeleting}
                                                                     >
                                                                         Eliminar Todo

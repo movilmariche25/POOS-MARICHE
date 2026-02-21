@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo } from "react";
@@ -30,7 +31,6 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
     });
 
     const stats = useMemo(() => {
-        // Validación de seguridad para evitar errores de "find of undefined"
         if (!date?.from || !sales || !repairJobs || !products) {
             return { totalSales: 0, totalProfit: 0, totalReconciliationDifference: 0, adjustedTotalSales: 0, transactionCount: 0 };
         }
@@ -49,17 +49,14 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
              return reconDate >= from && reconDate <= to;
         });
 
-        // 1. Ingresos totales reales recibidos en el periodo
         const totalIncome = filteredSales.reduce((sum, s) => sum + (s.actualPaidAmount ?? s.totalAmount), 0);
 
-        // 2. Cálculo de Costos de Productos y Ventas Rápidas
         let totalProductCosts = 0;
         const involvedRepairs = new Set<string>();
 
         filteredSales.forEach(sale => {
             sale.items.forEach(item => {
                 if (item.isRepair || sale.repairJobId) {
-                    // Si es reparación, solo guardamos el ID para calcular su costo después (consolidado)
                     involvedRepairs.add(sale.repairJobId || item.productId);
                 } else if (item.isCustom) {
                     totalProductCosts += (item.customCostPrice || 0) * item.quantity;
@@ -70,7 +67,6 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
             });
         });
 
-        // 3. Cálculo de Costos de Repuestos de Reparaciones (Una sola vez por trabajo involucrado)
         let totalRepairPartCosts = 0;
         involvedRepairs.forEach(rid => {
             const repair = repairJobs.find(rj => rj.id === rid);

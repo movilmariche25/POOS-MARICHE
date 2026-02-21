@@ -65,7 +65,7 @@ export function AuthView() {
             <AppLogo className="w-16 h-16 text-primary" />
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight">
-            {isLogin ? "Poos Mariche" : "Registro de Taller"}
+            {isLogin ? "Poos Mariche" : "Registro de Negocio"}
           </CardTitle>
           <CardDescription>
             {isLogin 
@@ -126,7 +126,7 @@ export function AuthView() {
                 }}
                 disabled={isLoading}
               >
-                {isLogin ? "Registrar taller" : "Iniciar sesión"}
+                {isLogin ? "Registrar negocio" : "Iniciar sesión"}
               </button>
             </div>
           </CardFooter>

@@ -4,15 +4,14 @@
 import React, { Suspense, useState, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
-import { PlusCircle, Trash2, Calculator } from "lucide-react";
+import { PlusCircle, Trash2, Calculator, Clock } from "lucide-react";
 import { DataTable } from "@/components/data-table";
 import { columns } from "@/components/inventory/columns";
 import { ProductFormDialog } from "@/components/inventory/product-form-dialog";
-import type { Product } from '@/lib/types';
+import type { Product, UserProfile } from '@/lib/types';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useCollection, useFirebase, useMemoFirebase } from '@/firebase';
+import { useCollection, useFirebase, useMemoFirebase, useDoc } from '@/firebase';
 import { collection, writeBatch, doc } from 'firebase/firestore';
-import { useSearchParams } from 'next/navigation';
 import type { Table as TanstackTable, FilterFn } from '@tanstack/react-table';
 import {
   AlertDialog,
@@ -29,8 +28,9 @@ import { useToast } from '@/hooks/use-toast';
 import { PrintLabelsButton } from '@/components/inventory/print-labels-button';
 import { PriceCalculatorDialog } from '@/components/tools/price-calculator-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { differenceInDays, parseISO } from 'date-fns';
+import { cn } from "@/lib/utils";
 
-// Filtro personalizado para buscar en múltiples campos del producto
 const productFilterFn: FilterFn<Product> = (row, columnId, value) => {
     const term = String(value).toLowerCase();
     const p = row.original;
@@ -99,15 +99,23 @@ function BulkDeleteButton({ table }: { table: TanstackTable<Product> }) {
 
 function InventoryContent() {
     const { firestore, user } = useFirebase();
+    
+    const profileRef = useMemoFirebase(() => 
+        (firestore && user) ? doc(firestore, 'users', user.uid) : null,
+        [firestore, user?.uid]
+    );
+    const { data: profile } = useDoc<UserProfile>(profileRef);
+    
     const productsCollection = useMemoFirebase(() =>
         (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null,
         [firestore, user?.uid]
     );
     const { data: products, isLoading } = useCollection<Product>(productsCollection);
 
-    const searchParams = useSearchParams();
-    const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
+    const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out' | 'old'>('all');
     const [categoryFilter, setCategoryFilter] = useState('all');
+
+    const showAging = profile?.enabledModules?.includes('inventory_aging') ?? false;
 
     const categories = useMemo(() => {
         if (!products) return [];
@@ -120,16 +128,24 @@ function InventoryContent() {
         if (!products) return [];
         let temp = products;
         if (categoryFilter !== 'all') temp = temp.filter(p => p.category === categoryFilter);
+        
         if (stockFilter === 'low') temp = temp.filter(p => {
             const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
             return available > 0 && available <= p.lowStockThreshold;
         });
+        
         if (stockFilter === 'out') temp = temp.filter(p => {
             const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
             return available <= 0;
         });
+
+        if (stockFilter === 'old' && showAging) temp = temp.filter(p => {
+            if (!p.createdAt) return false;
+            return differenceInDays(new Date(), parseISO(p.createdAt)) > 15;
+        });
+
         return temp;
-    }, [products, stockFilter, categoryFilter]);
+    }, [products, stockFilter, categoryFilter, showAging]);
 
     return (
         <>
@@ -141,21 +157,33 @@ function InventoryContent() {
             </PageHeader>
             <main className="flex-1 p-4 sm:p-6">
                 <Tabs value={stockFilter} onValueChange={(v) => setStockFilter(v as any)} className="mb-4">
-                    <TabsList><TabsTrigger value="all">Todos</TabsTrigger><TabsTrigger value="low">Stock Bajo</TabsTrigger><TabsTrigger value="out">Sin Stock</TabsTrigger></TabsList>
+                    <TabsList className={cn(
+                        "grid w-full md:w-[600px]",
+                        showAging ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2 md:grid-cols-3"
+                    )}>
+                        <TabsTrigger value="all">Todos</TabsTrigger>
+                        <TabsTrigger value="low">Stock Bajo</TabsTrigger>
+                        <TabsTrigger value="out">Sin Stock</TabsTrigger>
+                        {showAging && (
+                            <TabsTrigger value="old" className="text-amber-600 font-bold">
+                                <Clock className="w-3.5 h-3.5 mr-1.5" /> Antiguos (+15d)
+                            </TabsTrigger>
+                        )}
+                    </TabsList>
                 </Tabs>
                 <DataTable 
                     columns={columns} 
                     data={filteredProducts}
                     isLoading={isLoading}
-                    filterPlaceholder="Buscar productos o modelos compatibles..."
-                    meta={{ allProducts: products || [] }}
+                    filterPlaceholder="Buscar productos o descripción..."
+                    meta={{ allProducts: products || [], showAging }}
                     globalFilterFn={productFilterFn}
                 >
                     {(table) => (
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                                <SelectTrigger className="w-[200px]"><SelectValue placeholder="Categoría" /></SelectTrigger>
-                                <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c === 'all' ? 'Todas' : c}</SelectItem>)}</SelectContent>
+                                <SelectTrigger className="w-[180px]"><SelectValue placeholder="Categoría" /></SelectTrigger>
+                                <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c === 'all' ? 'Todas las Categorías' : c}</SelectItem>)}</SelectContent>
                             </Select>
                             <PrintLabelsButton table={table} />
                             <BulkDeleteButton table={table} />

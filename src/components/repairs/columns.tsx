@@ -2,7 +2,7 @@
 "use client"
 
 import type { ColumnDef } from "@tanstack/react-table"
-import type { RepairJob, RepairStatus, UserProfile } from "@/lib/types"
+import type { RepairJob, RepairStatus, UserProfile, Product } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -69,20 +69,28 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
             await runTransaction(firestore, async (transaction) => {
                 const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJob.id!);
 
+                // 1. LECTURAS PRIMERO
+                const productSnaps = new Map();
                 if (repairJob.reservedParts && repairJob.reservedParts.length > 0) {
                     for (const part of repairJob.reservedParts) {
                         const productRef = doc(firestore, 'users', user.uid, 'products', part.productId);
-                        const productDoc = await transaction.get(productRef);
+                        const snap = await transaction.get(productRef);
+                        productSnaps.set(part.productId, snap);
+                    }
+                }
 
-                        if (productDoc.exists()) {
-                            const productData = productDoc.data();
-                            
+                // 2. ESCRITURAS DESPUÉS
+                if (repairJob.reservedParts && repairJob.reservedParts.length > 0) {
+                    for (const part of repairJob.reservedParts) {
+                        const pSnap = productSnaps.get(part.productId);
+                        if (pSnap?.exists()) {
+                            const productData = pSnap.data();
                             if (repairJob.isPaid) {
                                 const newStockLevel = (productData.stockLevel || 0) + part.quantity;
-                                transaction.update(productRef, { stockLevel: newStockLevel });
+                                transaction.update(pSnap.ref, { stockLevel: newStockLevel });
                             } else {
                                 const newReservedStock = (productData.reservedStock || 0) - part.quantity;
-                                transaction.update(productRef, { reservedStock: Math.max(0, newReservedStock) });
+                                transaction.update(pSnap.ref, { reservedStock: Math.max(0, newReservedStock) });
                             }
                         }
                     }
@@ -92,15 +100,16 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
             });
 
             toast({
-                title: "Trabajo de Reparación Eliminado",
-                description: `El trabajo para ${repairJob.customerName} ha sido eliminado.`,
+                title: "Trabajo Eliminado",
+                description: `El registro de ${repairJob.customerName} ha sido borrado.`,
                 variant: "destructive"
             });
 
         } catch (error: any) {
+             console.error("Delete Error:", error);
              toast({
                 title: "Error al eliminar",
-                description: error.message || "No se pudo eliminar el trabajo de reparación.",
+                description: "No se pudo eliminar el trabajo. Verifica tu conexión.",
                 variant: "destructive"
             });
         } finally {
@@ -222,20 +231,16 @@ const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
             updateData.completedAt = completionDate.toISOString();
             updateData.warrantyEndDate = addDays(completionDate, 4).toISOString();
              toast({
-                title: 'Trabajo Entregado y Garantía Iniciada',
-                description: `La garantía de 4 días para la reparación de ${repairJob.customerName} ha comenzado.`,
+                title: 'Trabajo Entregado',
+                description: `Garantía iniciada para ${repairJob.customerName}.`,
             });
         }
 
         updateDocumentNonBlocking(jobRef, updateData);
-        toast({
-            title: 'Estado Actualizado',
-            description: `El estado de la reparación es ahora "${newStatus}".`
-        });
+        toast({ title: 'Estado Actualizado' });
     }
 
     const status: RepairStatus = repairJob.status;
-    
     let badgeVariant: "default" | "secondary" | "destructive" | "outline" = 'secondary';
     let badgeClassName = '';
 

@@ -66,13 +66,17 @@ function AppContent({ children }: { children: React.ReactNode }) {
           updatedAt: new Date().toISOString(),
           // Si el usuario es nuevo o no tiene módulos, establecemos por defecto
           ...((!profileSnap.exists() || !existingData.enabledModules) && {
-            licenseStatus: isAdmin ? 'active' : 'trial',
+            // SEGURIDAD: Ahora los usuarios nuevos están "EXPIRADOS" por defecto hasta ser activados
+            licenseStatus: isAdmin ? 'active' : 'expired',
             licenseExpiry: isAdmin 
               ? new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString() 
-              : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+              : new Date().toISOString(), // Expira inmediatamente
             createdAt: existingData.createdAt || new Date().toISOString(),
             enabledModules: ['inventory', 'pos', 'repairs', 'reports', 'analysis'],
-            isPinRequired: true
+            isPinRequired: true,
+            showInfoOnReceipt: true,
+            businessRIF: "",
+            businessAddress: ""
           })
         };
 
@@ -189,7 +193,7 @@ export default function RootLayout({
       <head>
         <meta name="theme-color" content="#FFFFFF" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
-        <title>POOS MARICHE - Gestión de Taller</title>
+        <title>POOS MARICHE - Gestión de Negocio</title>
       </head>
       <body className={cn("font-sans antialiased", process.env.NODE_ENV === 'development' ? 'debug-screens' : '')}>
         <FirebaseClientProvider>
