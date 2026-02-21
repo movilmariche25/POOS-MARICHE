@@ -58,7 +58,11 @@ export function CustomerTicket({ repairJob, businessName }: RepairTicketProps) {
 
             <div className="disclaimer-section mt-6 italic">
                 <p><span className="bold-header">GARANTÍA:</span> 4 DÍAS POR EL SERVICIO REALIZADO.</p>
+<<<<<<< HEAD
                 <p><span>RETIRO:</span> 7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL NEGOCIO NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.</p>
+=======
+                <p><span>RETIRO:</span> 7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL TALLER NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.</p>
+>>>>>>> c1347692731c1e6c7f1998505cb1dd6b31f60e02
                 <p className="mt-2"><span className="bold-header">AVISO:</span> NO NOS HACEMOS RESPONSABLES POR TELÉFONOS MOJADOS O QUE SUFRIERON CAÍDAS.</p>
                 <p className="text-center uppercase mt-4 bold-header">INDISPENSABLE PRESENTAR TICKET</p>
             </div>
