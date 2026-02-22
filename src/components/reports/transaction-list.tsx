@@ -9,7 +9,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { ReceiptView, handlePrintReceipt } from "../pos/receipt-view";
 import { Button } from "../ui/button";
-import { Printer, Undo2, AlertTriangle, Calendar as CalendarIcon, Search, X as ClearIcon, Filter } from "lucide-react";
+import { Printer, Undo2, AlertTriangle, Calendar as CalendarIcon, Search, X as ClearIcon, Filter, CreditCard, Banknote, Landmark, Smartphone, DollarSign, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import React, { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "../ui/skeleton";
@@ -27,6 +27,7 @@ import { Calendar } from "../ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { cn } from "@/lib/utils";
 import type { DateRange } from "react-day-picker";
+import { Separator } from "../ui/separator";
 
 type TransactionListProps = {
     sales: Sale[];
@@ -41,6 +42,14 @@ const PAYMENT_METHODS: (PaymentMethod | 'ALL')[] = [
     'Pago Móvil',
     'Transferencia'
 ];
+
+const methodIcons: Record<string, any> = {
+    'Efectivo USD': DollarSign,
+    'Efectivo Bs': Landmark,
+    'Tarjeta': CreditCard,
+    'Pago Móvil': Smartphone,
+    'Transferencia': Banknote,
+};
 
 const RefundButton = ({ sale }: { sale: Sale }) => {
     const { firestore, user } = useFirebase();
@@ -163,7 +172,8 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
         handlePrintReceipt({
             sale,
             currency: { format: formatCurrency, getSymbol, convert },
-            businessName: profile?.businessName
+            businessName: profile?.businessName,
+            profile: profile
         }, (error) => {
             toast({ variant: "destructive", title: "Error de Impresión", description: error });
         });
@@ -290,7 +300,7 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                 </div>
                             </AccordionTrigger>
                             <AccordionContent>
-                                <div className="p-4 bg-muted/30 rounded-lg space-y-4">
+                                <div className="p-4 bg-muted/30 rounded-lg space-y-6">
                                     <div className="flex justify-end gap-2">
                                         <Button variant="outline" size="sm" className="h-8" onClick={() => onReprint(sale)}>
                                             <Printer className="mr-2 h-4 w-4" /> Reimprimir Ticket
@@ -298,29 +308,123 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                         <RefundButton sale={sale} />
                                     </div>
                                     
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead>Producto / Servicio</TableHead>
-                                                <TableHead className="text-center">Cant.</TableHead>
-                                                <TableHead className="text-right">Precio</TableHead>
-                                                <TableHead className="text-right">Total</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {sale.items.map((item, idx) => (
-                                                <TableRow key={idx}>
-                                                    <TableCell className="font-medium text-xs">
-                                                        {item.name}
-                                                        {item.isPromo && <Badge variant="outline" className="ml-2 text-[9px] h-4 border-blue-200 text-blue-600">OFERTA</Badge>}
-                                                    </TableCell>
-                                                    <TableCell className="text-center">{item.quantity}</TableCell>
-                                                    <TableCell className="text-right">${formatCurrency(item.price)}</TableCell>
-                                                    <TableCell className="text-right font-bold">${formatCurrency(item.price * item.quantity)}</TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Productos y Servicios</p>
+                                        <div className="bg-white rounded-md border overflow-hidden">
+                                            <Table>
+                                                <TableHeader className="bg-slate-50">
+                                                    <TableRow>
+                                                        <TableHead className="text-xs">Detalle</TableHead>
+                                                        <TableHead className="text-center text-xs">Cant.</TableHead>
+                                                        <TableHead className="text-right text-xs">Precio</TableHead>
+                                                        <TableHead className="text-right text-xs">Total</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {sale.items.map((item, idx) => (
+                                                        <TableRow key={idx}>
+                                                            <TableCell className="font-medium text-xs">
+                                                                {item.name}
+                                                                {item.isPromo && <Badge variant="outline" className="ml-2 text-[9px] h-4 border-blue-200 text-blue-600">OFERTA</Badge>}
+                                                                {item.isGift && <Badge variant="outline" className="ml-2 text-[9px] h-4 border-green-200 text-green-600">OBSEQUIO</Badge>}
+                                                            </TableCell>
+                                                            <TableCell className="text-center text-xs">{item.quantity}</TableCell>
+                                                            <TableCell className="text-right text-xs">${formatCurrency(item.price)}</TableCell>
+                                                            <TableCell className="text-right font-bold text-xs">${formatCurrency(item.price * item.quantity)}</TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                                        {/* SECCIÓN DE PAGOS */}
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-bold uppercase text-green-700 tracking-widest flex items-center gap-1.5">
+                                                <ArrowUpRight className="w-3 h-3" /> Pagos Recibidos
+                                            </p>
+                                            <div className="space-y-1.5">
+                                                {sale.payments.map((p, idx) => {
+                                                    const Icon = methodIcons[p.method] || DollarSign;
+                                                    const isBS = p.method !== 'Efectivo USD';
+                                                    return (
+                                                        <div key={idx} className="flex justify-between items-center p-2 bg-white rounded-md border text-xs shadow-sm">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="p-1 bg-green-50 rounded text-green-600"><Icon className="w-3.5 h-3.5" /></div>
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-bold">{p.method}</span>
+                                                                    {p.reference && <span className="text-[10px] text-muted-foreground font-mono">Ref: {p.reference}</span>}
+                                                                </div>
+                                                            </div>
+                                                            <span className="font-black text-green-700">
+                                                                {isBS ? 'Bs' : '$'} {formatCurrency(p.amount)}
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* SECCIÓN DE VUELTOS */}
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-bold uppercase text-amber-700 tracking-widest flex items-center gap-1.5">
+                                                <ArrowDownLeft className="w-3 h-3" /> Vuelto Entregado
+                                            </p>
+                                            {sale.changeGiven && sale.changeGiven.length > 0 ? (
+                                                <div className="space-y-1.5">
+                                                    {sale.changeGiven.map((c, idx) => {
+                                                        const Icon = methodIcons[c.method] || DollarSign;
+                                                        const isBS = c.method !== 'Efectivo USD';
+                                                        return (
+                                                            <div key={idx} className="flex justify-between items-center p-2 bg-white rounded-md border text-xs shadow-sm border-amber-100">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="p-1 bg-amber-50 rounded text-amber-600"><Icon className="w-3.5 h-3.5" /></div>
+                                                                    <span className="font-bold">{c.method}</span>
+                                                                </div>
+                                                                <span className="font-black text-amber-700">
+                                                                    {isBS ? 'Bs' : '$'} {formatCurrency(c.amount)}
+                                                                </span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                    <div className="flex justify-between text-[10px] font-bold text-amber-800 px-1 pt-1">
+                                                        <span>VUELTO TOTAL EN DIVISAS:</span>
+                                                        <span>${formatCurrency(sale.totalChangeInUSD || 0)}</span>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="p-3 bg-slate-50 border rounded-md text-[10px] text-muted-foreground italic text-center">
+                                                    No se registró entrega de vuelto para esta transacción.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="p-3 bg-primary/5 rounded-md border border-primary/10 flex justify-between items-center">
+                                        <div className="flex flex-col">
+                                            <span className="text-[10px] font-bold text-primary uppercase">Monto Neto en Caja</span>
+                                            <span className="text-[9px] text-muted-foreground italic">(Total Pagos - Vuelto Entregado)</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-xl font-black text-primary leading-none">
+                                                ${formatCurrency(sale.actualPaidAmount ?? sale.totalAmount)}
+                                            </p>
+                                            <p className="text-[10px] font-bold text-slate-500 mt-1">
+                                                ~ Bs {formatCurrency(convert(sale.actualPaidAmount ?? sale.totalAmount, 'USD', 'Bs'))}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    
+                                    {sale.status === 'refunded' && (
+                                        <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                                            <p className="text-[10px] font-bold text-destructive uppercase flex items-center gap-1.5 mb-1">
+                                                <AlertTriangle className="w-3.5 h-3.5" /> Motivo del Reembolso
+                                            </p>
+                                            <p className="text-xs text-destructive/80 italic">"{sale.refundReason}"</p>
+                                            <p className="text-[9px] text-destructive/60 mt-1">Procesado el {sale.refundedAt ? format(parseISO(sale.refundedAt), "dd/MM/yy hh:mm a", { locale: es }) : 'N/A'}</p>
+                                        </div>
+                                    )}
                                 </div>
                             </AccordionContent>
                         </AccordionItem>
