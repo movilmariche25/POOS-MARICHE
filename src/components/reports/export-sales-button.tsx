@@ -87,13 +87,13 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
                 'Fecha': format(new Date(sale.transactionDate), 'dd/MM/yyyy HH:mm'),
                 'Producto/Servicio': item.name,
                 'ID Transacción': sale.id,
-                'Costo Repuestos ($)': (costPrice * item.quantity).toFixed(2),
-                'Precio Venta ($)': item.price.toFixed(2),
+                'Costo Repuestos ($)': (costPrice * item.quantity).toFixed(2).replace('.', ','),
+                'Precio Venta ($)': item.price.toFixed(2).replace('.', ','),
                 'Cantidad': item.quantity,
-                'Ingreso Recibido ($)': totalUSD.toFixed(2),
-                'Ganancia Est. ($)': ((item.price - costPrice) * item.quantity).toFixed(2),
-                'Total (Bs)': (totalUSD * bcvRate).toFixed(2),
-                'Tasa BCV': bcvRate.toFixed(2),
+                'Ingreso Recibido ($)': totalUSD.toFixed(2).replace('.', ','),
+                'Ganancia Est. ($)': ((item.price - costPrice) * item.quantity).toFixed(2).replace('.', ','),
+                'Total (Bs)': (totalUSD * bcvRate).toFixed(2).replace('.', ','),
+                'Tasa BCV': bcvRate.toFixed(2).replace('.', ','),
                 'Método de Pago': sale.paymentMethod
             });
         });
@@ -136,13 +136,13 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
             'Fecha': format(new Date(entry.lastDate), 'dd/MM/yyyy HH:mm'),
             'Producto/Servicio': `REPARACIÓN: ${repair.deviceMake} ${repair.deviceModel} (${repair.customerName})`,
             'ID Transacción': entry.lastSaleId,
-            'Costo Repuestos ($)': totalPartsCost.toFixed(2),
-            'Precio Venta ($)': income.toFixed(2),
+            'Costo Repuestos ($)': totalPartsCost.toFixed(2).replace('.', ','),
+            'Precio Venta ($)': income.toFixed(2).replace('.', ','),
             'Cantidad': 1,
-            'Ingreso Recibido ($)': income.toFixed(2),
-            'Ganancia Est. ($)': profit.toFixed(2),
-            'Total (Bs)': (income * bcvRate).toFixed(2),
-            'Tasa BCV': bcvRate.toFixed(2),
+            'Ingreso Recibido ($)': income.toFixed(2).replace('.', ','),
+            'Ganancia Est. ($)': profit.toFixed(2).replace('.', ','),
+            'Total (Bs)': (income * bcvRate).toFixed(2).replace('.', ','),
+            'Tasa BCV': bcvRate.toFixed(2).replace('.', ','),
             'Método de Pago': Array.from(entry.paymentMethods).join(' + ')
         };
     });
