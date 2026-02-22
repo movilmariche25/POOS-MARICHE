@@ -77,23 +77,26 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
         const repairRevenueInSale = Math.max(0, totalReceivedInSale - otherItemsTotalRequested);
 
         otherItemsInSale.forEach(item => {
+            const product = products.find(p => p.id === item.productId);
             const costPrice = item.isCustom 
                 ? (item.customCostPrice || 0) 
-                : (products.find(p => p.id === item.productId)?.costPrice || 0);
+                : (product?.costPrice || 0);
             
             const totalUSD = item.price * item.quantity;
+            const totalCost = costPrice * item.quantity;
+            const profit = totalUSD - totalCost;
             
             productLines.push({
                 'Fecha': format(new Date(sale.transactionDate), 'dd/MM/yyyy HH:mm'),
                 'Producto/Servicio': item.name,
                 'ID Transacción': sale.id,
-                'Costo Repuestos ($)': (costPrice * item.quantity).toFixed(2).replace('.', ','),
-                'Precio Venta ($)': item.price.toFixed(2).replace('.', ','),
+                'Costo Repuestos ($)': Number(totalCost.toFixed(2)),
+                'Precio Venta ($)': Number(item.price.toFixed(2)),
                 'Cantidad': item.quantity,
-                'Ingreso Recibido ($)': totalUSD.toFixed(2).replace('.', ','),
-                'Ganancia Est. ($)': ((item.price - costPrice) * item.quantity).toFixed(2).replace('.', ','),
-                'Total (Bs)': (totalUSD * bcvRate).toFixed(2).replace('.', ','),
-                'Tasa BCV': bcvRate.toFixed(2).replace('.', ','),
+                'Ingreso Recibido ($)': Number(totalUSD.toFixed(2)),
+                'Ganancia Est. ($)': Number(profit.toFixed(2)),
+                'Total (Bs)': Number((totalUSD * bcvRate).toFixed(2)),
+                'Tasa BCV': Number(bcvRate.toFixed(2)),
                 'Método de Pago': sale.paymentMethod
             });
         });
@@ -136,13 +139,13 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
             'Fecha': format(new Date(entry.lastDate), 'dd/MM/yyyy HH:mm'),
             'Producto/Servicio': `REPARACIÓN: ${repair.deviceMake} ${repair.deviceModel} (${repair.customerName})`,
             'ID Transacción': entry.lastSaleId,
-            'Costo Repuestos ($)': totalPartsCost.toFixed(2).replace('.', ','),
-            'Precio Venta ($)': income.toFixed(2).replace('.', ','),
+            'Costo Repuestos ($)': Number(totalPartsCost.toFixed(2)),
+            'Precio Venta ($)': Number(income.toFixed(2)),
             'Cantidad': 1,
-            'Ingreso Recibido ($)': income.toFixed(2).replace('.', ','),
-            'Ganancia Est. ($)': profit.toFixed(2).replace('.', ','),
-            'Total (Bs)': (income * bcvRate).toFixed(2).replace('.', ','),
-            'Tasa BCV': bcvRate.toFixed(2).replace('.', ','),
+            'Ingreso Recibido ($)': Number(income.toFixed(2)),
+            'Ganancia Est. ($)': Number(profit.toFixed(2)),
+            'Total (Bs)': Number((income * bcvRate).toFixed(2)),
+            'Tasa BCV': Number(bcvRate.toFixed(2)),
             'Método de Pago': Array.from(entry.paymentMethods).join(' + ')
         };
     });
@@ -157,6 +160,7 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte_PoosMariche");
     
+    // Auto-ajustar ancho de columnas
     const cols = Object.keys(dataToExport[0] || {});
     const colWidths = cols.map(col => ({
         wch: Math.max(...dataToExport.map(row => (row[col as keyof typeof row] ?? '').toString().length), col.length + 2)
