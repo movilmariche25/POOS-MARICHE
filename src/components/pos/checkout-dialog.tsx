@@ -158,7 +158,8 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
     const receiptProps = {
       sale: completedSale,
       currency: { format: formatCurrency, getSymbol, convert },
-      businessName: profile?.businessName
+      businessName: profile?.businessName,
+      profile: profile
     };
     handlePrintReceipt(receiptProps, (error) => {
       toast({
@@ -184,11 +185,12 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                <div className="p-4">
                   <DialogTitle>Venta Completada</DialogTitle>
                 </div>
-              <div className="overflow-y-auto p-4">
+              <div className="overflow-y-auto p-4 max-h-[400px] border rounded-md">
                 <ReceiptView 
                     sale={completedSale} 
                     currency={{ format: formatCurrency, getSymbol, convert }}
                     businessName={profile?.businessName}
+                    profile={profile}
                 />
               </div>
               <div className="mt-auto p-6 bg-background flex gap-2">

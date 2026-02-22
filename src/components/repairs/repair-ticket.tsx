@@ -205,26 +205,30 @@ const printStyles = `
 `;
 
 function iframePrint(html: string) {
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = 'none';
-    document.body.appendChild(iframe);
+    try {
+        const iframe = document.createElement('iframe');
+        iframe.style.visibility = 'hidden';
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        document.body.appendChild(iframe);
 
-    const doc = iframe.contentWindow?.document;
-    if (doc) {
-        doc.open();
-        doc.write(`<html><head><style>${printStyles}</style></head><body><div class="ticket-container">${html}</div></body></html>`);
-        doc.close();
+        const doc = iframe.contentWindow?.document;
+        if (doc) {
+            doc.open();
+            doc.write(`<html><head><style>${printStyles}</style></head><body><div class="ticket-container">${html}</div></body></html>`);
+            doc.close();
 
-        setTimeout(() => {
-            iframe.contentWindow?.focus();
-            iframe.contentWindow?.print();
             setTimeout(() => {
-                document.body.removeChild(iframe);
-            }, 1000);
-        }, 500);
+                iframe.contentWindow?.focus();
+                iframe.contentWindow?.print();
+                setTimeout(() => {
+                    document.body.removeChild(iframe);
+                }, 1000);
+            }, 500);
+        }
+    } catch (e) {
+        console.error("Print Error:", e);
     }
 }
 
