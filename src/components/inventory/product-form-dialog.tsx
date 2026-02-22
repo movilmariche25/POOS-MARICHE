@@ -248,7 +248,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
         isFixedPrice: values.isFixedPrice || false,
         fixedPrice: values.isFixedPrice ? Number(values.fixedPrice) : 0,
         hasCustomMargin: values.hasCustomMargin || false,
-        customMargin: values.hasCustomMargin ? Number(values.customMargin) : 0,
+        customMargin: values.hasCustomMargin ? Number(values.customMargin || 0) : 0,
         createdAt: values.createdAt,
     };
 
@@ -279,11 +279,6 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
         <Form {...form}>
           <form 
             onSubmit={form.handleSubmit(onSubmit)} 
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
-                e.preventDefault();
-              }
-            }}
             className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4"
           >
             <FormField
@@ -293,7 +288,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                 <FormItem>
                   <FormLabel>Nombre del Producto</FormLabel>
                   <FormControl>
-                    <Input placeholder="ej. Pan de Jamón, Pantalla iPhone 14" {...field} />
+                    <Input placeholder="ej. Pantalla iPhone 14" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -344,9 +339,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                                  variant="ghost" 
                                  size="sm" 
                                  className="w-full justify-start text-xs"
-                                 onClick={() => {
-                                    setCategoryPopoverOpen(false);
-                                 }}
+                                 onClick={() => setCategoryPopoverOpen(false)}
                                >
                                  Escribe para crear nueva
                                </Button>
@@ -379,11 +372,6 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                                 className="h-8 text-xs"
                                 value={field.value}
                                 onChange={(e) => field.onChange(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        setCategoryPopoverOpen(false);
-                                    }
-                                }}
                             />
                         </div>
                       </PopoverContent>
@@ -415,14 +403,11 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel className="flex items-center gap-2">
-                                    <CalendarIcon className="w-3.5 h-3.5" /> Fecha de Ingreso a Almacén
+                                    <CalendarIcon className="w-3.5 h-3.5" /> Fecha de Ingreso
                                 </FormLabel>
                                 <FormControl>
                                     <Input type="date" {...field} />
                                 </FormControl>
-                                <FormDescription className="text-[10px]">
-                                    Permite al sistema avisarte si la mercancía lleva mucho tiempo en estante.
-                                </FormDescription>
                                 <FormMessage />
                             </FormItem>
                         )}
@@ -443,9 +428,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                                     onCheckedChange={field.onChange}
                                 />
                             </FormControl>
-                            <FormLabel className="font-normal cursor-pointer">
-                                Es un Combo
-                            </FormLabel>
+                            <FormLabel className="font-normal cursor-pointer">Es un Combo</FormLabel>
                         </FormItem>
                     )}
                 />
@@ -460,9 +443,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                                     onCheckedChange={field.onChange}
                                 />
                             </FormControl>
-                            <FormLabel className="font-normal cursor-pointer">
-                                Obsequiable
-                            </FormLabel>
+                            <FormLabel className="font-normal cursor-pointer">Obsequiable</FormLabel>
                         </FormItem>
                     )}
                 />
@@ -508,9 +489,9 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                 />
             </div>
 
-            {isCombo ? (
+            {isCombo && (
                  <div className="space-y-4 p-3 border rounded-md">
-                    <legend className="text-sm font-medium -mt-1 mb-2">Componentes del Combo</legend>
+                    <p className="text-sm font-medium mb-2">Componentes del Combo</p>
                     <div className="space-y-2">
                         {fields.map((field, index) => (
                             <div key={field.id} className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
@@ -528,31 +509,27 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                         <Popover open={partsPopoverOpen} onOpenChange={setPartsPopoverOpen}>
                             <PopoverTrigger asChild>
                                 <Button type="button" variant="outline" className="w-full">
-                                    <Search className="mr-2 h-4 w-4" /> Añadir Producto al Combo
+                                    <Search className="mr-2 h-4 w-4" /> Vincular Producto
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-[300px] p-0">
                                 <Command>
                                     <CommandInput placeholder="Buscar producto..." />
                                     <CommandList>
-                                    <CommandEmpty>No se encontraron productos.</CommandEmpty>
+                                    <CommandEmpty>No hay resultados.</CommandEmpty>
                                     <CommandGroup>
-                                        {(allProducts || []).filter(p => !p.isCombo).map((product) => (
+                                        {(allProducts || []).filter(p => !p.isCombo).map((p) => (
                                             <CommandItem
-                                                key={product.id}
-                                                value={product.name}
+                                                key={p.id}
+                                                value={p.name}
                                                 onSelect={() => {
-                                                    if (!fields.some(f => f.productId === product.id)) {
-                                                        append({ productId: product.id!, productName: product.name, quantity: 1 });
-                                                    } else {
-                                                        toast({ variant: 'destructive', title: 'Producto ya añadido' })
+                                                    if (!fields.some(f => f.productId === p.id)) {
+                                                        append({ productId: p.id!, productName: p.name, quantity: 1 });
                                                     }
                                                     setPartsPopoverOpen(false);
                                                 }}
-                                                disabled={fields.some(f => f.productId === product.id)}
-                                                className="flex justify-between"
                                             >
-                                                <span>{product.name}</span>
+                                                <span>{p.name}</span>
                                             </CommandItem>
                                         ))}
                                     </CommandGroup>
@@ -562,7 +539,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                         </Popover>
                     </div>
                 </div>
-            ) : null}
+            )}
 
             <div className="space-y-4 p-3 border rounded-md">
                 <FormField
@@ -573,21 +550,13 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                         <FormLabel>Costo del Producto ($)</FormLabel>
                         <FormControl>
                         <Input 
-                            type="text"
-                            inputMode="decimal"
+                            type="number"
+                            step="0.01"
                             placeholder="0.00"
                             {...field}
                             disabled={isCombo}
-                             onChange={e => {
-                                const value = e.target.value;
-                                const regex = /^[0-9]*\.?[0-9]{0,2}$/;
-                                if (regex.test(value)) {
-                                    field.onChange(value);
-                                }
-                            }}
                         />
                         </FormControl>
-                        <FormDescription>{isCombo ? "Costo calculado de los componentes." : "Costo base para cálculos."}</FormDescription>
                         <FormMessage />
                     </FormItem>
                     )}
@@ -602,20 +571,12 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                             <FormLabel>Precio de Venta Fijo ($)</FormLabel>
                             <FormControl>
                             <Input 
-                                type="text"
-                                inputMode="decimal"
+                                type="number"
+                                step="0.01"
                                 placeholder="0.00"
                                 {...field}
-                                 onChange={e => {
-                                    const value = e.target.value;
-                                    const regex = /^[0-9]*\.?[0-9]{0,2}$/;
-                                    if (regex.test(value)) {
-                                        field.onChange(value);
-                                    }
-                                }}
                             />
                             </FormControl>
-                            <FormDescription>Este monto en $ será inamovible. Solo cambiará su valor en Bs según BCV.</FormDescription>
                             <FormMessage />
                         </FormItem>
                         )}
@@ -628,15 +589,10 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                         name="customMargin"
                         render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Margen de Ganancia Individual (%)</FormLabel>
+                            <FormLabel>Margen Individual (%)</FormLabel>
                             <FormControl>
-                            <Input 
-                                type="number"
-                                placeholder="Ej: 50"
-                                {...field}
-                            />
+                            <Input type="number" {...field} />
                             </FormControl>
-                            <FormDescription>Sobrepasa el margen global ({profitMargin}%). Se ajusta con el dólar.</FormDescription>
                             <FormMessage />
                         </FormItem>
                         )}
@@ -644,18 +600,12 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                 )}
 
                 <div className="p-3 rounded-md bg-muted/50 text-sm border-l-4 border-primary">
-                    <div className="flex items-center gap-2 mb-2">
-                        <Info className="w-4 h-4 text-primary"/>
-                        <p className="font-semibold text-[11px] uppercase tracking-wider">
-                            {isFixedPrice ? "Precio Fijo Actual" : (hasCustomMargin ? "Precio con Margen Individual" : "Precio con Margen Global")}
-                        </p>
-                    </div>
                     <div className="flex justify-between">
-                        <span className="text-muted-foreground">Precio en Dólares (BCV):</span>
+                        <span className="text-muted-foreground">Venta en Dólares:</span>
                         <span className="font-bold">{getSymbol('USD')}{formatCurrency(calculatedRetailPrice, 'USD')}</span>
                     </div>
                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Precio en Bolívares:</span>
+                        <span className="text-muted-foreground">Venta en Bolívares:</span>
                         <span className="font-bold">{getSymbol('Bs')}{formatCurrency(calculatedRetailPriceBs, 'Bs')}</span>
                     </div>
                 </div>
@@ -673,9 +623,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                                     onCheckedChange={field.onChange}
                                 />
                             </FormControl>
-                            <FormLabel className="font-normal cursor-pointer">
-                                ¿Tiene Precio de Oferta en Efectivo?
-                            </FormLabel>
+                            <FormLabel className="font-normal cursor-pointer">¿Tiene Precio Oferta?</FormLabel>
                         </FormItem>
                     )}
                 />
@@ -685,17 +633,10 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                         name="promoPrice"
                         render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Precio Oferta en Efectivo ($)</FormLabel>
+                            <FormLabel>Monto Oferta ($)</FormLabel>
                             <FormControl>
-                            <Input 
-                                type="text"
-                                inputMode="decimal"
-                                {...field}
-                            />
+                            <Input type="number" step="0.01" {...field} />
                             </FormControl>
-                             <FormDescription>
-                                Sugerido: <span className="font-semibold">{getSymbol('USD')}{formatCurrency(suggestedPromoPrice, 'USD')}</span> (Costo + {currentMargin}%).
-                            </FormDescription>
                             <FormMessage />
                         </FormItem>
                         )}
@@ -721,9 +662,9 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                 name="damagedStock"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Stock Dañado</FormLabel>
+                    <FormLabel>Dañado</FormLabel>
                     <FormControl>
-                      <Input type="number" {...field} onChange={e => field.onChange(Number(e.target.value) || 0)} disabled={isCombo}/>
+                      <Input type="number" {...field} disabled={isCombo}/>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -735,7 +676,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
               name="lowStockThreshold"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Alerta de Stock Bajo</FormLabel>
+                  <FormLabel>Alerta Stock Bajo</FormLabel>
                   <FormControl>
                     <Input type="number" {...field} />
                   </FormControl>

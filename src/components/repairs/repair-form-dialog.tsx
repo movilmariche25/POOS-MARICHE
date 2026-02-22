@@ -67,17 +67,12 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
   const [mainPart, setMainPart] = useState<Product | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Cargar productos para repuestos
   const productsCollection = useMemoFirebase(() => 
     (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null, 
     [firestore, user?.uid]
   );
   const { data: products } = useCollection<Product>(productsCollection);
 
-<<<<<<< HEAD
-=======
-  // Cargar reparaciones previas para autocompletado de clientes
->>>>>>> c1347692731c1e6c7f1998505cb1dd6b31f60e02
   const repairsCollection = useMemoFirebase(() => 
     (firestore && user) ? query(collection(firestore, 'users', user.uid, 'repair_jobs'), orderBy('createdAt', 'desc')) : null,
     [firestore, user?.uid]
@@ -101,13 +96,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
   });
 
   const currentID = form.watch("customerID");
-<<<<<<< HEAD
 
-=======
-  const currentCost = form.watch("estimatedCost");
-
-  // Lógica de búsqueda de cliente frecuente
->>>>>>> c1347692731c1e6c7f1998505cb1dd6b31f60e02
   const foundCustomer = useMemo(() => {
     if (!currentID || currentID.length < 5 || !allRepairs) return null;
     const match = allRepairs.find(r => r.customerID?.toLowerCase() === currentID.toLowerCase());
@@ -126,11 +115,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
         form.setValue("customerName", foundCustomer.name, { shouldValidate: true });
         form.setValue("customerPhone", foundCustomer.phone, { shouldValidate: true });
         form.setValue("customerAddress", foundCustomer.address, { shouldValidate: true });
-<<<<<<< HEAD
         toast({ title: "Datos cargados" });
-=======
-        toast({ title: "Datos cargados", description: `Se han aplicado los datos de ${foundCustomer.name}` });
->>>>>>> c1347692731c1e6c7f1998505cb1dd6b31f60e02
     }
   };
 
@@ -173,7 +158,6 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
 
   const applyPromoPrice = () => {
       if (mainPart && mainPart.promoPrice && mainPart.promoPrice > 0) {
-<<<<<<< HEAD
           const currentPrice = form.getValues('estimatedCost');
           const promoPrice = mainPart.promoPrice;
           const regularPrice = getFinalPrice(mainPart);
@@ -183,10 +167,6 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
           } else {
               form.setValue('estimatedCost', promoPrice, { shouldValidate: true });
           }
-=======
-          form.setValue('estimatedCost', mainPart.promoPrice, { shouldValidate: true });
-          toast({ title: "Precio Oferta Aplicado", description: `Se ha establecido el precio de ${getSymbol()}${mainPart.promoPrice}` });
->>>>>>> c1347692731c1e6c7f1998505cb1dd6b31f60e02
       }
   };
 
@@ -283,11 +263,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                             className="h-6 text-[10px] text-blue-600 bg-blue-50 hover:bg-blue-100 flex items-center gap-1 font-bold animate-pulse"
                             onClick={handleApplyCustomerData}
                         >
-<<<<<<< HEAD
                             <UserCheck className="w-3.5 h-3.5" />
-=======
-                            <UserCheck className="w-3 h-3" />
->>>>>>> c1347692731c1e6c7f1998505cb1dd6b31f60e02
                             ¿CARGAR DATOS DE {foundCustomer.name.toUpperCase()}?
                         </Button>
                     )}
@@ -400,11 +376,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                                               </Button>
                                           </TooltipTrigger>
                                           <TooltipContent>
-<<<<<<< HEAD
                                               <p>Alternar Precio Oferta (${mainPart.promoPrice}) / Regular</p>
-=======
-                                              <p>Aplicar Precio Oferta (${mainPart.promoPrice})</p>
->>>>>>> c1347692731c1e6c7f1998505cb1dd6b31f60e02
                                           </TooltipContent>
                                       </Tooltip>
                                   </TooltipProvider>
