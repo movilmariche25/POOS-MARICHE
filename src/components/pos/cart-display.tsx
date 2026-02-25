@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { CartItem, Payment, Product, Sale, RepairJob } from "@/lib/types";
@@ -21,7 +20,7 @@ type CartDisplayProps = {
   cart: CartItem[];
   allProducts: Product[];
   onUpdateQuantity: (productId: string, quantity: number) => void;
-  onRemoveItem: (productId: string) => void;
+  onRemoveItem: (productId: string, isRepair?: boolean) => void;
   onClearCart: () => void;
   onTogglePromo: (productId: string) => void;
   onToggleGift: (productId: string) => void;
@@ -82,6 +81,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
 
       const saleId = generateSaleId();
       const cartWithPrices = cart.map(item => ({ ...item, price: getPrice(item) }));
+      const hasRepairInCart = cartWithPrices.some(i => i.isRepair);
 
       const totalPaidInUSD = payments.reduce((acc, p) => {
           return acc + (p.method === 'Efectivo USD' ? p.amount : convert(p.amount, 'Bs', 'USD'));
@@ -92,10 +92,10 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
         await runTransaction(firestore, async (transaction) => {
             // 1. RECOLECCIÓN DE IDs PARA LECTURA
             const productIdsToGet = new Set<string>();
-            const currentRepairJobSnap = repairJobId ? await transaction.get(repairJobRef!) : null;
+            const currentRepairJobSnap = (repairJobId && hasRepairInCart) ? await transaction.get(repairJobRef!) : null;
             const currentRepairJob = currentRepairJobSnap?.exists() ? currentRepairJobSnap.data() as RepairJob : null;
 
-            if (currentRepairJob?.reservedParts && !currentRepairJob.partsConsumed) {
+            if (currentRepairJob?.reservedParts && !currentRepairJob.partsConsumed && hasRepairInCart) {
                 currentRepairJob.reservedParts.forEach(p => productIdsToGet.add(p.productId));
             }
             cartWithPrices.filter(i => !i.isRepair && !i.isCustom).forEach(i => productIdsToGet.add(i.productId));
@@ -107,11 +107,11 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 productSnapshots.set(id, snap);
             }
 
-            // 3. AGREGACIÓN DE CAMBIOS (Para evitar múltiples escrituras al mismo doc)
+            // 3. AGREGACIÓN DE CAMBIOS
             const stockDeductions = new Map<string, { stock: number, reserved: number }>();
 
-            // Deducciones por partes de reparación
-            if (currentRepairJob?.reservedParts && !currentRepairJob.partsConsumed) {
+            // Deducciones por partes de reparación (SOLO si la reparación está en el carrito)
+            if (currentRepairJob?.reservedParts && !currentRepairJob.partsConsumed && hasRepairInCart) {
                 for (const part of currentRepairJob.reservedParts) {
                     const current = stockDeductions.get(part.productId) || { stock: 0, reserved: 0 };
                     stockDeductions.set(part.productId, { 
@@ -123,7 +123,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
 
             // Deducciones por productos directos en el carrito
             for (const item of cartWithPrices) {
-                if (item.isRepair || item.isCustom || item.productId.startsWith('abono-')) continue;
+                if (item.isRepair || item.isCustom) continue;
                 const current = stockDeductions.get(item.productId) || { stock: 0, reserved: 0 };
                 stockDeductions.set(item.productId, { 
                     stock: current.stock + item.quantity, 
@@ -131,7 +131,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 });
             }
 
-            // 4. ESCRITURAS (Solo después de todas las lecturas)
+            // 4. ESCRITURAS
             for (const [pid, ded] of Array.from(stockDeductions.entries())) {
                 const pSnap = productSnapshots.get(pid);
                 if (pSnap?.exists()) {
@@ -143,7 +143,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 }
             }
 
-            if (repairJobId && currentRepairJob) {
+            if (repairJobId && currentRepairJob && hasRepairInCart) {
                 const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJobId);
                 const otherItemsTotal = cartWithPrices
                     .filter(i => !i.isRepair)
@@ -183,7 +183,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 paymentMethod: payments.map(p => p.method).join(', '),
                 transactionDate: new Date().toISOString(),
                 payments, status: 'completed',
-                repairJobId: repairJobId || null,
+                repairJobId: (repairJobId && hasRepairInCart) ? repairJobId : null,
                 ...(changeGiven.length > 0 && { changeGiven, totalChangeInUSD }),
                 actualPaidAmount: actualNetPaidInUSD
             });
@@ -201,11 +201,11 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
             status: 'completed',
             changeGiven,
             totalChangeInUSD,
-            repairJobId: repairJobId || null
+            repairJobId: (repairJobId && hasRepairInCart) ? repairJobId : null
         } as Sale;
       } catch (e: any) {
         console.error("Transaction Error:", e);
-        toast({ variant: "destructive", title: "Error de Transacción", description: "No se pudo completar la facturación múltiple." });
+        toast({ variant: "destructive", title: "Error de Transacción", description: "No se pudo completar la facturación." });
         return null;
       }
   };
@@ -241,7 +241,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                     }
 
                     return (
-                        <TableRow key={item.productId} className={cn(
+                        <TableRow key={item.productId + (item.isRepair ? '-rep' : '')} className={cn(
                             item.isGift && "bg-green-50/50",
                             item.isPromo && "bg-blue-50/50"
                         )}>
@@ -274,6 +274,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
                                                     <Button 
+                                                        type="button"
                                                         variant="ghost" 
                                                         size="icon" 
                                                         className={cn("h-7 w-7", item.isPromo ? "text-blue-600 bg-blue-100" : "text-muted-foreground")}
@@ -290,6 +291,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                                             <Tooltip>
                                                 <TooltipTrigger asChild>
                                                     <Button 
+                                                        type="button"
                                                         variant="ghost" 
                                                         size="icon" 
                                                         className={cn("h-7 w-7", item.isGift ? "text-green-600 bg-green-100" : "text-muted-foreground")}
@@ -305,10 +307,11 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                                         <Tooltip>
                                             <TooltipTrigger asChild>
                                                 <Button 
+                                                    type="button"
                                                     variant="ghost" 
                                                     size="icon" 
                                                     className="h-7 w-7 text-destructive hover:bg-destructive/10" 
-                                                    onClick={() => onRemoveItem(item.productId)}
+                                                    onClick={() => onRemoveItem(item.productId, item.isRepair)}
                                                 >
                                                     <Trash2 className="h-3.5 w-3.5" />
                                                 </Button>
@@ -343,7 +346,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 </span>
             </div>
         </div>
-        <CheckoutDialog cart={cart} allProducts={allProducts} total={total} onCheckout={handleCheckout} onClearCart={onClearCart} isRepairSale={!!repairJobId}>
+        <CheckoutDialog cart={cart} allProducts={allProducts} total={total} onCheckout={handleCheckout} onClearCart={onClearCart} isRepairSale={!!repairJobId && cart.some(i => i.isRepair)}>
             <Button size="lg" className="w-full h-12 text-lg font-black shadow-lg" disabled={cart.length === 0}>
                 PAGAR COMPRA
             </Button>

@@ -278,7 +278,10 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
         </DialogHeader>
         <Form {...form}>
           <form 
-            onSubmit={form.handleSubmit(onSubmit)} 
+            onSubmit={(e) => {
+              e.stopPropagation(); // IMPORTANTE: Detener propagación para evitar cerrar diálogos padres
+              form.handleSubmit(onSubmit)(e);
+            }} 
             className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4"
           >
             <FormField
@@ -318,6 +321,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button
+                            type="button"
                             variant="outline"
                             role="combobox"
                             className={cn(
@@ -336,6 +340,7 @@ export function ProductFormDialog({ product, children, productCount = 0 }: Produ
                           <CommandList>
                             <CommandEmpty className="p-2">
                                <Button 
+                                 type="button"
                                  variant="ghost" 
                                  size="sm" 
                                  className="w-full justify-start text-xs"

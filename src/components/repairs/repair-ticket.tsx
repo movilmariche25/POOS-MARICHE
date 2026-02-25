@@ -1,5 +1,5 @@
 
-import type { RepairJob } from "@/lib/types";
+import type { RepairJob, UserProfile } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { renderToString } from "react-dom/server";
@@ -7,15 +7,21 @@ import { renderToString } from "react-dom/server";
 type RepairTicketProps = {
     repairJob: RepairJob;
     businessName?: string;
+    profile?: UserProfile | null;
 }
 
 // SECCIÓN 1: NOTA DE ENTREGA (CLIENTE)
-export function CustomerTicket({ repairJob, businessName }: RepairTicketProps) {
+export function CustomerTicket({ repairJob, businessName, profile }: RepairTicketProps) {
     const total = repairJob.estimatedCost || 0;
     const abono = repairJob.amountPaid || 0;
     const saldo = Math.max(0, total - abono);
     const date = repairJob.createdAt ? parseISO(repairJob.createdAt) : new Date();
     const fecha = format(date, "dd/MM/yy hh:mm a", { locale: es });
+
+    // Fallbacks para políticas si no están configuradas
+    const warranty = profile?.repairWarrantyPolicy || "4 DÍAS POR EL SERVICIO REALIZADO.";
+    const pickup = profile?.repairPickupPolicy || "7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL NEGOCIO NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.";
+    const disclaimer = profile?.repairDisclaimer || "NO NOS HACEMOS RESPONSABLES POR TELÉFONOS MOJADOS O QUE SUFRIERON CAÍDAS.";
 
     return (
         <div className="ticket-body">
@@ -57,9 +63,9 @@ export function CustomerTicket({ repairJob, businessName }: RepairTicketProps) {
             </div>
 
             <div className="disclaimer-section mt-6 italic">
-                <p><span className="bold-header">GARANTÍA:</span> 4 DÍAS POR EL SERVICIO REALIZADO.</p>
-                <p><span>RETIRO:</span> 7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL NEGOCIO NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.</p>
-                <p className="mt-2"><span className="bold-header">AVISO:</span> NO NOS HACEMOS RESPONSABLES POR TELÉFONOS MOJADOS O QUE SUFRIERON CAÍDAS.</p>
+                <p><span className="bold-header">GARANTÍA:</span> {warranty.toUpperCase()}</p>
+                <p><span className="bold-header">RETIRO:</span> {pickup.toUpperCase()}</p>
+                <p className="mt-2"><span className="bold-header">AVISO:</span> {disclaimer.toUpperCase()}</p>
                 <p className="text-center uppercase mt-4 bold-header">INDISPENSABLE PRESENTAR TICKET</p>
             </div>
             <div className="text-center mt-6 footer-thanks">

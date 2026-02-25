@@ -13,6 +13,7 @@ import {
   TrendingUp,
   ShieldCheck,
   HandCoins,
+  ReceiptText,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -42,9 +43,10 @@ const navItems: NavItem[] = [
   { href: '/dashboard/inventory', icon: Package, label: 'Inventario', module: 'inventory' },
   { href: '/dashboard/repairs', icon: Wrench, label: 'Reparaciones', module: 'repairs' },
   { href: '/dashboard/pos', icon: ShoppingCart, label: 'Punto de Venta', module: 'pos' },
+  { href: '/dashboard/fiados', icon: HandCoins, label: 'Fiados / Créditos', module: 'fiados' },
+  { href: '/dashboard/payroll', icon: ReceiptText, label: 'Registro de Pago', module: 'payroll' },
   { href: '/dashboard/reports', icon: BarChart2, label: 'Reportes', module: 'reports' },
   { href: '/dashboard/analysis', icon: TrendingUp, label: 'Análisis', module: 'analysis' },
-  { href: '/dashboard/fiados', icon: HandCoins, label: 'Fiados / Créditos', module: 'fiados' },
 ];
 
 export function SidebarNav() {
@@ -63,8 +65,7 @@ export function SidebarNav() {
       if (!item.module) return true;
       if (!profile) return false;
       
-      // Respetamos los módulos habilitados incluso para el admin para permitir pruebas de visualización
-      const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis'];
+      const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'payroll'];
       return enabledModules.includes(item.module);
   });
 

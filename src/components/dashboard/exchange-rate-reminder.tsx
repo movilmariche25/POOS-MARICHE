@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCurrency } from "@/hooks/use-currency";
@@ -24,26 +25,12 @@ export function ExchangeRateReminder() {
     const [isOnline, setIsOnline] = useState(true);
 
     useEffect(() => {
-        // Detectar estado de conexión inicial
         setIsOnline(navigator.onLine);
-
-        const handleOnline = () => {
-            setIsOnline(true);
-            toast({ title: "Conexión Restaurada", description: "El sistema está sincronizando datos con la nube.", variant: "default" });
-        };
-        
-        const handleOffline = () => {
-            setIsOnline(false);
-            toast({ title: "Modo Offline Activo", description: "Puedes seguir trabajando. Los cambios se guardarán localmente.", variant: "destructive" });
-        };
-
+        const handleOnline = () => { setIsOnline(true); toast({ title: "Conexión Restaurada" }); };
+        const handleOffline = () => { setIsOnline(false); toast({ title: "Sin Conexión", variant: "destructive" }); };
         window.addEventListener('online', handleOnline);
         window.addEventListener('offline', handleOffline);
-
-        return () => {
-            window.removeEventListener('online', handleOnline);
-            window.removeEventListener('offline', handleOffline);
-        };
+        return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); };
     }, [toast]);
 
     const fetchApiRate = async () => {
@@ -77,7 +64,11 @@ export function ExchangeRateReminder() {
                     ? differenceInHours(new Date(), new Date(settings.lastUpdated))
                     : Infinity;
 
-                if (hoursSinceUpdate >= UPDATE_THRESHOLD_HOURS || Math.abs(liveRate - settings.bcvRate) > 0.01) {
+                // CRITICAL FIX: Aggressive diff check to avoid unnecessary writes
+                // Only sync if > 4 hours have passed OR the difference is substantial (> 0.05)
+                const isSignificantDiff = Math.abs(liveRate - settings.bcvRate) > 0.05;
+
+                if (hoursSinceUpdate >= UPDATE_THRESHOLD_HOURS || isSignificantDiff) {
                     setIsAutoUpdating(true);
                     try {
                         const settingsRef = doc(firestore, 'users', user.uid, 'app-settings', 'main');
@@ -87,11 +78,7 @@ export function ExchangeRateReminder() {
                             lastUpdated: new Date().toISOString(),
                         };
                         setDocumentNonBlocking(settingsRef, newSettings, { merge: true });
-                        
-                        toast({
-                            title: "BCV Actualizado Automáticamente",
-                            description: `La tasa del sistema se sincronizó con la API: ${liveRate} Bs.`,
-                        });
+                        toast({ title: "Tasa Actualizada", description: `BCV sincronizado a ${liveRate} Bs.` });
                     } catch (e) {
                         console.error("Auto-sync failed:", e);
                     } finally {
@@ -102,124 +89,50 @@ export function ExchangeRateReminder() {
         };
 
         checkAndSync();
-        const interval = setInterval(checkAndSync, 3600000); // Revisar cada hora
+        const interval = setInterval(checkAndSync, 3600000); 
         return () => clearInterval(interval);
-
     }, [settings?.autoUpdateBcv, isLoading, firestore, user?.uid, toast]);
 
     const handleManualSync = async () => {
         if (!apiBcvRate || !settings || !firestore || !user) return;
-        
         setIsAutoUpdating(true);
         const settingsRef = doc(firestore, 'users', user.uid, 'app-settings', 'main');
-        const newSettings: AppSettings = {
-            ...settings,
-            bcvRate: apiBcvRate,
-            lastUpdated: new Date().toISOString(),
-        };
+        const newSettings: AppSettings = { ...settings, bcvRate: apiBcvRate, lastUpdated: new Date().toISOString() };
         setDocumentNonBlocking(settingsRef, newSettings, { merge: true });
-        
-        toast({
-            title: "Sincronización Manual",
-            description: `Tasa BCV actualizada a ${apiBcvRate} Bs.`,
-        });
+        toast({ title: "Sincronización Manual Exitosa" });
         setIsAutoUpdating(false);
     };
 
-    if (isLoading) {
-        return (
-            <div className="p-2 border-b bg-muted/20">
-                 <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    Consultando tasa oficial...
-                </div>
-            </div>
-        )
-    }
+    if (isLoading) return <div className="p-2 border-b bg-muted/20 text-xs animate-pulse">Cargando tasas...</div>;
     
     const needsSync = apiBcvRate && Math.abs(apiBcvRate - bcvRate) > 0.01;
 
     return (
         <div className="flex flex-col border-b sticky top-0 z-[40] bg-white shadow-sm">
             <div className="bg-primary/5 px-4 py-2 flex flex-wrap items-center justify-between gap-y-2">
-                <div className="flex items-center gap-4 sm:gap-8 overflow-x-auto no-scrollbar">
-                    {/* INDICADOR DE ESTADO DE RED */}
-                    <div className={cn(
-                        "flex items-center gap-1.5 px-2 py-1 rounded-md transition-all shrink-0 border",
-                        isOnline ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 animate-pulse border-red-200 shadow-[0_0_10px_rgba(220,38,38,0.3)]"
-                    )}>
+                <div className="flex items-center gap-4 overflow-x-auto no-scrollbar">
+                    <div className={cn("flex items-center gap-1.5 px-2 py-1 rounded-md border", isOnline ? "bg-green-100 text-green-700 border-green-200" : "bg-red-100 text-red-700 border-red-200")}>
                         {isOnline ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-                        <span className="text-[10px] font-black uppercase tracking-wider">
-                            {isOnline ? "En Línea" : "Sin Internet"}
-                        </span>
+                        <span className="text-[10px] font-black uppercase tracking-wider">{isOnline ? "En Línea" : "Sin Internet"}</span>
                     </div>
-
-                    <div className="flex items-center gap-2 shrink-0 border-l pl-4 border-slate-200">
+                    <div className="flex items-center gap-2 border-l pl-4 border-slate-200">
                         <TrendingUp className="w-4 h-4 text-primary" />
-                        <div className="flex flex-col">
-                            <span className="text-[10px] text-muted-foreground uppercase font-bold leading-none">BCV Sistema</span>
-                            <span className="font-bold text-sm text-primary tabular-nums">{bcvRate.toFixed(2)} Bs</span>
-                        </div>
+                        <div className="flex flex-col"><span className="text-[10px] text-muted-foreground uppercase font-bold leading-none">BCV Sistema</span><span className="font-bold text-sm text-primary">{bcvRate.toFixed(2)} Bs</span></div>
                     </div>
-
-                    <div className={cn(
-                        "flex items-center gap-2 px-3 py-1 rounded-md transition-colors shrink-0",
-                        needsSync ? "bg-amber-100" : "bg-green-50"
-                    )}>
-                        {isFetchingApi ? <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" /> : <div className={cn("w-2 h-2 rounded-full", needsSync ? "bg-amber-500 animate-pulse" : "bg-green-500")} />}
-                        <div className="flex flex-col">
-                            <span className="text-[10px] text-muted-foreground uppercase font-bold leading-none">BCV Real (API)</span>
-                            <span className="font-bold text-sm tabular-nums text-slate-700">
-                                {apiBcvRate ? `${apiBcvRate.toFixed(2)} Bs` : "..."}
-                            </span>
-                        </div>
+                    <div className="flex items-center gap-2 border-l pl-4 border-slate-200">
+                        <TrendingUp className="w-4 h-4 text-amber-600" />
+                        <div className="flex flex-col"><span className="text-[10px] text-muted-foreground uppercase font-bold leading-none">Reposición</span><span className="font-bold text-sm text-amber-600">{parallelRate.toFixed(2)} Bs</span></div>
+                    </div>
+                    <div className={cn("flex items-center gap-2 px-3 py-1 rounded-md", needsSync ? "bg-amber-100" : "bg-green-50")}>
+                        {isFetchingApi ? <Loader2 className="w-3 h-3 animate-spin" /> : <div className={cn("w-2 h-2 rounded-full", needsSync ? "bg-amber-500 animate-pulse" : "bg-green-500")} />}
+                        <div className="flex flex-col"><span className="text-[10px] text-muted-foreground uppercase font-bold leading-none">BCV API</span><span className="font-bold text-sm">{apiBcvRate ? `${apiBcvRate.toFixed(2)} Bs` : "..."}</span></div>
                         {needsSync && !settings?.autoUpdateBcv && isOnline && (
-                            <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="h-6 w-6 ml-1 text-amber-700 hover:bg-amber-200" 
-                                onClick={handleManualSync}
-                                title="Sincronizar con tasa oficial"
-                                disabled={isAutoUpdating}
-                            >
-                                <RefreshCw className={cn("w-3 h-3", isAutoUpdating && "animate-spin")} />
-                            </Button>
+                            <Button variant="ghost" size="icon" className="h-6 w-6 ml-1" onClick={handleManualSync} disabled={isAutoUpdating}><RefreshCw className={cn("w-3 h-3", isAutoUpdating && "animate-spin")} /></Button>
                         )}
                     </div>
-
-                    <div className="flex items-center gap-2 shrink-0 border-l pl-4 border-slate-200">
-                        <Clock className="w-4 h-4 text-muted-foreground" />
-                        <div className="flex flex-col">
-                            <span className="text-[10px] text-muted-foreground uppercase font-bold leading-none">Reposición (Manual)</span>
-                            <span className="font-bold text-sm tabular-nums text-slate-700">{parallelRate.toFixed(2)} Bs</span>
-                        </div>
-                    </div>
                 </div>
-                
-                <div className="flex items-center gap-3">
-                    {isAutoUpdating && (
-                        <div className="flex items-center gap-1 text-primary animate-pulse text-xs font-bold">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            <span>Sincronizando...</span>
-                        </div>
-                    )}
-                    {settings?.lastUpdated && (
-                        <div className="hidden md:flex items-center gap-1.5 text-muted-foreground text-[10px] bg-slate-100 px-2 py-1 rounded">
-                            <Clock className="w-3 h-3" />
-                            <span className="font-medium">Ref: {new Date(settings.lastUpdated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                        </div>
-                    )}
-                </div>
+                {isAutoUpdating && <div className="text-primary animate-pulse text-xs font-bold flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Sincronizando...</div>}
             </div>
-
-            {(!settings || !settings.lastUpdated) && (
-                <div className="bg-destructive px-4 py-2 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-2 text-white">
-                        <AlertCircle className="h-4 w-4 shrink-0" />
-                        <p className="text-xs font-bold uppercase">¡Atención! Tasas no configuradas inicialmente en la base de datos.</p>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

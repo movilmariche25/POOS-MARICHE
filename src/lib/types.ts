@@ -86,6 +86,26 @@ export type Fiado = {
   items?: FiadoItem[];
 };
 
+export type Worker = {
+  id?: string;
+  name: string;
+  phone?: string;
+  active: boolean;
+  createdAt: string;
+};
+
+export type PayrollPayment = {
+  id?: string;
+  workerId?: string;
+  workerName: string;
+  amountUSD: number;
+  amountBs: number;
+  dateFrom: string;
+  dateTo: string;
+  createdAt: string;
+  notes?: string;
+};
+
 export type CartItem = {
   productId: string;
   quantity: number;
@@ -167,7 +187,7 @@ export type AppSettings = {
     lastUpdated?: string;
 };
 
-export type UserModule = 'inventory' | 'pos' | 'repairs' | 'reports' | 'analysis' | 'fiados' | 'inventory_aging';
+export type UserModule = 'inventory' | 'pos' | 'repairs' | 'reports' | 'analysis' | 'fiados' | 'inventory_aging' | 'payroll';
 
 export type UserProfile = {
   id?: string;
@@ -186,4 +206,8 @@ export type UserProfile = {
   enabledModules?: UserModule[];
   securityPin?: string;
   isPinRequired?: boolean;
+  // Campos de políticas de reparación
+  repairWarrantyPolicy?: string;
+  repairPickupPolicy?: string;
+  repairDisclaimer?: string;
 };

@@ -118,25 +118,25 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
     }
     
     const onPrintCustomer = () => {
-        handlePrintCustomerTicket({ repairJob, businessName: profile?.businessName }, (error) => {
+        handlePrintCustomerTicket({ repairJob, businessName: profile?.businessName, profile }, (error) => {
              toast({ variant: "destructive", title: "Error de Impresión", description: error })
         });
     }
 
     const onPrintInternal = () => {
-        handlePrintInternalTicket({ repairJob, businessName: profile?.businessName }, (error) => {
+        handlePrintInternalTicket({ repairJob, businessName: profile?.businessName, profile }, (error) => {
              toast({ variant: "destructive", title: "Error de Impresión", description: error })
         });
     }
 
     const onPrintSticker = () => {
-        handlePrintStickerTicket({ repairJob }, (error) => {
+        handlePrintStickerTicket({ repairJob, profile }, (error) => {
              toast({ variant: "destructive", title: "Error de Impresión", description: error })
         });
     }
 
     const onPrintAll = () => {
-        handlePrintAllTickets({ repairJob, businessName: profile?.businessName }, (error) => {
+        handlePrintAllTickets({ repairJob, businessName: profile?.businessName, profile }, (error) => {
              toast({ variant: "destructive", title: "Error de Impresión", description: error })
         });
     }

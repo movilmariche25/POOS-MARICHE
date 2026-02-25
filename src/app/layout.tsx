@@ -21,7 +21,6 @@ function AppContent({ children }: { children: React.ReactNode }) {
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    // Caso: No hay usuario autenticado
     if (!user || !firestore || !auth) {
       if (unsubscribeRef.current) {
         unsubscribeRef.current();
@@ -33,10 +32,8 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
     const syncProfileAndSession = async () => {
       try {
-        // 1. Obtener token fresco para asegurar que Firestore nos reconozca
         await user.getIdToken(true);
 
-        // 2. Establecer identificador de sesión único para esta pestaña/navegador
         if (!currentSessionId.current) {
           let sid = sessionStorage.getItem('mm_active_session_id');
           if (!sid) {
@@ -49,14 +46,14 @@ function AppContent({ children }: { children: React.ReactNode }) {
         const sessionId = currentSessionId.current;
         const profileRef = doc(firestore, 'users', user.uid);
         
-        // 3. Verificar rol de administrador
         const adminRoleRef = doc(firestore, 'roles_admin', user.uid);
         const adminRoleSnap = await getDoc(adminRoleRef);
         const isAdmin = adminRoleSnap.exists();
 
-        // 4. Registro de Sesión (Atómico)
         const profileSnap = await getDoc(profileRef);
         const existingData = profileSnap.exists() ? profileSnap.data() : {};
+
+        const allAvailableModules = ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'payroll'];
 
         const profileData = {
           uid: user.uid,
@@ -64,25 +61,24 @@ function AppContent({ children }: { children: React.ReactNode }) {
           isAdmin: isAdmin,
           lastSessionId: sessionId,
           updatedAt: new Date().toISOString(),
-          // Si el usuario es nuevo o no tiene módulos, establecemos por defecto
-          ...((!profileSnap.exists() || !existingData.enabledModules) && {
-            // SEGURIDAD: Ahora los usuarios nuevos están "EXPIRADOS" por defecto hasta ser activados
+          ...((!profileSnap.exists() || !existingData.enabledModules) ? {
             licenseStatus: isAdmin ? 'active' : 'expired',
             licenseExpiry: isAdmin 
               ? new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString() 
-              : new Date().toISOString(), // Expira inmediatamente
+              : new Date().toISOString(),
             createdAt: existingData.createdAt || new Date().toISOString(),
-            enabledModules: ['inventory', 'pos', 'repairs', 'reports', 'analysis'],
+            enabledModules: allAvailableModules,
             isPinRequired: true,
             showInfoOnReceipt: true,
             businessRIF: "",
             businessAddress: ""
+          } : {
+            enabledModules: existingData.enabledModules?.concat(allAvailableModules.filter(m => !existingData.enabledModules.includes(m))) || allAvailableModules
           })
         };
 
         await setDoc(profileRef, profileData, { merge: true });
 
-        // 5. Iniciar Vigilante de Sesión Única
         unsubscribeRef.current = onSnapshot(profileRef, (snap) => {
           if (snap.exists()) {
             const data = snap.data();
@@ -135,14 +131,13 @@ function AppContent({ children }: { children: React.ReactNode }) {
     };
   }, [user, firestore, auth]);
 
-  // Heartbeat para marcar presencia en tiempo real (Admin Dashboard)
   useEffect(() => {
     if (!user || !firestore || isInitializing) return;
 
     const interval = setInterval(() => {
         const profileRef = doc(firestore, 'users', user.uid);
         updateDocumentNonBlocking(profileRef, { updatedAt: new Date().toISOString() });
-    }, 120000); // Cada 2 minutos
+    }, 120000);
 
     return () => clearInterval(interval);
   }, [user, firestore, isInitializing]);

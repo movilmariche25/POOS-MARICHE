@@ -1,4 +1,3 @@
-
 "use client"
 
 import type { Sale, Payment, Product, CartItem, RepairJob, UserProfile, PaymentMethod } from "@/lib/types";
@@ -9,7 +8,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { ReceiptView, handlePrintReceipt } from "../pos/receipt-view";
 import { Button } from "../ui/button";
-import { Printer, Undo2, AlertTriangle, Calendar as CalendarIcon, Search, X as ClearIcon, Filter, CreditCard, Banknote, Landmark, Smartphone, DollarSign, ArrowDownLeft, ArrowUpRight } from "lucide-react";
+import { Printer, Undo2, AlertTriangle, Calendar as CalendarIcon, Search, X as ClearIcon, Filter, CreditCard, Banknote, Landmark, Smartphone, DollarSign, ArrowDownLeft, ArrowUpRight, Sigma } from "lucide-react";
 import React, { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "../ui/skeleton";
@@ -192,7 +191,8 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
 
             if (methodFilter !== 'ALL') {
                 const hasMethod = sale.payments.some(p => p.method === methodFilter);
-                if (!hasMethod) return false;
+                const hasChangeInMethod = sale.changeGiven?.some(c => c.method === methodFilter);
+                if (!hasMethod && !hasChangeInMethod) return false;
             }
 
             if (searchRef.trim()) {
@@ -209,6 +209,34 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
             return dateB - dateA;
         });
     }, [sales, dateRange, methodFilter, searchRef]);
+
+    const methodTotals = useMemo(() => {
+        if (methodFilter === 'ALL' || !filteredSales) return null;
+
+        let total = 0;
+        filteredSales.forEach(sale => {
+            if (sale.status === 'refunded') return;
+            sale.payments.forEach(p => {
+                if (p.method === methodFilter) {
+                    total += p.amount;
+                }
+            });
+            // Restar vueltos si el método de vuelto coincide con el filtro
+            if (sale.changeGiven) {
+                sale.changeGiven.forEach(c => {
+                    if (c.method === methodFilter) {
+                        total -= c.amount;
+                    }
+                });
+            }
+        });
+
+        const isBS = methodFilter !== 'Efectivo USD';
+        const amountUSD = isBS ? convert(total, 'Bs', 'USD') : total;
+        const amountBS = isBS ? total : convert(total, 'USD', 'Bs');
+
+        return { total, amountUSD, amountBS, isBS };
+    }, [filteredSales, methodFilter, convert]);
 
     const resetFilters = () => {
         setDateRange(undefined);
@@ -273,6 +301,30 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                     </Button>
                 </div>
             </div>
+
+            {methodTotals && (
+                <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-primary/10 rounded-full text-primary">
+                            {React.createElement(methodIcons[methodFilter as string] || Sigma, { className: "w-6 h-6" })}
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Total Neto Acumulado ({methodFilter})</p>
+                            <p className="text-2xl font-black text-primary leading-none">
+                                {methodTotals.isBS ? 'Bs ' : '$ '}{formatCurrency(methodTotals.total)}
+                            </p>
+                            <p className="text-[9px] text-muted-foreground italic mt-1">(Suma cobros - Suma vueltos en este método)</p>
+                        </div>
+                    </div>
+                    <div className="text-center sm:text-right border-t sm:border-t-0 sm:border-l pt-4 sm:pt-0 sm:pl-8 border-primary/10 w-full sm:w-auto">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">Equivalente Aproximado</p>
+                        <p className="text-lg font-bold text-slate-600 leading-tight">
+                            {methodTotals.isBS ? `$ ${formatCurrency(methodTotals.amountUSD)}` : `Bs ${formatCurrency(methodTotals.amountBS)}`}
+                        </p>
+                        <p className="text-[9px] text-muted-foreground uppercase font-medium">Según Tasa BCV Actual</p>
+                    </div>
+                </div>
+            )}
 
             {filteredSales.length === 0 ? (
                 <div className="text-center py-12 border-2 border-dashed rounded-xl space-y-2">
@@ -354,7 +406,7 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                                                 <div className="p-1 bg-green-50 rounded text-green-600"><Icon className="w-3.5 h-3.5" /></div>
                                                                 <div className="flex flex-col">
                                                                     <span className="font-bold">{p.method}</span>
-                                                                    {p.reference && <span className="text-[10px] text-muted-foreground font-mono">Ref: {p.reference}</span>}
+                                                                    {p.reference && <span className="text-[10px] text-slate-950 font-black font-mono">Ref: {p.reference}</span>}
                                                                 </div>
                                                             </div>
                                                             <span className="font-black text-green-700">

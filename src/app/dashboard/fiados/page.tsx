@@ -1,4 +1,3 @@
-
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -475,7 +474,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
                         <Label>Añadir Productos del Inventario</Label>
                         <Popover open={searchOpen} onOpenChange={setSearchOpen}>
                             <PopoverTrigger asChild>
-                                <Button variant="outline" className="w-full justify-start text-muted-foreground">
+                                <Button type="button" variant="outline" className="w-full justify-start text-muted-foreground">
                                     <PackageSearch className="mr-2 h-4 w-4" /> Buscar producto...
                                 </Button>
                             </PopoverTrigger>
@@ -634,7 +633,7 @@ function AddItemsToFiadoDialog({ fiado, children }: { fiado: Fiado, children: Re
                 <div className="space-y-4 py-4">
                     <Popover open={searchOpen} onOpenChange={setSearchOpen}>
                         <PopoverTrigger asChild>
-                            <Button variant="outline" className="w-full justify-start text-muted-foreground">
+                            <Button type="button" variant="outline" className="w-full justify-start text-muted-foreground">
                                 <PackageSearch className="mr-2 h-4 w-4" /> Buscar producto para añadir...
                             </Button>
                         </PopoverTrigger>
@@ -685,6 +684,7 @@ function CobrarFiadoDialog({ fiado, children }: { fiado: Fiado, children: React.
     const { toast } = useToast();
     const { format: formatCurrency, getSymbol, bcvRate, convert } = useCurrency();
     const [open, setOpen] = useState(false);
+    const [loading, setLoading] = useState(false);
     const [payments, setPayments] = useState<(Payment & { id: number })[]>([]);
     const [changePayments, setChangePayments] = useState<(Payment & { id: number })[]>([]);
     const [isGivingChange, setIsGivingChange] = useState(false);
@@ -741,7 +741,7 @@ function CobrarFiadoDialog({ fiado, children }: { fiado: Fiado, children: React.
     };
 
     const handleAbono = async () => {
-        if (!firestore || !user || payments.length === 0) return;
+        if (!firestore || !user || payments.length === 0 || loading) return;
         
         const finalNetAbonoInUSD = totalAbonoInUSD - totalChangeGivenInUSD;
         
@@ -750,31 +750,37 @@ function CobrarFiadoDialog({ fiado, children }: { fiado: Fiado, children: React.
             return;
         }
 
-        const saleId = `S-FIA-${Date.now()}`;
-        const saleRef = doc(firestore, 'users', user.uid, 'sale_transactions', saleId);
-        const fiadoRef = doc(firestore, 'users', user.uid, 'fiados', fiado.id!);
-
-        const newPaid = fiado.amountPaid + finalNetAbonoInUSD;
-        const isFullyPaid = newPaid >= (fiado.totalAmount - 0.01);
-
-        const saleData: Sale = {
-            id: saleId,
-            fiadoId: fiado.id,
-            items: [{ productId: fiado.id!, name: `Abono Fiado: ${fiado.customerName}`, quantity: 1, price: finalNetAbonoInUSD }],
-            totalAmount: finalNetAbonoInUSD,
-            subtotal: finalNetAbonoInUSD,
-            discount: 0,
-            paymentMethod: payments.map(p => p.method).join(', '),
-            transactionDate: new Date().toISOString(),
-            status: 'completed',
-            payments: payments.map(({id, ...rest}) => rest),
-            actualPaidAmount: finalNetAbonoInUSD,
-            changeGiven: isGivingChange ? changePayments.map(({id, ...rest}) => rest) : [],
-            totalChangeInUSD: isGivingChange ? totalChangeGivenInUSD : 0
-        };
-
+        setLoading(true);
         try {
             await runTransaction(firestore, async (transaction) => {
+                const fiadoRef = doc(firestore, 'users', user.uid, 'fiados', fiado.id!);
+                const fiadoSnap = await transaction.get(fiadoRef);
+                
+                if (!fiadoSnap.exists()) throw new Error("El registro de deuda ya no existe.");
+                const currentFiado = fiadoSnap.data() as Fiado;
+
+                const saleId = `S-FIA-${Date.now()}`;
+                const saleRef = doc(firestore, 'users', user.uid, 'sale_transactions', saleId);
+
+                const newPaid = currentFiado.amountPaid + finalNetAbonoInUSD;
+                const isFullyPaid = newPaid >= (currentFiado.totalAmount - 0.01);
+
+                const saleData: Sale = {
+                    id: saleId,
+                    fiadoId: fiado.id,
+                    items: [{ productId: fiado.id!, name: `Abono Fiado: ${currentFiado.customerName}`, quantity: 1, price: finalNetAbonoInUSD }],
+                    totalAmount: finalNetAbonoInUSD,
+                    subtotal: finalNetAbonoInUSD,
+                    discount: 0,
+                    paymentMethod: payments.map(p => p.method).join(', '),
+                    transactionDate: new Date().toISOString(),
+                    status: 'completed',
+                    payments: payments.map(({id, ...rest}) => rest),
+                    actualPaidAmount: finalNetAbonoInUSD,
+                    changeGiven: isGivingChange ? changePayments.map(({id, ...rest}) => rest) : [],
+                    totalChangeInUSD: isGivingChange ? totalChangeGivenInUSD : 0
+                };
+
                 transaction.set(saleRef, saleData);
                 transaction.update(fiadoRef, {
                     amountPaid: Number(newPaid.toFixed(2)),
@@ -782,130 +788,161 @@ function CobrarFiadoDialog({ fiado, children }: { fiado: Fiado, children: React.
                 });
             });
             
-            toast({ title: isFullyPaid ? "Deuda Liquidada" : "Abono Registrado" });
+            toast({ title: "Operación Registrada con Éxito" });
             setOpen(false);
             setPayments([]);
             setChangePayments([]);
             setIsGivingChange(false);
-        } catch (e) {
-            toast({ title: "Error al procesar pago", variant: "destructive" });
+        } catch (e: any) {
+            toast({ title: "Error al procesar", description: e.message, variant: "destructive" });
+        } finally {
+            setLoading(false);
         }
     };
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>{children}</DialogTrigger>
-            <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+            <DialogContent className={cn(
+                "transition-all duration-300",
+                isGivingChange ? "sm:max-w-4xl" : "sm:max-w-md"
+            )}>
                 <DialogHeader>
                     <DialogTitle>Registrar Pago: {fiado.customerName}</DialogTitle>
                     <DialogDescription>
                         Deuda actual: <span className="font-bold text-primary">${pending.toFixed(2)}</span>
-                        <span className="block text-xs text-muted-foreground mt-1">Equivalente en Bolívares: <strong>Bs {formatCurrency(pending * bcvRate)}</strong></span>
                     </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                        <Label className="text-xs font-bold uppercase text-muted-foreground">Añadir Métodos de Pago</Label>
-                        <div className="flex flex-wrap gap-2">
-                            {paymentMethodOptions.map(option => (
-                                <Button 
-                                    key={option.value} 
-                                    variant="outline" 
-                                    size="sm" 
-                                    className="h-8 text-[10px]"
-                                    onClick={() => handleAddPayment(option.value)}
-                                >
-                                    <option.icon className="w-3 h-3 mr-1" /> {option.label}
-                                </Button>
-                            ))}
+                
+                <div className={cn("grid grid-cols-1 gap-6 py-2", isGivingChange && "md:grid-cols-2")}>
+                    {/* COLUMNA IZQUIERDA: PAGOS */}
+                    <div className="space-y-4">
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Añadir Métodos de Pago</Label>
+                            <div className="flex flex-wrap gap-2">
+                                {paymentMethodOptions.map(option => (
+                                    <Button 
+                                        key={option.value} 
+                                        variant="outline" 
+                                        size="sm" 
+                                        className="h-8 text-[10px]"
+                                        onClick={() => handleAddPayment(option.value)}
+                                    >
+                                        <option.icon className="w-3.5 h-3.5 mr-1.5" /> {option.label}
+                                    </Button>
+                                ))}
+                            </div>
                         </div>
-                    </div>
 
-                    {payments.length > 0 && (
-                        <div className="max-h-[250px] border rounded-md p-2 bg-muted/20 space-y-3 overflow-y-auto">
-                            {payments.map(p => {
-                                const option = paymentMethodOptions.find(o => o.value === p.method)!;
-                                const symbol = option.isBs ? 'Bs' : '$';
-                                return (
-                                    <div key={p.id} className="bg-white p-3 rounded-lg border shadow-sm space-y-2">
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-xs font-bold flex items-center gap-1.5">
-                                                <option.icon className="w-3.5 h-3.5" /> {p.method}
-                                            </span>
-                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleRemovePayment(p.id)}>
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                            </Button>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div className="relative">
-                                                <span className="absolute left-2.5 top-2.5 text-muted-foreground text-xs">{symbol}</span>
-                                                <Input 
-                                                    type="number" 
-                                                    placeholder="0.00" 
-                                                    className="h-9 pl-7 text-xs" 
-                                                    value={p.amount || ''}
-                                                    onChange={(e) => handleUpdatePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}
-                                                />
+                        {payments.length > 0 && (
+                            <ScrollArea className="h-[200px] pr-2">
+                                <div className="space-y-3">
+                                    {payments.map(p => {
+                                        const option = paymentMethodOptions.find(o => o.value === p.method)!;
+                                        const symbol = option.isBs ? 'Bs' : '$';
+                                        return (
+                                            <div key={p.id} className="bg-white p-3 rounded-lg border shadow-sm space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs font-bold flex items-center gap-1.5">
+                                                        <option.icon className="w-3.5 h-3.5" /> {p.method}
+                                                    </span>
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleRemovePayment(p.id)}>
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <div className="relative">
+                                                        <span className="absolute left-2.5 top-2.5 text-muted-foreground text-xs">{symbol}</span>
+                                                        <Input 
+                                                            type="number" 
+                                                            placeholder="0.00" 
+                                                            className="h-9 pl-7 text-xs font-bold" 
+                                                            value={p.amount || ''}
+                                                            onChange={(e) => handleUpdatePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}
+                                                        />
+                                                    </div>
+                                                    {option.hasReference && (
+                                                        <Input 
+                                                            placeholder="Ref." 
+                                                            className="h-9 text-xs font-mono font-bold" 
+                                                            value={p.reference}
+                                                            onChange={(e) => handleUpdatePayment(p.id, 'reference', e.target.value)}
+                                                        />
+                                                    )}
+                                                </div>
                                             </div>
-                                            {option.hasReference && (
-                                                <Input 
-                                                    placeholder="Ref." 
-                                                    className="h-9 text-xs"
-                                                    value={p.reference}
-                                                    onChange={(e) => handleUpdatePayment(p.id, 'reference', e.target.value)}
-                                                />
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
+                                        );
+                                    })}
+                                </div>
+                            </ScrollArea>
+                        )}
 
-                    {potentialChangeInUSD > 0.001 && (
-                        <div className="space-y-4 pt-4 border-t">
-                            <div className="flex items-center space-x-2">
+                        <div className="p-3 bg-primary/5 rounded-lg border border-primary/10">
+                            <div className="flex justify-between items-center text-sm">
+                                <span className="text-muted-foreground font-bold uppercase text-[10px]">Total Recibido:</span>
+                                <span className="font-black text-primary text-lg">${totalAbonoInUSD.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between items-start text-[10px] mt-1 border-t pt-1">
+                                <span className="text-muted-foreground uppercase font-bold text-[10px]">Nuevo Saldo:</span>
+                                <div className="flex flex-col items-end">
+                                    <span className={cn("font-black text-sm", remainingInUSD < 0 ? "text-destructive" : "text-slate-600")}>
+                                        ${remainingInUSD.toFixed(2)}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {potentialChangeInUSD > 0.001 && (
+                            <div className="flex items-center space-x-2 pt-2 border-t">
                                 <Checkbox 
                                     id="give-change-fiados" 
                                     checked={isGivingChange} 
                                     onCheckedChange={(checked) => setIsGivingChange(!!checked)} 
                                 />
-                                <Label htmlFor="give-change-fiados" className="cursor-pointer font-medium text-sm">Registrar Vuelto Entregado</Label>
+                                <Label htmlFor="give-change-fiados" className="cursor-pointer font-black text-xs text-primary">REGISTRAR VUELTO ENTREGADO</Label>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* COLUMNA DERECHA: VUELTOS */}
+                    {isGivingChange && (
+                        <div className="space-y-4 md:border-l md:pl-6 animate-in slide-in-from-right-4 duration-300">
+                            <div className="text-center p-3 rounded-lg bg-primary/10 border border-primary/20">
+                                <p className="text-[10px] text-primary font-bold uppercase tracking-widest">Vuelto Requerido</p>
+                                <p className="text-3xl font-black text-primary">${potentialChangeInUSD.toFixed(2)}</p>
+                                <p className="text-[10px] text-primary/80 font-bold">o Bs {formatCurrency(potentialChangeInUSD * bcvRate)}</p>
                             </div>
 
-                            {isGivingChange && (
-                                <div className="space-y-3">
-                                    <div className="text-center p-2 rounded-lg bg-primary/10">
-                                        <p className="text-[10px] text-primary font-bold uppercase">Vuelto Total Requerido</p>
-                                        <p className="text-xl font-black text-primary">${potentialChangeInUSD.toFixed(2)}</p>
-                                        <p className="text-[10px] text-primary/80 font-bold">o Bs {formatCurrency(potentialChangeInUSD * bcvRate)}</p>
-                                    </div>
+                            <div className="space-y-2">
+                                <p className="text-[10px] font-bold text-muted-foreground uppercase">Métodos de Entrega</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {changeMethodOptions.map(method => (
+                                        <Button 
+                                            key={method.value} 
+                                            variant="outline" 
+                                            size="sm" 
+                                            className="h-7 text-[9px]"
+                                            onClick={() => handleAddChangePayment(method.value)}
+                                        >
+                                            <method.icon className="w-3 h-3 mr-1.5" /> {method.label}
+                                        </Button>
+                                    ))}
+                                </div>
+                            </div>
 
-                                    <div className="flex flex-wrap gap-2">
-                                        {changeMethodOptions.map(method => (
-                                            <Button 
-                                                key={method.value} 
-                                                variant="outline" 
-                                                size="sm" 
-                                                className="h-7 text-[9px]"
-                                                onClick={() => handleAddChangePayment(method.value)}
-                                            >
-                                                <method.icon className="w-3 h-3 mr-1" /> {method.label}
-                                            </Button>
-                                        ))}
-                                    </div>
-
+                            <ScrollArea className="h-[180px] pr-2">
+                                <div className="space-y-2">
                                     {changePayments.map(p => {
                                         const option = changeMethodOptions.find(o => o.value === p.method)!;
                                         const symbol = option.isBs ? 'Bs' : '$';
                                         return (
-                                            <div key={p.id} className="bg-white p-2 rounded-lg border flex gap-2 items-center">
-                                                <span className="text-[10px] font-bold shrink-0 w-24 truncate">{p.method}</span>
+                                            <div key={p.id} className="bg-white p-2 rounded-lg border flex gap-2 items-center shadow-sm">
+                                                <span className="text-[10px] font-bold text-muted-foreground w-20 truncate">{p.method}</span>
                                                 <div className="relative flex-1">
-                                                    <span className="absolute left-2 top-2 text-muted-foreground text-[10px]">{symbol}</span>
+                                                    <span className="absolute left-2.5 top-2 text-muted-foreground text-[10px] font-bold">{symbol}</span>
                                                     <Input 
                                                         type="number" 
-                                                        className="h-8 pl-6 text-xs" 
+                                                        className="h-8 pl-7 text-xs font-bold" 
                                                         value={p.amount || ''}
                                                         onChange={(e) => handleUpdateChangePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}
                                                     />
@@ -916,41 +953,29 @@ function CobrarFiadoDialog({ fiado, children }: { fiado: Fiado, children: React.
                                             </div>
                                         );
                                     })}
-
-                                    <div className={cn(
-                                        "text-center font-bold text-[10px] p-2 rounded-md",
-                                        Math.abs(changeDifference) > 0.01 ? "bg-destructive/10 text-destructive" : "bg-green-600/10 text-green-700"
-                                    )}>
-                                        {Math.abs(changeDifference) > 0.01 
-                                            ? `Falta por devolver: $${Math.abs(changeDifference).toFixed(2)} o Bs ${formatCurrency(Math.abs(changeDifference) * bcvRate)}`
-                                            : "Vuelto Correcto"}
-                                    </div>
                                 </div>
-                            )}
-                        </div>
-                    )}
+                            </ScrollArea>
 
-                    <div className="p-3 bg-primary/5 rounded-lg border border-primary/10">
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-muted-foreground">Total Recibido:</span>
-                            <span className="font-black text-primary">${totalAbonoInUSD.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between items-start text-[10px] mt-1">
-                            <span className="text-muted-foreground">Nuevo Saldo Pendiente:</span>
-                            <div className="flex flex-col items-end">
-                                <span className={cn("font-bold text-sm", remainingInUSD < 0 ? "text-destructive" : "text-slate-600")}>
-                                    ${remainingInUSD.toFixed(2)}
-                                </span>
-                                <span className="text-muted-foreground font-medium">
-                                    Bs {formatCurrency(remainingInUSD * bcvRate)}
-                                </span>
+                            <div className={cn(
+                                "text-center font-black text-[10px] p-3 rounded-md uppercase border",
+                                Math.abs(changeDifference) > 0.01 ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-green-600/10 text-green-700 border-green-600/20"
+                            )}>
+                                {Math.abs(changeDifference) > 0.01 
+                                    ? (
+                                        <div className="flex flex-col gap-0.5">
+                                            <span>Faltan devolver: ${Math.abs(changeDifference).toFixed(2)}</span>
+                                            <span>o Bs {formatCurrency(Math.abs(changeDifference) * bcvRate)}</span>
+                                        </div>
+                                    )
+                                    : "Vuelto Correcto ✓"}
                             </div>
                         </div>
-                    </div>
+                    )}
                 </div>
-                <DialogFooter>
-                    <Button onClick={handleAbono} className="w-full" disabled={payments.length === 0 || totalAbonoInUSD <= 0 || (isGivingChange && Math.abs(changeDifference) > 0.01)}>
-                        Confirmar Cobro de Abono
+
+                <DialogFooter className="mt-4">
+                    <Button onClick={handleAbono} className="w-full h-12 text-base font-black shadow-md" disabled={payments.length === 0 || totalAbonoInUSD <= 0 || loading || (isGivingChange && Math.abs(changeDifference) > 0.01)}>
+                        {loading ? "PROCESANDO PAGO..." : "CONFIRMAR ABONO"}
                     </Button>
                 </DialogFooter>
             </DialogContent>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { ProductGrid } from "@/components/pos/product-grid";
@@ -92,6 +93,13 @@ function POSContent() {
         setCart([]);
     };
 
+    const handleRemoveItem = (id: string, isRepair?: boolean) => {
+        setCart(prev => prev.filter(i => {
+            if (isRepair) return !(i.productId === id && i.isRepair);
+            return !(i.productId === id && !i.isRepair);
+        }));
+    };
+
     return (
         <div className="flex-1 flex flex-col bg-slate-50 overflow-hidden">
              <header className="bg-white flex h-14 items-center gap-4 border-b px-4 sm:h-16 sm:px-6">
@@ -114,7 +122,7 @@ function POSContent() {
                         cart={cart}
                         allProducts={products || []}
                         onUpdateQuantity={(id, q) => setCart(prev => prev.map(i => i.productId === id ? { ...i, quantity: q } : i))}
-                        onRemoveItem={(id) => setCart(prev => prev.filter(i => i.productId !== id))}
+                        onRemoveItem={handleRemoveItem}
                         onClearCart={() => setCart([])}
                         onTogglePromo={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isPromo: !i.isPromo } : i))}
                         onToggleGift={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isGift: !i.isGift } : i))}

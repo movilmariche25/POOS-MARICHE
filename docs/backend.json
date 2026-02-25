@@ -17,6 +17,18 @@
         "createdAt": { "type": "string", "format": "date-time" }
       }
     },
+    "Worker": {
+      "title": "Worker",
+      "description": "Perfil de trabajador fijo.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "Product": {
       "title": "Product",
       "type": "object",
@@ -64,6 +76,21 @@
         "totalAmount": { "type": "number" },
         "transactionDate": { "type": "string" }
       }
+    },
+    "PayrollPayment": {
+      "title": "PayrollPayment",
+      "description": "Registro de pago a trabajador.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workerId": { "type": "string" },
+        "workerName": { "type": "string" },
+        "amountUSD": { "type": "number" },
+        "amountBs": { "type": "number" },
+        "dateFrom": { "type": "string", "format": "date" },
+        "dateTo": { "type": "string", "format": "date" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "auth": {
@@ -74,6 +101,10 @@
       {
         "path": "/users/{userId}",
         "definition": { "entityName": "User", "description": "Perfil del negocio." }
+      },
+      {
+        "path": "/users/{userId}/workers/{workerId}",
+        "definition": { "entityName": "Worker", "description": "Lista de personal." }
       },
       {
         "path": "/users/{userId}/products/{productId}",
@@ -90,6 +121,10 @@
       {
         "path": "/users/{userId}/sale_transactions/{saleId}",
         "definition": { "entityName": "Sale", "description": "Ventas y abonos." }
+      },
+      {
+        "path": "/users/{userId}/payroll_payments/{paymentId}",
+        "definition": { "entityName": "PayrollPayment", "description": "Registro de nómina." }
       }
     ]
   }

@@ -24,14 +24,14 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import type { RepairJob, RepairStatus, Product } from "@/lib/types";
+import type { RepairJob, RepairStatus, Product, UserProfile } from "@/lib/types";
 import { useState, useEffect, ReactNode, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Textarea } from "../ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useCurrency } from "@/hooks/use-currency";
 import { Label } from "../ui/label";
-import { useFirebase, useCollection, useMemoFirebase } from "@/firebase";
+import { useFirebase, useCollection, useMemoFirebase, useDoc } from "@/firebase";
 import { collection, doc, runTransaction, query, orderBy } from "firebase/firestore";
 import { handlePrintAllTickets } from "./repair-ticket";
 import { DollarSign, Search, PlusCircle, CheckCircle2, AlertCircle, UserCheck, Gift } from "lucide-react";
@@ -66,6 +66,12 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
   const { getFinalPrice, format: formatCurrency, bcvRate, getSymbol } = useCurrency();
   const [mainPart, setMainPart] = useState<Product | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const profileRef = useMemoFirebase(() => 
+    (firestore && user) ? doc(firestore, 'users', user.uid) : null,
+    [firestore, user?.uid]
+  );
+  const { data: profile } = useDoc<UserProfile>(profileRef);
 
   const productsCollection = useMemoFirebase(() => 
     (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null, 
@@ -182,7 +188,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
             const oldPartId = repairJob?.reservedParts?.[0]?.productId;
             const newPartId = mainPart?.id;
 
-            // 1. LECTURAS PRIMERO (Todos los gets antes de cualquier write)
+            // 1. LECTURAS PRIMERO
             let oldSnap = null;
             let newSnap = null;
 
@@ -222,7 +228,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
 
         toast({ title: "Registro actualizado" });
         if (!repairJob) {
-            handlePrintAllTickets({ repairJob: result as RepairJob }, () => {});
+            handlePrintAllTickets({ repairJob: result as RepairJob, businessName: profile?.businessName, profile }, () => {});
         }
         setOpen(false);
     } catch (e: any) {
@@ -307,7 +313,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                   <div className="flex gap-2">
                       <Popover open={partsPopoverOpen} onOpenChange={setPartsPopoverOpen}>
                           <PopoverTrigger asChild>
-                              <Button variant="outline" className="w-full justify-start overflow-hidden text-ellipsis whitespace-nowrap bg-background">
+                              <Button type="button" variant="outline" className="w-full justify-start overflow-hidden text-ellipsis whitespace-nowrap bg-background">
                                   <Search className="mr-2 h-4 w-4 shrink-0 opacity-50"/> {mainPart?.name || "Vincular pieza..."}
                               </Button>
                           </PopoverTrigger>
