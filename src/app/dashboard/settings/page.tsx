@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, LogOut, ShieldCheck, UserCog, Mail, Lock, KeyRound, AlertCircle, FileSpreadsheet, DownloadCloud, UploadCloud, Database, RefreshCcw, MapPin, Hash, ReceiptText, Wrench, Save } from "lucide-react";
+import { Loader2, LogOut, ShieldCheck, UserCog, Mail, Lock, KeyRound, AlertCircle, FileSpreadsheet, DownloadCloud, UploadCloud, Database, RefreshCcw, MapPin, Hash, ReceiptText, Wrench, Save, PiggyBank, Users, Home, Percent, ShieldAlert, Wallet, Landmark, DollarSign, Smartphone, CreditCard, Banknote, Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { z } from "zod";
@@ -14,8 +14,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useDoc, useFirebase, useMemoFirebase, setDocumentNonBlocking, updateDocumentNonBlocking, useCollection } from "@/firebase";
 import { doc, collection, writeBatch } from "firebase/firestore";
-import { useEffect, useState, useRef } from "react";
-import type { AppSettings, UserProfile, Product, RepairJob, Sale, Fiado } from "@/lib/types";
+import { useEffect, useState, useRef, useMemo } from "react";
+import type { AppSettings, UserProfile, Product, RepairJob, Sale, Fiado, UserModule, PaymentMethod } from "@/lib/types";
 import { Switch } from "@/components/ui/switch";
 import { signOut } from "firebase/auth";
 import { updateUserEmail, updateUserPassword } from "@/firebase/non-blocking-login";
@@ -25,6 +25,7 @@ import { format, parseISO } from "date-fns";
 import { AdminAuthDialog } from "@/components/admin-auth-dialog";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { SecurityGate } from "@/components/security-gate";
 
 const settingsSchema = z.object({
     bcvRate: z.coerce.number().positive("La tasa debe ser mayor a 0"),
@@ -32,6 +33,15 @@ const settingsSchema = z.object({
     profitMargin: z.coerce.number().min(0, "El margen no puede ser negativo"),
     autoUpdateBcv: z.boolean().default(false),
     lastUpdated: z.string().optional(),
+    weeklyRent: z.coerce.number().min(0, "Mínimo 0"),
+    investmentPercentage: z.coerce.number().min(0).max(100, "Máximo 100%"),
+    partnersCount: z.coerce.number().min(1, "Al menos 1 socio"),
+    initialBalances: z.object({
+        'Efectivo USD': z.coerce.number().default(0),
+        'Efectivo Bs': z.coerce.number().default(0),
+        'Tarjeta / Pago Móvil': z.coerce.number().default(0),
+        'Transferencia': z.coerce.number().default(0),
+    })
 });
 
 const profileSchema = z.object({
@@ -46,13 +56,33 @@ const profileSchema = z.object({
 
 const DEFAULT_PIN = "2026";
 
+const PROTECTABLE_MODULES: { id: UserModule, label: string }[] = [
+    { id: 'inventory', label: 'Inventario' },
+    { id: 'pos', label: 'Punto de Venta' },
+    { id: 'repairs', label: 'Reparaciones' },
+    { id: 'fiados', label: 'Fiados / Créditos' },
+    { id: 'payroll', label: 'Registro de Pago' },
+    { id: 'treasury', label: 'Tesorería' },
+    { id: 'reports', label: 'Reportes Financieros' },
+    { id: 'analysis', label: 'Análisis de Negocio' },
+];
+
 export default function SettingsPage() {
+    return (
+        <SecurityGate module="settings">
+            <SettingsContent />
+        </SecurityGate>
+    );
+}
+
+function SettingsContent() {
     const { toast } = useToast();
     const { firestore, auth, user } = useFirebase();
     const [isUpdatingCredentials, setIsUpdatingCredentials] = useState(false);
     const [isUpdatingPin, setIsUpdatingPin] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [isSavingSettings, setIsSavingSettings] = useState(false);
+    const [isSavingBalances, setIsSavingBalances] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     
     const settingsRef = useMemoFirebase(() => 
@@ -84,6 +114,15 @@ export default function SettingsPage() {
             parallelRate: 1, 
             profitMargin: 100, 
             autoUpdateBcv: false,
+            weeklyRent: 40,
+            investmentPercentage: 30,
+            partnersCount: 2,
+            initialBalances: {
+                'Efectivo USD': 0,
+                'Efectivo Bs': 0,
+                'Tarjeta / Pago Móvil': 0,
+                'Transferencia': 0,
+            }
         }
     });
 
@@ -105,17 +144,36 @@ export default function SettingsPage() {
     const [newPin, setNewPin] = useState("");
     const [currentPinVerify, setCurrentPinVerify] = useState("");
     const [isPinRequired, setIsPinRequired] = useState(true);
+    const [lockedModules, setLockedModules] = useState<UserModule[]>([]);
     const [initialEmailSet, setInitialEmailSet] = useState(false);
 
-    // CRITICAL FIX: Only reset forms if the user is NOT actively typing (isDirty check)
+    const availableProtectableModules = useMemo(() => {
+        if (!profile) return [];
+        const enabled = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'payroll', 'treasury'];
+        return PROTECTABLE_MODULES.filter(m => enabled.includes(m.id));
+    }, [profile]);
+
     useEffect(() => {
         if (settings && !settingsForm.formState.isDirty) {
+            const combinedDigital = (settings.initialBalances?.['Tarjeta'] || 0) + 
+                                   (settings.initialBalances?.['Pago Móvil'] || 0) + 
+                                   (settings.initialBalances?.['Tarjeta / Pago Móvil'] || 0);
+
             settingsForm.reset({
                 bcvRate: settings.bcvRate,
                 parallelRate: settings.parallelRate,
                 profitMargin: settings.profitMargin,
                 autoUpdateBcv: settings.autoUpdateBcv || false,
                 lastUpdated: settings.lastUpdated,
+                weeklyRent: settings.weeklyRent ?? 40,
+                investmentPercentage: settings.investmentPercentage ?? 30,
+                partnersCount: settings.partnersCount ?? 2,
+                initialBalances: {
+                    'Efectivo USD': settings.initialBalances?.['Efectivo USD'] || 0,
+                    'Efectivo Bs': settings.initialBalances?.['Efectivo Bs'] || 0,
+                    'Tarjeta / Pago Móvil': combinedDigital,
+                    'Transferencia': settings.initialBalances?.['Transferencia'] || 0,
+                }
             });
         }
     }, [settings, settingsForm]);
@@ -136,6 +194,7 @@ export default function SettingsPage() {
                 setInitialEmailSet(true);
             }
             setIsPinRequired(profile.isPinRequired !== false);
+            setLockedModules(profile.lockedModules || ['treasury', 'reports', 'analysis']);
         }
     }, [profile, profileForm, initialEmailSet]);
 
@@ -144,13 +203,33 @@ export default function SettingsPage() {
         setIsSavingSettings(true);
         try {
             await setDocumentNonBlocking(settingsRef, { ...values, lastUpdated: new Date().toISOString() }, { merge: true });
-            toast({ title: "Configuración Guardada", description: "Las tasas y márgenes han sido actualizados." });
-            // Una vez guardado, el formulario deja de estar "sucio"
+            toast({ title: "Configuración Guardada" });
             settingsForm.reset(values);
         } catch (e) {
-            toast({ variant: "destructive", title: "Error", description: "No se pudieron guardar los cambios." });
+            toast({ variant: "destructive", title: "Error" });
         } finally {
             setIsSavingSettings(false);
+        }
+    }
+
+    const handleSaveBalances = async (values: z.infer<typeof settingsSchema>) => {
+        if (!settingsRef) return;
+        setIsSavingBalances(true);
+        try {
+            // Guardamos los fondos y establecemos el marcador de tiempo del Arqueo
+            await setDocumentNonBlocking(settingsRef, { 
+                initialBalances: values.initialBalances,
+                balancesUpdatedAt: new Date().toISOString() 
+            }, { merge: true });
+            toast({ 
+                title: "Fondos Sincronizados", 
+                description: "El Saldo Real ahora contará desde este momento exacto." 
+            });
+            settingsForm.reset(values);
+        } catch (e) {
+            toast({ variant: "destructive", title: "Error al sincronizar" });
+        } finally {
+            setIsSavingBalances(false);
         }
     }
 
@@ -161,23 +240,32 @@ export default function SettingsPage() {
         profileForm.reset(values);
     }
 
+    const toggleModuleLock = (moduleId: UserModule) => {
+        setLockedModules(prev => 
+            prev.includes(moduleId) ? prev.filter(m => m !== moduleId) : [...prev, moduleId]
+        );
+    };
+
     const handleUpdatePinSettings = async () => {
         if (!userProfileRef || !currentPinVerify) return;
         const requiredPin = profile?.securityPin || DEFAULT_PIN;
         if (currentPinVerify !== requiredPin) {
-            toast({ variant: "destructive", title: "PIN Actual Incorrecto", description: "Debes ingresar tu PIN actual." });
+            toast({ variant: "destructive", title: "Autorización Fallida", description: "El PIN ingresado para autorizar no es correcto." });
             return;
         }
         setIsUpdatingPin(true);
         try {
-            const updateData: Partial<UserProfile> = { isPinRequired: isPinRequired };
+            const updateData: Partial<UserProfile> = { 
+                isPinRequired: isPinRequired,
+                lockedModules: lockedModules
+            };
             if (newPin) updateData.securityPin = newPin;
             await updateDocumentNonBlocking(userProfileRef, updateData);
             toast({ title: "Seguridad Actualizada" });
             setNewPin("");
             setCurrentPinVerify("");
         } catch (e) {
-            toast({ variant: "destructive", title: "Error al actualizar" });
+            toast({ variant: "destructive", title: "Error" });
         } finally {
             setIsUpdatingPin(false);
         }
@@ -191,18 +279,18 @@ export default function SettingsPage() {
         }
         setIsUpdatingCredentials(true);
         try {
-            if (newEmail && newEmail !== user.email) {
+            if (newEmail && newEmail !== user.email && profile?.isAdmin) {
                 await updateUserEmail(auth, newEmail);
                 if (userProfileRef) setDocumentNonBlocking(userProfileRef, { email: newEmail }, { merge: true });
             }
             if (newPassword) {
-                if (newPassword.length < 6) throw new Error("La contraseña debe tener al menos 6 caracteres.");
+                if (newPassword.length < 6) throw new Error("Mínimo 6 caracteres");
                 await updateUserPassword(auth, newPassword);
             }
             toast({ title: "Credenciales Actualizadas" });
             setNewPassword("");
         } catch (e: any) {
-            toast({ variant: "destructive", title: "Error de Seguridad", description: e.message });
+            toast({ variant: "destructive", title: "Error", description: e.message });
         } finally {
             setIsUpdatingCredentials(false);
         }
@@ -256,6 +344,7 @@ export default function SettingsPage() {
     const handleSignOut = () => {
         if (auth) {
             localStorage.removeItem('mm_active_session_id');
+            sessionStorage.removeItem('mm_security_unlocked');
             signOut(auth).then(() => { window.location.href = '/'; });
         }
     };
@@ -265,8 +354,116 @@ export default function SettingsPage() {
     return (
         <>
             <PageHeader title="Configuración y Perfil" />
-            <main className="flex-1 p-4 sm:p-6 space-y-8 max-w-4xl mx-auto w-full">
+            <main className="flex-1 p-4 sm:p-6 space-y-8 max-w-4xl mx-auto w-full pb-20">
                 
+                <Card className="shadow-md border-primary/20 bg-primary/5">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-primary"><ShieldCheck className="w-5 h-5"/> Centro de Seguridad y PIN</CardTitle>
+                        <CardDescription>Controla qué partes del sistema requieren clave de gerente.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <div className={cn("flex items-center justify-between p-4 rounded-lg border", isPinRequired ? "bg-white border-primary/20" : "bg-slate-50 border-slate-200")}>
+                            <div className="space-y-0.5">
+                                <Label className="text-base font-black uppercase tracking-tight">Seguridad Global por PIN</Label>
+                                <p className="text-xs text-muted-foreground">{isPinRequired ? "El sistema pedirá PIN para entrar a las áreas marcadas." : "Las secciones importantes estarán abiertas a cualquiera."}</p>
+                            </div>
+                            <Switch checked={isPinRequired} onCheckedChange={setIsPinRequired} />
+                        </div>
+
+                        {isPinRequired && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-3 p-4 bg-white rounded-lg border shadow-sm">
+                                    <Label className="flex items-center gap-2 text-xs font-black uppercase text-muted-foreground"><ShieldAlert className="w-3.5 h-3.5" /> Bloquear estas secciones:</Label>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {availableProtectableModules.map(m => (
+                                            <div key={m.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded border border-transparent hover:border-slate-100 transition-all">
+                                                <Label className="text-xs cursor-pointer" htmlFor={`lock-${m.id}`}>{m.label}</Label>
+                                                <Switch id={`lock-${m.id}`} checked={lockedModules.includes(m.id)} onCheckedChange={() => toggleModuleLock(m.id)} />
+                                            </div>
+                                        ))}
+                                        <div className="flex items-center justify-between p-2 opacity-50 bg-slate-50 rounded italic border border-slate-200">
+                                            <Label className="text-xs">Configuración (Siempre Bloqueado)</Label>
+                                            <Switch checked disabled />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="space-y-4 p-4 bg-white rounded-lg border shadow-sm flex flex-col justify-between">
+                                    <div className="space-y-4">
+                                        <div className="space-y-2">
+                                            <Label className="text-xs font-black uppercase">{profile?.securityPin ? "PIN Actual *" : "PIN por Defecto (2026) *"}</Label>
+                                            <Input type="password" value={currentPinVerify} onChange={(e) => setCurrentPinVerify(e.target.value)} placeholder={profile?.securityPin ? "PIN actual para autorizar" : "Escribe 2026"} className="h-12 text-xl tracking-[0.5em] text-center" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs font-black uppercase">{profile?.securityPin ? "Cambiar por Nuevo PIN" : "Crear mi PIN de Gerente *"}</Label>
+                                            <Input type="password" value={newPin} onChange={(e) => setNewPin(e.target.value)} placeholder="4-8 dígitos nuevos" className="h-12 text-xl tracking-[0.5em] text-center" />
+                                        </div>
+                                    </div>
+                                    <Button className="w-full h-12" onClick={handleUpdatePinSettings} disabled={isUpdatingPin || !currentPinVerify || (!profile?.securityPin && !newPin)}>
+                                        {isUpdatingPin ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                        {profile?.securityPin ? "Guardar Ajustes" : "Activar mi PIN Personal"}
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card className="shadow-md border-amber-100 bg-amber-50/30">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-amber-700"><Wallet className="w-5 h-5" /> Arqueo de Caja (Fondos Base)</CardTitle>
+                        <CardDescription>Indica cuánto dinero tienes FÍSICAMENTE en este momento. El sistema contará desde aquí en adelante.</CardDescription>
+                    </CardHeader>
+                    <Form {...settingsForm}>
+                        <form onSubmit={settingsForm.handleSubmit(handleSaveBalances)}>
+                            <CardContent className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <FormField control={settingsForm.control} name="initialBalances.Efectivo USD" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="flex items-center gap-2 font-bold"><DollarSign className="w-3.5 h-3.5" /> Fondo Efectivo USD</FormLabel>
+                                            <FormControl><Input type="number" step="0.01" {...field} className="bg-white border-amber-200" /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={settingsForm.control} name="initialBalances.Efectivo Bs" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="flex items-center gap-2 font-bold"><Landmark className="w-3.5 h-3.5" /> Fondo Efectivo Bs</FormLabel>
+                                            <FormControl><Input type="number" step="0.01" {...field} className="bg-white border-amber-200" /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={settingsForm.control} name="initialBalances.Tarjeta / Pago Móvil" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="flex items-center gap-2 font-bold"><Smartphone className="w-3.5 h-3.5" /> Saldo Digital (Tarjeta / P. Móvil)</FormLabel>
+                                            <FormControl><Input type="number" step="0.01" {...field} className="bg-white border-amber-200" /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={settingsForm.control} name="initialBalances.Transferencia" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="flex items-center gap-2 font-bold"><Banknote className="w-3.5 h-3.5" /> Saldo Bancos (Transferencias)</FormLabel>
+                                            <FormControl><Input type="number" step="0.01" {...field} className="bg-white border-amber-200" /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                </div>
+                                <div className="p-3 bg-amber-600 text-white rounded-lg flex items-start gap-2 shadow-sm">
+                                    <AlertCircle className="w-5 h-5 mt-0.5" />
+                                    <div className="text-[11px] leading-tight font-medium">
+                                        <p className="font-bold uppercase mb-1">¡IMPORTANTE: PUNTO DE CONTROL!</p>
+                                        <p>Al guardar estos montos, el sistema registrará este momento exacto. Todas las ventas y gastos anteriores serán ignorados para el cálculo del Saldo Real. El sistema volverá a contar desde cero a partir de estas cifras.</p>
+                                    </div>
+                                </div>
+                            </CardContent>
+                            <CardFooter className="border-t border-amber-100 pt-4">
+                                <Button type="submit" disabled={isSavingBalances} className="bg-amber-600 hover:bg-amber-700 w-full sm:w-auto">
+                                    {isSavingBalances ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
+                                    Sincronizar con mi Efectivo Actual
+                                </Button>
+                            </CardFooter>
+                        </form>
+                    </Form>
+                </Card>
+
                 <Card className="shadow-md">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2"><UserCog className="w-5 h-5"/> Perfil del Negocio</CardTitle>
@@ -276,69 +473,23 @@ export default function SettingsPage() {
                         <form onSubmit={profileForm.handleSubmit(handleSaveProfile)}>
                             <CardContent className="space-y-6">
                                 <FormField control={profileForm.control} name="businessName" render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Nombre Comercial</FormLabel>
-                                        <FormControl><Input {...field} placeholder="Ej: Poos Mariche Central" /></FormControl>
-                                        <FormMessage />
-                                    </FormItem>
+                                    <FormItem><FormLabel>Nombre Comercial</FormLabel><FormControl><Input {...field} placeholder="Ej: Poos Mariche Central" /></FormControl><FormMessage /></FormItem>
                                 )} />
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <FormField control={profileForm.control} name="businessRIF" render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel className="flex items-center gap-2"><Hash className="w-3 h-3" /> RIF / Identificación Fiscal</FormLabel>
-                                            <FormControl><Input {...field} placeholder="Ej: J-12345678-9" /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
+                                        <FormItem><FormLabel className="flex items-center gap-2"><Hash className="w-3 h-3" /> RIF / Identificación Fiscal</FormLabel><FormControl><Input {...field} placeholder="Ej: J-12345678-9" /></FormControl><FormMessage /></FormItem>
                                     )} />
                                     <FormField control={profileForm.control} name="businessAddress" render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel className="flex items-center gap-2"><MapPin className="w-3 h-3" /> Dirección Física</FormLabel>
-                                            <FormControl><Input {...field} placeholder="Ej: Av. Principal, Local 5" /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
+                                        <FormItem><FormLabel className="flex items-center gap-2"><MapPin className="w-3 h-3" /> Dirección Física</FormLabel><FormControl><Input {...field} placeholder="Ej: Av. Principal, Local 5" /></FormControl><FormMessage /></FormItem>
                                     )} />
                                 </div>
                                 <Separator />
                                 <FormField control={profileForm.control} name="showInfoOnReceipt" render={({ field }) => (
                                     <FormItem className="flex items-center justify-between rounded-lg border p-4 bg-muted/20">
-                                        <div className="space-y-0.5">
-                                            <FormLabel className="flex items-center gap-2"><ReceiptText className="w-4 h-4 text-primary" /> Datos en Recibos</FormLabel>
-                                            <FormDescription>Mostrar RIF y Dirección en los tickets impresos.</FormDescription>
-                                        </div>
-                                        <FormControl>
-                                            <Switch checked={field.value} onCheckedChange={field.onChange} />
-                                        </FormControl>
+                                        <div className="space-y-0.5"><FormLabel className="flex items-center gap-2"><ReceiptText className="w-4 h-4 text-primary" /> Datos en Recibos</FormLabel><FormDescription>Mostrar RIF y Dirección en los tickets impresos.</FormDescription></div>
+                                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                                     </FormItem>
                                 )} />
-                                {showRepairs && (
-                                    <div className="space-y-6 pt-4">
-                                        <Separator />
-                                        <div className="flex items-center gap-2 text-primary font-bold"><Wrench className="w-5 h-5" /><span>Políticas de Reparación</span></div>
-                                        <div className="grid grid-cols-1 gap-4">
-                                            <FormField control={profileForm.control} name="repairWarrantyPolicy" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Política de Garantía</FormLabel>
-                                                    <FormControl><Textarea {...field} className="h-20" /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                            <FormField control={profileForm.control} name="repairPickupPolicy" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Política de Retiro</FormLabel>
-                                                    <FormControl><Textarea {...field} className="h-20" /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                            <FormField control={profileForm.control} name="repairDisclaimer" render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Cláusula de Responsabilidad</FormLabel>
-                                                    <FormControl><Textarea {...field} className="h-20" /></FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )} />
-                                        </div>
-                                    </div>
-                                )}
                             </CardContent>
                             <CardFooter className="border-t pt-4">
                                 <Button type="submit">Actualizar Perfil</Button>
@@ -347,7 +498,48 @@ export default function SettingsPage() {
                     </Form>
                 </Card>
 
-                <Card className="shadow-md border-primary/20 bg-primary/5">
+                <Card className="shadow-md">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-primary"><PiggyBank className="w-5 h-5" /> Parámetros Financieros</CardTitle>
+                        <CardDescription>Configuración de márgenes y distribución de ganancias.</CardDescription>
+                    </CardHeader>
+                    <Form {...settingsForm}>
+                        <form onSubmit={settingsForm.handleSubmit(handleSaveSettings)}>
+                            <CardContent className="space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <FormField control={settingsForm.control} name="bcvRate" render={({ field }) => (
+                                        <FormItem><FormLabel>Tasa Oficial (BCV)</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={settingsForm.control} name="parallelRate" render={({ field }) => (
+                                        <FormItem><FormLabel>Tasa de Reposición</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={settingsForm.control} name="profitMargin" render={({ field }) => (
+                                        <FormItem><FormLabel>Margen Global (%)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-6">
+                                    <FormField control={settingsForm.control} name="weeklyRent" render={({ field }) => (
+                                        <FormItem><FormLabel className="flex items-center gap-2"><Home className="w-3.5 h-3.5" /> Alquiler Semanal ($)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={settingsForm.control} name="investmentPercentage" render={({ field }) => (
+                                        <FormItem><FormLabel className="flex items-center gap-2"><Percent className="w-3.5 h-3.5" /> % Inversión Nueva</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                    <FormField control={settingsForm.control} name="partnersCount" render={({ field }) => (
+                                        <FormItem><FormLabel className="flex items-center gap-2"><Users className="w-3.5 h-3.5" /> Cantidad de Socios</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
+                                    )} />
+                                </div>
+                            </CardContent>
+                            <CardFooter className="border-t pt-4">
+                                <Button type="submit" disabled={isSavingSettings}>
+                                    {isSavingSettings ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                    Guardar Ajustes Financieros
+                                </Button>
+                            </CardFooter>
+                        </form>
+                    </Form>
+                </Card>
+
+                <Card className="shadow-md border-slate-200">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-primary"><Database className="w-5 h-5" /> Centro de Datos y Respaldo</CardTitle>
                         <CardDescription>Descarga o restaura toda tu información.</CardDescription>
@@ -369,117 +561,7 @@ export default function SettingsPage() {
                     </CardContent>
                 </Card>
 
-                <Card className="shadow-md border-slate-200">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-slate-800"><KeyRound className="w-5 h-5"/> Clave de Gerente (PIN)</CardTitle>
-                        <CardDescription>Protección para acciones críticas.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                        <div className={cn("flex items-center justify-between p-4 rounded-lg border", isPinRequired ? "bg-primary/5 border-primary/20" : "bg-slate-50 border-slate-200")}>
-                            <div className="space-y-0.5">
-                                <Label className="text-base">Estado de Protección</Label>
-                                <p className="text-xs text-muted-foreground">{isPinRequired ? "Se solicita PIN para acciones críticas." : "No recomendado."}</p>
-                            </div>
-                            <Switch checked={isPinRequired} onCheckedChange={setIsPinRequired} />
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                                <Label>PIN Actual *</Label>
-                                <input type="password" value={currentPinVerify} onChange={(e) => setCurrentPinVerify(e.target.value)} placeholder="PIN Actual" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Nuevo PIN (Opcional)</Label>
-                                <input type="password" value={newPin} onChange={(e) => setNewPin(e.target.value)} placeholder="Nuevo PIN" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
-                            </div>
-                        </div>
-                    </CardContent>
-                    <CardFooter className="border-t pt-4">
-                        <Button onClick={handleUpdatePinSettings} disabled={isUpdatingPin || !currentPinVerify}>
-                            {isUpdatingPin ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : "Guardar Ajustes de Seguridad"}
-                        </Button>
-                    </CardFooter>
-                </Card>
-
-                <Card className="shadow-md">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><Save className="w-5 h-5 text-primary" /> Tasas y Márgenes</CardTitle>
-                        <CardDescription>Configuración económica global.</CardDescription>
-                    </CardHeader>
-                    <Form {...settingsForm}>
-                        <form onSubmit={settingsForm.handleSubmit(handleSaveSettings)}>
-                            <CardContent className="space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    <FormField control={settingsForm.control} name="bcvRate" render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Tasa Oficial (BCV)</FormLabel>
-                                            <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )} />
-                                    <FormField control={settingsForm.control} name="parallelRate" render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Tasa de Reposición</FormLabel>
-                                            <FormControl><Input type="number" step="0.01" {...field} /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )} />
-                                    <FormField control={settingsForm.control} name="profitMargin" render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Margen Global (%)</FormLabel>
-                                            <FormControl><Input type="number" {...field} /></FormControl>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )} />
-                                </div>
-                                <div className="flex items-center justify-between p-4 bg-primary/5 rounded-lg border border-primary/10">
-                                    <div className="space-y-0.5">
-                                        <Label>Actualización Automática (BCV)</Label>
-                                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tight">Sincroniza con el Banco Central cada 4 horas</p>
-                                    </div>
-                                    <FormField control={settingsForm.control} name="autoUpdateBcv" render={({ field }) => (
-                                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                    )} />
-                                </div>
-                            </CardContent>
-                            <CardFooter className="border-t pt-4">
-                                <Button type="submit" disabled={isSavingSettings} className="w-full sm:w-auto">
-                                    {isSavingSettings ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                                    Guardar Tasas y Márgenes
-                                </Button>
-                            </CardFooter>
-                        </form>
-                    </Form>
-                </Card>
-
-                <Card className="shadow-md border-amber-100">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-amber-700"><ShieldCheck className="w-5 h-5"/> Seguridad de Acceso (Login)</CardTitle>
-                        <CardDescription>Cambia tu usuario y contraseña de acceso.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Email de Acceso</Label>
-                                <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="correo@ejemplo.com" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Nueva Contraseña</Label>
-                                <input type="password" placeholder="Mínimo 6 caracteres" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" />
-                            </div>
-                        </div>
-                    </CardContent>
-                    <CardFooter className="border-t pt-4">
-                        <Button variant="outline" onClick={handleUpdateCredentials} disabled={isUpdatingCredentials}>
-                            {isUpdatingCredentials ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : "Actualizar Credenciales"}
-                        </Button>
-                    </CardFooter>
-                </Card>
-
-                <div className="flex justify-center pt-4">
-                    <Button variant="destructive" onClick={handleSignOut} size="lg">
-                        <LogOut className="mr-2 h-5 w-5" /> Cerrar Sesión del Sistema
-                    </Button>
-                </div>
+                <div className="flex justify-center pt-4"><Button variant="destructive" onClick={handleSignOut} size="lg"><LogOut className="mr-2 h-5 w-5" /> Cerrar Sesión del Sistema</Button></div>
             </main>
         </>
     );

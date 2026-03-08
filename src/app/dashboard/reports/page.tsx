@@ -1,12 +1,22 @@
+
 "use client";
 
 import { PageHeader } from "@/components/page-header";
 import { ReportsView } from "@/components/reports/reports-view";
 import { useCollection, useFirebase, useMemoFirebase } from "@/firebase";
-import type { Product, Sale, RepairJob } from "@/lib/types";
+import type { Product, Sale, RepairJob, CurrencyExchange } from "@/lib/types";
 import { collection } from "firebase/firestore";
+import { SecurityGate } from "@/components/security-gate";
 
 export default function ReportsPage() {
+    return (
+        <SecurityGate module="reports">
+            <ReportsContent />
+        </SecurityGate>
+    );
+}
+
+function ReportsContent() {
     const { firestore, user } = useFirebase();
     
     const salesCollection = useMemoFirebase(() => 
@@ -27,6 +37,12 @@ export default function ReportsPage() {
     );
     const { data: repairJobs, isLoading: repairsLoading } = useCollection<RepairJob>(repairJobsCollection);
 
+    const exchangeCollection = useMemoFirebase(() => 
+        (firestore && user) ? collection(firestore, "users", user.uid, "currency_exchanges") : null,
+        [firestore, user?.uid]
+    );
+    const { data: exchanges, isLoading: exchangesLoading } = useCollection<CurrencyExchange>(exchangeCollection);
+
     return (
         <>
             <PageHeader title="Reportes" />
@@ -35,7 +51,8 @@ export default function ReportsPage() {
                     sales={sales || []} 
                     products={products || []} 
                     repairJobs={repairJobs || []}
-                    isLoading={salesLoading || productsLoading || repairsLoading}
+                    exchanges={exchanges || []}
+                    isLoading={salesLoading || productsLoading || repairsLoading || exchangesLoading}
                 />
             </main>
         </>

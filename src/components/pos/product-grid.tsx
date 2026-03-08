@@ -8,7 +8,7 @@ import { ScrollArea } from "../ui/scroll-area";
 import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "../ui/skeleton";
-import { TicketPercent, Search, PackagePlus, Lock, Percent } from "lucide-react";
+import { TicketPercent, Search, PackagePlus, Lock, Percent, Scale } from "lucide-react";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "../ui/button";
@@ -64,12 +64,12 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
            const stockCounts = product.comboItems.map(item => {
                const component = products.find(p => p.id === item.productId);
                if (!component) return 0;
-               const available = component.stockLevel - (component.reservedStock || 0) - (component.damagedStock || 0);
-               return Math.floor(available / item.quantity);
+               const available = (Number(component.stockLevel) || 0) - (Number(component.reservedStock) || 0) - (Number(component.damagedStock) || 0);
+               return Math.floor(available / (item.quantity || 1));
            });
            return Math.min(...stockCounts);
       }
-      return product.stockLevel - (product.reservedStock || 0) - (product.damagedStock || 0);
+      return (Number(product.stockLevel) || 0) - (Number(product.reservedStock) || 0) - (Number(product.damagedStock) || 0);
   };
   
   const handlePreviousPage = () => {
@@ -105,7 +105,7 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
                 />
             </div>
         </div>
-        <div className="relative flex-1 min-h-0">
+        <div className="relative flex-1 min-0">
           <ScrollArea className="absolute inset-0">
             <div className="flex flex-wrap gap-4 pr-4">
                 {isLoading ? (
@@ -123,6 +123,7 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
                     const availableStock = getAvailableStock(product);
                     const promoPrice = (typeof product.promoPrice === 'number' && product.promoPrice > 0) ? product.promoPrice : 0;
                     const hasPromo = promoPrice > 0;
+                    const unitLabel = product.unit && product.unit !== 'unit' ? product.unit : 'pza';
                     
                     const basePrice = getFinalPrice(product);
                     const displayPrice = hasPromo ? promoPrice : basePrice;
@@ -134,7 +135,7 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
                             onClick={() => availableStock > 0 && onProductSelect(product)}
                             className={cn(
                                 "cursor-pointer hover:border-primary transition-colors flex flex-col justify-between w-[150px]",
-                                availableStock <= 0 && "opacity-50 cursor-not-allowed hover:border-input"
+                                availableStock <= 0 && "opacity-50 cursor-not-allowed hover:border-input bg-slate-50"
                             )}
                         >
                             <CardHeader className="p-2">
@@ -142,20 +143,26 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
                                   {product.isCombo && <PackagePlus className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" title="Combo"/>}
                                   {product.isFixedPrice && <Lock className="h-3 w-3 text-amber-500 flex-shrink-0 mt-1" title="Precio Fijo" />}
                                   {product.hasCustomMargin && !product.isFixedPrice && <Percent className="h-3 w-3 text-blue-500 flex-shrink-0 mt-1" title={`Margen Indiv: ${product.customMargin}%`} />}
-                                  <span>{product.name}</span>
+                                  {product.unit && product.unit !== 'unit' && <Scale className="h-3 w-3 text-slate-400 flex-shrink-0 mt-1" title="Venta por peso/volumen" />}
+                                  <span className="line-clamp-2">{product.name}</span>
                                 </CardTitle>
                                 {product.compatibleModels && product.compatibleModels.length > 0 && (
-                                  <p className="text-xs text-muted-foreground truncate pt-1">{product.compatibleModels.join(', ')}</p>
+                                  <p className="text-[10px] text-muted-foreground truncate pt-1">{product.compatibleModels.join(', ')}</p>
                                 )}
                             </CardHeader>
-                            <CardFooter className="p-2 flex justify-between items-end mt-auto">
-                                <p className="text-[10px] text-muted-foreground">Disp: {availableStock}</p>
+                            <CardFooter className="p-2 flex justify-between items-end mt-auto border-t pt-2">
+                                <div className="flex flex-col">
+                                    <p className={cn("text-[9px] font-black uppercase", availableStock <= 0 ? "text-destructive" : "text-slate-500")}>
+                                        Disp: {availableStock}
+                                    </p>
+                                    <span className="text-[7px] text-muted-foreground font-bold uppercase">{unitLabel}</span>
+                                </div>
                                 <div className="text-right flex flex-col">
-                                    <div className={cn("text-xs font-bold", hasPromo && "text-green-600")}>
-                                      {hasPromo && <TicketPercent className="w-3 h-3 inline-block mr-1"/>}
+                                    <div className={cn("text-xs font-black", hasPromo ? "text-green-600" : "text-primary")}>
+                                      {hasPromo && <TicketPercent className="w-2.5 h-3 inline-block mr-0.5"/>}
                                       {getSymbol('USD')}{format(displayPrice, 'USD')}
                                     </div>
-                                    <div className="text-[10px] text-muted-foreground font-bold border-t border-muted mt-0.5 pt-0.5">
+                                    <div className="text-[9px] text-muted-foreground font-bold border-t border-muted mt-0.5 pt-0.5">
                                       {getSymbol('Bs')}{format(displayPriceBs, 'Bs')}
                                     </div>
                                 </div>

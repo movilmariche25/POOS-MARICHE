@@ -6,8 +6,17 @@ import { AnalysisView } from "@/components/analysis/analysis-view";
 import { useCollection, useFirebase, useMemoFirebase, useDoc } from "@/firebase";
 import type { Product, Sale, RepairJob, UserProfile } from "@/lib/types";
 import { collection, doc } from "firebase/firestore";
+import { SecurityGate } from "@/components/security-gate";
 
 export default function AnalysisPage() {
+    return (
+        <SecurityGate module="analysis">
+            <AnalysisContent />
+        </SecurityGate>
+    );
+}
+
+function AnalysisContent() {
     const { firestore, user } = useFirebase();
     
     const profileRef = useMemoFirebase(() => 

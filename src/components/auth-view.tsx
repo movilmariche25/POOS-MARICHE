@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -65,7 +64,7 @@ export function AuthView() {
             <AppLogo className="w-16 h-16 text-primary" />
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight">
-            {isLogin ? "Poos Mariche" : "Registro de Negocio"}
+            {isLogin ? "POS Mariche" : "Registro de Negocio"}
           </CardTitle>
           <CardDescription>
             {isLogin 
@@ -82,7 +81,7 @@ export function AuthView() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@poosmariche.com"
+                  placeholder="admin@posmariche.com"
                   className="pl-10"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}

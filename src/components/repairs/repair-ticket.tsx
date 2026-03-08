@@ -8,15 +8,19 @@ type RepairTicketProps = {
     repairJob: RepairJob;
     businessName?: string;
     profile?: UserProfile | null;
+    bcvRate?: number;
 }
 
 // SECCIÓN 1: NOTA DE ENTREGA (CLIENTE)
-export function CustomerTicket({ repairJob, businessName, profile }: RepairTicketProps) {
+export function CustomerTicket({ repairJob, businessName, profile, bcvRate = 1 }: RepairTicketProps) {
     const total = repairJob.estimatedCost || 0;
     const abono = repairJob.amountPaid || 0;
     const saldo = Math.max(0, total - abono);
     const date = repairJob.createdAt ? parseISO(repairJob.createdAt) : new Date();
     const fecha = format(date, "dd/MM/yy hh:mm a", { locale: es });
+
+    const totalBs = total * bcvRate;
+    const saldoBs = saldo * bcvRate;
 
     // Fallbacks para políticas si no están configuradas
     const warranty = profile?.repairWarrantyPolicy || "4 DÍAS POR EL SERVICIO REALIZADO.";
@@ -60,6 +64,20 @@ export function CustomerTicket({ repairJob, businessName, profile }: RepairTicke
                     <span>PENDIENTE:</span>
                     <span>${saldo.toFixed(2)}</span>
                 </div>
+                
+                {/* Mostramos el monto en BS si NO es una promoción */}
+                {!repairJob.isPromo && (
+                    <div className="mt-3 pt-2 border-t" style={{ borderTopStyle: 'dotted', borderTopWidth: '1px' }}>
+                        <div className="flex-row-between text-[10pt] font-black">
+                            <span>TOTAL EN BS:</span>
+                            <span>Bs {totalBs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="flex-row-between text-[10pt] font-black mt-1">
+                            <span>SALDO EN BS:</span>
+                            <span>Bs {saldoBs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className="disclaimer-section mt-6 italic">
@@ -70,19 +88,22 @@ export function CustomerTicket({ repairJob, businessName, profile }: RepairTicke
             </div>
             <div className="text-center mt-6 footer-thanks">
                 <p className="bold-header">¡GRACIAS POR SU CONFIANZA!</p>
+                <p className="meta-info text-[7pt] mt-2 italic">TASA DE REF: {bcvRate.toFixed(2)} Bs/$</p>
             </div>
         </div>
     );
 }
 
 // SECCIÓN 2: CONTROL INTERNO (NEGOCIO)
-export function InternalTicket({ repairJob }: RepairTicketProps) {
+export function InternalTicket({ repairJob, bcvRate = 1 }: RepairTicketProps) {
     const total = repairJob.estimatedCost || 0;
     const abono = repairJob.amountPaid || 0;
     const saldo = Math.max(0, total - abono);
     const date = repairJob.createdAt ? parseISO(repairJob.createdAt) : new Date();
     const fecha = format(date, "dd/MM/yy", { locale: es });
     const hora = format(date, "hh:mm a", { locale: es });
+
+    const saldoBs = saldo * bcvRate;
 
     return (
         <div className="ticket-body internal">
@@ -96,7 +117,19 @@ export function InternalTicket({ repairJob }: RepairTicketProps) {
                 <p><span className="bold-header">CLIENTE:</span> {repairJob.customerName.toUpperCase()}</p>
                 <p><span className="bold-header">EQUIPO:</span> {repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
                 <p><span className="bold-header">FALLA:</span> {repairJob.reportedIssue.toUpperCase()}</p>
-                <div className="balance-box mt-4 bold-header">SALDO: ${saldo.toFixed(2)}</div>
+                
+                <div className="mt-4 p-2 border" style={{ borderStyle: 'solid', borderWidth: '1px' }}>
+                    <div className="flex-row-between bold-header">
+                        <span>SALDO ($):</span>
+                        <span>${saldo.toFixed(2)}</span>
+                    </div>
+                    {!repairJob.isPromo && (
+                        <div className="flex-row-between text-[10pt] font-black mt-1">
+                            <span>SALDO (BS):</span>
+                            <span>Bs {saldoBs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className="signatures-container mt-12">
@@ -208,6 +241,7 @@ const printStyles = `
     .mb-2 { margin-bottom: 0.5rem; }
     .mb-3 { margin-bottom: 0.75rem; }
     .mb-4 { margin-bottom: 1rem; }
+    .font-black { font-weight: 900; }
 `;
 
 function iframePrint(html: string) {

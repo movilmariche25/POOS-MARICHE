@@ -45,6 +45,7 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
     const { firestore, user } = useFirebase();
     const router = useRouter();
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const { bcvRate } = useCurrency();
     
     const profileRef = useMemoFirebase(() => 
         (firestore && user) ? doc(firestore, 'users', user.uid) : null,
@@ -69,7 +70,6 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
             await runTransaction(firestore, async (transaction) => {
                 const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJob.id!);
 
-                // 1. LECTURAS PRIMERO
                 const productSnaps = new Map();
                 if (repairJob.reservedParts && repairJob.reservedParts.length > 0) {
                     for (const part of repairJob.reservedParts) {
@@ -79,7 +79,6 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                     }
                 }
 
-                // 2. ESCRITURAS DESPUÉS
                 if (repairJob.reservedParts && repairJob.reservedParts.length > 0) {
                     for (const part of repairJob.reservedParts) {
                         const pSnap = productSnaps.get(part.productId);
@@ -101,15 +100,15 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
 
             toast({
                 title: "Trabajo Eliminado",
-                description: `El registro de ${repairJob.customerName} ha sido borrado.`,
+                description: `El registro de ${repairJob.customerName} ha sido borrado y el inventario ajustado.`,
                 variant: "destructive"
             });
 
         } catch (error: any) {
              console.error("Delete Error:", error);
              toast({
-                title: "Error al eliminar",
-                description: "No se pudo eliminar el trabajo. Verifica tu conexión.",
+                title: "Error de integridad",
+                description: "No se pudo eliminar el trabajo debido a un conflicto de datos.",
                 variant: "destructive"
             });
         } finally {
@@ -118,13 +117,13 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
     }
     
     const onPrintCustomer = () => {
-        handlePrintCustomerTicket({ repairJob, businessName: profile?.businessName, profile }, (error) => {
+        handlePrintCustomerTicket({ repairJob, businessName: profile?.businessName, profile, bcvRate }, (error) => {
              toast({ variant: "destructive", title: "Error de Impresión", description: error })
         });
     }
 
     const onPrintInternal = () => {
-        handlePrintInternalTicket({ repairJob, businessName: profile?.businessName, profile }, (error) => {
+        handlePrintInternalTicket({ repairJob, businessName: profile?.businessName, profile, bcvRate }, (error) => {
              toast({ variant: "destructive", title: "Error de Impresión", description: error })
         });
     }
@@ -136,7 +135,7 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
     }
 
     const onPrintAll = () => {
-        handlePrintAllTickets({ repairJob, businessName: profile?.businessName, profile }, (error) => {
+        handlePrintAllTickets({ repairJob, businessName: profile?.businessName, profile, bcvRate }, (error) => {
              toast({ variant: "destructive", title: "Error de Impresión", description: error })
         });
     }
@@ -200,7 +199,7 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                     <AlertDialogHeader>
                     <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Esto eliminará permanentemente el trabajo de reparación para <span className="font-semibold">{repairJob.customerName}</span> y devolverá las piezas reservadas al inventario.
+                        Esto eliminará permanentemente el trabajo de reparación para <span className="font-semibold">{repairJob.customerName}</span> y devolverá las piezas reservadas al inventario de forma segura.
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

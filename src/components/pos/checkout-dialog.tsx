@@ -1,10 +1,10 @@
 "use client";
 
-import type { CartItem, Payment, PaymentMethod, Sale, Product, UserProfile } from "@/lib/types";
+import type { CartItem, Payment, PaymentMethod, Sale, Product, UserProfile, RepairJob } from "@/lib/types";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { useState, type ReactNode, useMemo, useEffect } from "react";
-import { CreditCard, Landmark, Smartphone, DollarSign, Printer, Trash2, Banknote, AlertCircle } from "lucide-react";
+import { CreditCard, Landmark, Smartphone, DollarSign, Printer, Trash2, Banknote, AlertCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ReceiptView, handlePrintReceipt } from "./receipt-view";
 import { useCurrency } from "@/hooks/use-currency";
@@ -26,6 +26,7 @@ type CheckoutDialogProps = {
   onCheckout: (payments: Payment[], changeGiven: Payment[], totalChangeInUSD: number) => Promise<Sale | null>;
   onClearCart: () => void;
   isRepairSale?: boolean;
+  repairData?: RepairJob | null;
 };
 
 const paymentMethodOptions: { value: PaymentMethod, label: string, icon: ReactNode, hasReference: boolean, isBs: boolean }[] = [
@@ -44,7 +45,7 @@ const changeMethodOptions: { value: PaymentMethod, label: string, icon: ReactNod
 
 type TempPayment = Payment & { id: number };
 
-export function CheckoutDialog({ cart, allProducts, total, children, onCheckout, onClearCart, isRepairSale }: CheckoutDialogProps) {
+export function CheckoutDialog({ cart, allProducts, total, children, onCheckout, onClearCart, isRepairSale, repairData }: CheckoutDialogProps) {
   const [open, setOpen] = useState(false);
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
   const { toast } = useToast();
@@ -53,6 +54,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
   const [payments, setPayments] = useState<TempPayment[]>([]);
   const [changePayments, setChangePayments] = useState<TempPayment[]>([]);
   const [isGivingChange, setIsGivingChange] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
 
   const profileRef = useMemoFirebase(() => 
@@ -66,6 +68,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
       setPayments([]);
       setChangePayments([]);
       setIsGivingChange(false);
+      setIsSubmitting(false);
     }
   }, [open, completedSale]);
 
@@ -95,9 +98,9 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
   const changeDifference = useMemo(() => requiredChangeInUSD - totalGivenInUSD, [requiredChangeInUSD, totalGivenInUSD]);
   
   const canConfirm = useMemo(() => {
-    if (total <= 0 || payments.length === 0 || currencyLoading) return false;
+    if (total <= 0 || payments.length === 0 || currencyLoading || isSubmitting) return false;
     return totalPaid > 0;
-  }, [total, totalPaid, payments, currencyLoading]);
+  }, [total, totalPaid, payments, currencyLoading, isSubmitting]);
 
   useEffect(() => {
     if (potentialChangeInUSD <= 0.001) {
@@ -127,18 +130,26 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
   };
 
   const handleConfirm = async () => {
-    if (!canConfirm) return;
+    if (!canConfirm || isSubmitting) return;
+    
+    setIsSubmitting(true);
     const finalChangeGiven = isGivingChange ? changePayments.map(({ id, ...rest }) => rest) : [];
     const finalTotalChangeUSD = isGivingChange ? potentialChangeInUSD : 0;
     
-    const sale = await onCheckout(
-        payments.map(({ id, ...rest }) => rest),
-        finalChangeGiven,
-        finalTotalChangeUSD
-    );
-    
-    if(sale) {
-        setCompletedSale(sale);
+    try {
+        const sale = await onCheckout(
+            payments.map(({ id, ...rest }) => rest),
+            finalChangeGiven,
+            finalTotalChangeUSD
+        );
+        
+        if(sale) {
+            setCompletedSale(sale);
+        }
+    } catch (e) {
+        toast({ variant: "destructive", title: "Error al procesar" });
+    } finally {
+        setIsSubmitting(false);
     }
   }
 
@@ -158,7 +169,8 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
       sale: completedSale,
       currency: { format: formatCurrency, getSymbol, convert },
       businessName: profile?.businessName,
-      profile: profile
+      profile: profile,
+      repairData: repairData
     };
     handlePrintReceipt(receiptProps, (error) => {
       toast({
@@ -193,6 +205,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                     currency={{ format: formatCurrency, getSymbol, convert }}
                     businessName={profile?.businessName}
                     profile={profile}
+                    repairData={repairData}
                 />
               </div>
               <div className="mt-auto p-6 bg-background flex gap-2">
@@ -210,7 +223,6 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
             </DialogHeader>
             
             <div className={cn("grid grid-cols-1 gap-6 py-2", isGivingChange && "md:grid-cols-2")}>
-                {/* COLUMNA IZQUIERDA: PAGOS Y TOTALES */}
                 <div className="space-y-4">
                     <div className="text-center p-4 bg-muted rounded-lg relative">
                         <p className="text-sm text-muted-foreground">Monto Total a Pagar</p>
@@ -225,7 +237,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                         <p className="font-bold text-xs uppercase text-muted-foreground">Añadir Métodos de Pago</p>
                         <div className="flex flex-wrap gap-2">
                             {paymentMethodOptions.map(method => (
-                            <Button key={method.value} variant="outline" size="sm" className="h-8 text-[10px]" onClick={() => handleAddPayment(method.value)}>
+                            <Button key={method.value} variant="outline" size="sm" className="h-8 text-[10px]" onClick={() => handleAddPayment(method.value)} disabled={isSubmitting}>
                                     {method.icon} {method.label}
                             </Button>
                             ))}
@@ -242,7 +254,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                                     <div key={p.id} className="p-3 border rounded-lg bg-background flex flex-col gap-2 shadow-sm">
                                         <div className="flex justify-between items-center">
                                             <Label className="flex items-center gap-2 text-xs font-bold">{option.icon} {option.label}</Label>
-                                            <Button variant="ghost" size="icon" className="w-6 h-6 text-destructive" onClick={() => handleRemovePayment(p.id)}>
+                                            <Button variant="ghost" size="icon" className="w-6 h-6 text-destructive" onClick={() => handleRemovePayment(p.id)} disabled={isSubmitting}>
                                                 <Trash2 className="w-4 h-4" />
                                             </Button>
                                         </div>
@@ -257,6 +269,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                                                     onChange={(e) => handleUpdatePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}
                                                     placeholder="0,00"
                                                     className="pl-8 h-9 text-sm"
+                                                    disabled={isSubmitting}
                                                 />
                                             </div>
                                             {option.hasReference && (
@@ -266,6 +279,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                                                     onChange={(e) => handleUpdatePayment(p.id, 'reference', e.target.value)}
                                                     placeholder="Ref."
                                                     className="flex-1 h-9 text-sm font-mono font-bold"
+                                                    disabled={isSubmitting}
                                                 />
                                             )}
                                         </div>
@@ -316,6 +330,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                                     setIsGivingChange(!!checked);
                                     if (!checked) setChangePayments([]);
                                 }}
+                                disabled={isSubmitting}
                             />
                             <Label htmlFor="give-change-checkbox" className="cursor-pointer font-black text-sm text-primary">
                                 REGISTRAR ENTREGA DE VUELTO
@@ -324,7 +339,6 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                     )}
                 </div>
 
-                {/* COLUMNA DERECHA: REGISTRO DE VUELTO (Solo visible si está activo) */}
                 {isGivingChange && (
                     <div className="space-y-4 md:border-l md:pl-6 animate-in slide-in-from-right-4 fade-in duration-300">
                         <div className="text-center p-3 rounded-lg bg-primary/10 border border-primary/20">
@@ -337,7 +351,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                             <p className="font-bold text-[10px] uppercase text-muted-foreground">Métodos de Entrega</p>
                             <div className="flex flex-wrap gap-2">
                                 {changeMethodOptions.map(method => (
-                                    <Button key={method.value} variant="outline" size="sm" className="h-7 text-[9px]" onClick={() => handleAddChangePayment(method.value)}>
+                                    <Button key={method.value} variant="outline" size="sm" className="h-7 text-[9px]" onClick={() => handleAddChangePayment(method.value)} disabled={isSubmitting}>
                                         {method.icon} {method.label}
                                     </Button>
                                 ))}
@@ -360,9 +374,10 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                                                 onChange={(e) => handleUpdateChangePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}
                                                 placeholder="0,00"
                                                 className="pl-7 h-8 text-xs font-bold"
+                                                disabled={isSubmitting}
                                             />
                                         </div>
-                                        <Button variant="ghost" size="icon" className="w-7 h-7 text-destructive" onClick={() => handleRemoveChangePayment(p.id)}>
+                                        <Button variant="ghost" size="icon" className="w-7 h-7 text-destructive" onClick={() => handleRemoveChangePayment(p.id)} disabled={isSubmitting}>
                                             <Trash2 className="w-3.5 h-3.5" />
                                         </Button>
                                     </div>
@@ -391,9 +406,10 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
             <Button 
                 size="lg" 
                 onClick={handleConfirm} 
-                disabled={!canConfirm || (isGivingChange && Math.abs(changeDifference) > 0.01)} 
+                disabled={!canConfirm || isSubmitting} 
                 className="w-full h-12 text-lg font-black mt-2 shadow-md"
             >
+                {isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
                 {currencyLoading ? 'Calculando tasa...' : 'FINALIZAR Y FACTURAR'}
             </Button>
             </>

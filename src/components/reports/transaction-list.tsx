@@ -1,3 +1,4 @@
+
 "use client"
 
 import type { Sale, Payment, Product, CartItem, RepairJob, UserProfile, PaymentMethod } from "@/lib/types";
@@ -15,7 +16,7 @@ import { Skeleton } from "../ui/skeleton";
 import { AdminAuthDialog } from "../admin-auth-dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../ui/alert-dialog";
 import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
-import { doc, runTransaction, type DocumentSnapshot } from "firebase/firestore";
+import { doc, runTransaction, getDoc, type DocumentSnapshot } from "firebase/firestore";
 import { Badge } from "../ui/badge";
 import { Textarea } from "../ui/textarea";
 import { Label } from "../ui/label";
@@ -62,9 +63,9 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
         
         try {
             await runTransaction(firestore, async (transaction) => {
-                // 1. LECTURAS PRIMERO
                 const repairJobSnap = sale.repairJobId ? await transaction.get(doc(firestore, 'users', user.uid, 'repair_jobs', sale.repairJobId)) : null;
-                
+                const repairJobData = repairJobSnap?.exists() ? repairJobSnap.data() as RepairJob : null;
+
                 const productIds = Array.from(new Set(sale.items.filter(i => !i.isCustom).map(i => i.productId)));
                 const productSnapshots = new Map<string, DocumentSnapshot>();
                 for(const id of productIds) {
@@ -72,8 +73,7 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
                     productSnapshots.set(id, snap);
                 }
 
-                // 2. ESCRITURAS DESPUÉS
-                if (repairJobSnap?.exists()) {
+                if (repairJobSnap?.exists() && repairJobData) {
                     transaction.update(repairJobSnap.ref, { 
                         status: 'Pendiente', 
                         isPaid: false, 
@@ -88,8 +88,20 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
                     if (pSnap?.exists()) {
                         const data = pSnap.data() as Product;
                         const newStock = data.stockLevel + item.quantity;
-                        const newDamaged = stockAction === 'damage' ? (data.damagedStock || 0) + item.quantity : data.damagedStock;
-                        transaction.update(pSnap.ref, { stockLevel: newStock, damagedStock: newDamaged });
+                        const newDamaged = stockAction === 'damage' ? (data.damagedStock || 0) + item.quantity : (data.damagedStock || 0);
+                        
+                        let newReserved = data.reservedStock || 0;
+                        if (item.isRepair || (sale.repairJobId && repairJobData?.reservedParts?.some(rp => rp.productId === item.productId))) {
+                            if (stockAction === 'return') {
+                                newReserved += item.quantity;
+                            }
+                        }
+
+                        transaction.update(pSnap.ref, { 
+                            stockLevel: newStock, 
+                            damagedStock: newDamaged,
+                            reservedStock: newReserved
+                        });
                     }
                 }
 
@@ -97,10 +109,10 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
                 transaction.update(saleRef, { status: 'refunded', refundedAt: new Date().toISOString(), refundReason });
             });
 
-            toast({ title: "Reembolso Completado" });
+            toast({ title: "Reembolso Procesado con Éxito" });
         } catch (error) {
             console.error("Refund Error:", error);
-            toast({ variant: "destructive", title: "Error en el Reembolso" });
+            toast({ variant: "destructive", title: "Error en el Reembolso", description: "Conflictos de concurrencia detectados." });
         } finally {
             setIsConfirmOpen(false);
         }
@@ -117,7 +129,7 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
             <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>¿Confirmar Reembolso?</AlertDialogTitle>
+                        <AlertDialogTitle>¿Confirmar Reembolso Atómico?</AlertDialogTitle>
                     </AlertDialogHeader>
                     <div className="py-4 space-y-4">
                         <div className="space-y-2">
@@ -154,7 +166,7 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
 
 export function TransactionList({ sales, isLoading }: TransactionListProps) {
     const { firestore, user } = useFirebase();
-    const { format: formatCurrency, getSymbol, convert } = useCurrency();
+    const { format: formatCurrency, getSymbol, convert, bcvRate: currentBcvRate } = useCurrency();
     const { toast } = useToast();
 
     const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
@@ -167,12 +179,22 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
     );
     const { data: profile } = useDoc<UserProfile>(profileRef);
 
-    const onReprint = (sale: Sale) => {
+    const onReprint = async (sale: Sale) => {
+        let repairData = null;
+        if (sale.repairJobId && firestore && user) {
+            const repairRef = doc(firestore, 'users', user.uid, 'repair_jobs', sale.repairJobId);
+            const snap = await getDoc(repairRef);
+            if (snap.exists()) {
+                repairData = { ...snap.data(), id: snap.id } as RepairJob;
+            }
+        }
+
         handlePrintReceipt({
             sale,
             currency: { format: formatCurrency, getSymbol, convert },
             businessName: profile?.businessName,
-            profile: profile
+            profile: profile,
+            repairData: repairData
         }, (error) => {
             toast({ variant: "destructive", title: "Error de Impresión", description: error });
         });
@@ -221,7 +243,6 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                     total += p.amount;
                 }
             });
-            // Restar vueltos si el método de vuelto coincide con el filtro
             if (sale.changeGiven) {
                 sale.changeGiven.forEach(c => {
                     if (c.method === methodFilter) {
@@ -346,7 +367,10 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                         {sale.reconciliationId && <Badge variant="outline" className="border-green-600 text-green-600">Cerrada</Badge>}
                                         {sale.status === 'refunded' && <Badge variant="destructive">Reembolsado</Badge>}
                                         <div className="text-right">
-                                            <p className="font-black text-lg leading-none">{getSymbol()}{formatCurrency(sale.totalAmount)}</p>
+                                            <p className="font-black text-lg leading-none">{getSymbol()}{formatCurrency(sale.actualPaidAmount ?? sale.totalAmount)}</p>
+                                            <p className="text-[10px] text-slate-500 mt-1">
+                                                ~ Bs {formatCurrency((sale.actualPaidAmount ?? sale.totalAmount) * (sale.bcvRateAtTime || currentBcvRate))}
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
@@ -391,7 +415,6 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                                        {/* SECCIÓN DE PAGOS */}
                                         <div className="space-y-2">
                                             <p className="text-[10px] font-bold uppercase text-green-700 tracking-widest flex items-center gap-1.5">
                                                 <ArrowUpRight className="w-3 h-3" /> Pagos Recibidos
@@ -418,7 +441,6 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                             </div>
                                         </div>
 
-                                        {/* SECCIÓN DE VUELTOS */}
                                         <div className="space-y-2">
                                             <p className="text-[10px] font-bold uppercase text-amber-700 tracking-widest flex items-center gap-1.5">
                                                 <ArrowDownLeft className="w-3 h-3" /> Vuelto Entregado
@@ -463,9 +485,13 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                                 ${formatCurrency(sale.actualPaidAmount ?? sale.totalAmount)}
                                             </p>
                                             <p className="text-[10px] font-bold text-slate-500 mt-1">
-                                                ~ Bs {formatCurrency(convert(sale.actualPaidAmount ?? sale.totalAmount, 'USD', 'Bs'))}
+                                                ~ Bs {formatCurrency((sale.actualPaidAmount ?? sale.totalAmount) * (sale.bcvRateAtTime || currentBcvRate))}
                                             </p>
                                         </div>
+                                    </div>
+                                    
+                                    <div className="p-2 border rounded-md bg-white text-[9px] text-muted-foreground text-center italic">
+                                        Tasa BCV al momento: {(sale.bcvRateAtTime || currentBcvRate).toFixed(2)} Bs/$
                                     </div>
                                     
                                     {sale.status === 'refunded' && (

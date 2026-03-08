@@ -1,7 +1,7 @@
 
 "use client"
 
-import type { Product, Sale, DailyReconciliation, RepairJob } from "@/lib/types"
+import type { Product, Sale, DailyReconciliation, RepairJob, CurrencyExchange } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs"
 import { TransactionList } from "./transaction-list"
@@ -19,10 +19,11 @@ type ReportsViewProps = {
     sales: Sale[];
     products: Product[];
     repairJobs: RepairJob[];
+    exchanges: CurrencyExchange[];
     isLoading?: boolean;
 }
 
-export function ReportsView({ sales, products, repairJobs, isLoading }: ReportsViewProps) {
+export function ReportsView({ sales, products, repairJobs, exchanges, isLoading }: ReportsViewProps) {
     const { firestore, user } = useFirebase();
 
     const reconciliationsCollection = useMemoFirebase(() => 
@@ -64,6 +65,7 @@ export function ReportsView({ sales, products, repairJobs, isLoading }: ReportsV
                     products={products || []} 
                     repairJobs={repairJobs || []}
                     reconciliations={reconciliations || []}
+                    exchanges={exchanges || []}
                     isLoading={isLoading || reconciliationsLoading}
                  />
                  

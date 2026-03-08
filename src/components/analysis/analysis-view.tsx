@@ -7,10 +7,26 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { Skeleton } from "../ui/skeleton";
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { subDays, startOfMonth, isAfter } from "date-fns";
+import { subDays, startOfMonth, isAfter, isBefore, differenceInDays, parseISO } from "date-fns";
 import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
+import { 
+    TrendingUp, 
+    AlertTriangle, 
+    ShoppingCart, 
+    Flame, 
+    Ghost, 
+    Zap, 
+    Clock, 
+    ArrowRightLeft,
+    ChevronUp,
+    ChevronDown,
+    Layers,
+    DollarSign
+} from "lucide-react";
+import { Progress } from "../ui/progress";
 
 type AnalysisViewProps = {
     sales: Sale[];
@@ -21,354 +37,329 @@ type AnalysisViewProps = {
     isAdmin?: boolean;
 };
 
-type ProductSaleInfo = {
-    productId: string;
-    name: string;
-    sku: string;
-    quantitySold: number;
-    totalProfit: number;
-    stockLevel: number;
-    lowStockThreshold: number;
-};
-
-type PartUsageInfo = {
-    productId: string;
-    name: string;
-    quantityUsed: number;
-};
-
-type DeviceRepairInfo = {
-    device: string;
-    count: number;
-};
-
-type DateRangeFilter = '7d' | '30d' | 'this_month' | 'all';
+type DateRangeFilter = '7d' | '30d' | 'this_month';
 
 export function AnalysisView({ sales, products, repairJobs, isLoading, enabledModules, isAdmin }: AnalysisViewProps) {
     const [dateRange, setDateRange] = useState<DateRangeFilter>('30d');
-    const { format: formatCurrency, getSymbol } = useCurrency();
+    const { format: formatCurrency, getSymbol, getFinalPrice } = useCurrency();
 
-    // Verificamos qué secciones mostrar basándonos en los módulos activos
-    // Se quita el "isAdmin ||" para que el admin vea la interfaz tal cual la configuró
-    const showRepairsAnalysis = (enabledModules?.includes('repairs') ?? true);
-    const showInventoryAnalysis = (enabledModules?.includes('inventory') ?? true);
-    const showSalesAnalysis = (enabledModules?.includes('pos') ?? true);
+    const stats = useMemo(() => {
+        if (isLoading || !sales || !products || !repairJobs) return null;
 
-    const { topProfitableProducts, topSellingProducts, topUsedParts, topRepairedDevices } = useMemo(() => {
-        if (isLoading || !sales || !products || !repairJobs) {
-            return { topProfitableProducts: [], topSellingProducts: [], topUsedParts: [], topRepairedDevices: [] };
-        }
-        
         const now = new Date();
-        let startDate: Date | null = null;
+        let currentStart: Date;
+        let prevStart: Date;
+        let daysInPeriod: number;
+
         switch (dateRange) {
             case '7d':
-                startDate = subDays(now, 7);
-                break;
-            case '30d':
-                startDate = subDays(now, 30);
+                currentStart = subDays(now, 7);
+                prevStart = subDays(now, 14);
+                daysInPeriod = 7;
                 break;
             case 'this_month':
-                startDate = startOfMonth(now);
+                currentStart = startOfMonth(now);
+                prevStart = startOfMonth(subDays(currentStart, 1));
+                daysInPeriod = differenceInDays(now, currentStart) || 1;
                 break;
-            case 'all':
+            case '30d':
             default:
-                startDate = null;
+                currentStart = subDays(now, 30);
+                prevStart = subDays(now, 60);
+                daysInPeriod = 30;
                 break;
         }
 
-        const filteredSales = startDate 
-            ? sales.filter(s => s.transactionDate && isAfter(new Date(s.transactionDate), startDate!)) 
-            : sales;
-            
-        const filteredRepairJobs = startDate
-            ? repairJobs.filter(j => j.createdAt && isAfter(new Date(j.createdAt), startDate!))
-            : repairJobs;
-
-
-        // 1. Top Profitable Products from POS / Ventas
-        const productSalesMap = new Map<string, ProductSaleInfo>();
-        filteredSales
-            .filter(s => s.status === 'completed')
-            .forEach(sale => {
-                sale.items.forEach(item => {
-                    if (!item.isRepair) {
-                        const product = products.find(p => p.id === item.productId);
-                        if (product) {
-                            const profit = (item.price - product.costPrice) * item.quantity;
-                            const existing = productSalesMap.get(item.productId);
-                            if (existing) {
-                                existing.quantitySold += item.quantity;
-                                existing.totalProfit += profit;
-                            } else {
-                                productSalesMap.set(item.productId, {
-                                    productId: product.id!,
-                                    name: product.name,
-                                    sku: product.sku,
-                                    quantitySold: item.quantity,
-                                    totalProfit: profit,
-                                    stockLevel: product.stockLevel,
-                                    lowStockThreshold: product.lowStockThreshold
-                                });
-                            }
-                        } else if (item.isCustom) {
-                            // Análisis para artículos manuales sin inventario
-                            const profit = (item.customPrice! - (item.customCostPrice || 0)) * item.quantity;
-                            const existing = productSalesMap.get(item.productId);
-                            if (existing) {
-                                existing.quantitySold += item.quantity;
-                                existing.totalProfit += profit;
-                            } else {
-                                productSalesMap.set(item.productId, {
-                                    productId: item.productId,
-                                    name: item.name,
-                                    sku: 'MANUAL',
-                                    quantitySold: item.quantity,
-                                    totalProfit: profit,
-                                    stockLevel: 0,
-                                    lowStockThreshold: 0
-                                });
-                            }
-                        }
-                    }
-                });
+        const filterByRange = (items: any[], start: Date, end: Date) => 
+            items.filter(item => {
+                const d = new Date(item.transactionDate || item.createdAt);
+                return isAfter(d, start) && isBefore(d, end);
             });
-        
-        const topProfitableProducts = Array.from(productSalesMap.values()).sort((a, b) => b.totalProfit - a.totalProfit).slice(0, 15);
-        const topSellingProducts = Array.from(productSalesMap.values()).sort((a,b) => b.quantitySold - a.quantitySold).slice(0, 10);
 
+        const currentSales = filterByRange(sales, currentStart, now).filter(s => s.status === 'completed');
+        const prevSales = filterByRange(sales, prevStart, currentStart).filter(s => s.status === 'completed');
 
-        // 2. Top Used Parts in all repairs (Si el módulo está activo)
-        const topUsedParts: PartUsageInfo[] = [];
-        if (showRepairsAnalysis) {
-            const partUsageMap = new Map<string, PartUsageInfo>();
-            filteredRepairJobs
-                .forEach(job => {
-                    job.reservedParts?.forEach(part => {
-                        const existing = partUsageMap.get(part.productId);
-                        if (existing) {
-                            existing.quantityUsed += part.quantity;
-                        } else {
-                            partUsageMap.set(part.productId, {
-                                productId: part.productId,
-                                name: part.productName,
-                                quantityUsed: part.quantity,
-                            });
-                        }
-                    });
-                });
-            topUsedParts.push(...Array.from(partUsageMap.values()).sort((a, b) => b.quantityUsed - a.quantityUsed).slice(0, 10));
-        }
-
-        // 3. Top Repaired Device Models (Si el módulo está activo)
-        const topRepairedDevices: DeviceRepairInfo[] = [];
-        if (showRepairsAnalysis) {
-            const deviceRepairMap = new Map<string, DeviceRepairInfo>();
-            filteredRepairJobs.forEach(job => {
-                const deviceName = `${job.deviceMake} ${job.deviceModel}`.trim();
-                if (deviceName) {
-                    const existing = deviceRepairMap.get(deviceName);
-                    if (existing) {
-                        existing.count += 1;
-                    } else {
-                        deviceRepairMap.set(deviceName, {
-                            device: deviceName,
-                            count: 1,
-                        });
-                    }
+        const calcProfit = (salesList: Sale[]) => salesList.reduce((acc, s) => {
+            const income = s.actualPaidAmount ?? s.totalAmount;
+            let cost = 0;
+            s.items.forEach(item => {
+                if (item.isCustom) cost += (item.customCostPrice || 0) * item.quantity;
+                else {
+                    const p = products.find(prod => prod.id === item.productId);
+                    cost += (p?.costPrice || 0) * item.quantity;
                 }
             });
-            topRepairedDevices.push(...Array.from(deviceRepairMap.values()).sort((a, b) => b.count - a.count).slice(0, 10));
-        }
+            return acc + (income - cost);
+        }, 0);
 
-        return { topProfitableProducts, topSellingProducts, topUsedParts, topRepairedDevices };
+        const currentProfit = calcProfit(currentSales);
+        const prevProfit = calcProfit(prevSales);
+        const profitGrowth = prevProfit > 0 ? ((currentProfit - prevProfit) / prevProfit) * 100 : 0;
 
-    }, [sales, products, repairJobs, isLoading, dateRange, showRepairsAnalysis]);
+        const inventoryHealth = products.map(p => {
+            const soldInPeriod = currentSales.reduce((acc, s) => {
+                const item = s.items.find(i => i.productId === p.id);
+                return acc + (item?.quantity || 0);
+            }, 0);
 
-    const getStockBadge = (stock: number, threshold: number, sku: string) => {
-        if (sku === 'MANUAL') return <Badge variant="outline">N/A</Badge>;
-        if (stock <= 0) return <Badge variant="destructive">Agotado</Badge>;
-        if (stock <= threshold) return <Badge className="bg-yellow-500 text-black">Bajo</Badge>;
-        return <Badge className="bg-green-500 text-white">Saludable</Badge>;
-    };
+            const velocity = soldInPeriod / daysInPeriod;
+            const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
+            const daysRemaining = velocity > 0 ? Math.floor(available / velocity) : Infinity;
+            
+            const retailPrice = getFinalPrice(p);
+            const margin = p.costPrice > 0 ? ((retailPrice - p.costPrice) / p.costPrice) * 100 : 0;
+
+            return { ...p, soldInPeriod, velocity, available, daysRemaining, margin };
+        });
+
+        const toBuy = inventoryHealth.filter(p => p.daysRemaining <= 7 && p.velocity > 0).sort((a,b) => a.daysRemaining - b.daysRemaining);
+        const deadStock = inventoryHealth.filter(p => p.soldInPeriod === 0 && p.available > 0 && (!p.createdAt || differenceInDays(now, parseISO(p.createdAt)) > 30));
+
+        const modelCorrelation: Record<string, Record<string, number>> = {};
+        repairJobs.forEach(job => {
+            const model = `${job.deviceMake} ${job.deviceModel}`.toUpperCase();
+            if (!modelCorrelation[model]) modelCorrelation[model] = {};
+            job.reservedParts?.forEach(part => {
+                modelCorrelation[model][part.productName] = (modelCorrelation[model][part.productName] || 0) + part.quantity;
+            });
+        });
+
+        return { 
+            currentProfit, 
+            profitGrowth, 
+            inventoryHealth, 
+            toBuy, 
+            deadStock, 
+            modelCorrelation,
+            avgMargin: inventoryHealth.length > 0 ? inventoryHealth.reduce((acc, p) => acc + p.margin, 0) / products.length : 0
+        };
+    }, [sales, products, repairJobs, isLoading, dateRange, getFinalPrice]);
+
+    if (isLoading) return <div className="p-8 text-center"><Skeleton className="h-96 w-full" /></div>;
+    if (!stats) return null;
 
     return (
-        <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">
-                    {isAdmin ? "Vista de Administrador Global" : "Análisis Personalizado para tu Negocio"}
-                </h2>
-                <Select value={dateRange} onValueChange={(value) => setDateRange(value as DateRangeFilter)}>
-                    <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Seleccionar rango de fechas" />
+        <div className="space-y-8 pb-20">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className="text-2xl font-black tracking-tight text-slate-800">PANEL DE DECISIONES ESTRATÉGICAS</h1>
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Inteligencia de Datos para Maximizar Capital</p>
+                </div>
+                <Select value={dateRange} onValueChange={(v: any) => setDateRange(v)}>
+                    <SelectTrigger className="w-[220px] bg-white shadow-sm border-2">
+                        <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="7d">Últimos 7 días</SelectItem>
                         <SelectItem value="30d">Últimos 30 días</SelectItem>
-                        <SelectItem value="this_month">Este Mes</SelectItem>
-                        <SelectItem value="all">Todo el Histórico</SelectItem>
+                        <SelectItem value="this_month">Mes Actual</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                 {/* SIEMPRE VISIBLE: Rentabilidad de Ventas */}
-                 <Card className="lg:col-span-2">
-                    <CardHeader>
-                        <CardTitle>Rentabilidad por Producto / Servicio</CardTitle>
-                        <CardDescription>Items que generan mayor margen de ganancia neta en tu negocio.</CardDescription>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card className="border-l-4 border-l-blue-600 shadow-md">
+                    <CardHeader className="pb-2">
+                        <CardDescription className="text-[10px] font-black uppercase">Ganancia Neta Estimada</CardDescription>
+                        <CardTitle className="text-3xl font-black">${formatCurrency(stats.currentProfit)}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <AnalysisTable
-                            headers={["Producto / Concepto", "Cant. Vendida", "Ganancia Total Est.", "Estado Stock"]}
-                            data={topProfitableProducts}
-                            renderRow={(item: ProductSaleInfo) => (
-                                <TableRow key={item.productId}>
-                                    <TableCell>
-                                        <div className="font-medium">{item.name}</div>
-                                        <div className="text-[10px] text-muted-foreground font-mono uppercase">{item.sku}</div>
-                                    </TableCell>
-                                     <TableCell className="text-center">{item.quantitySold}</TableCell>
-                                    <TableCell className="text-right font-bold text-green-600">
-                                        {getSymbol()}{formatCurrency(item.totalProfit)}
-                                    </TableCell>
-                                    <TableCell className="text-center">
-                                        {getStockBadge(item.stockLevel, item.lowStockThreshold, item.sku)}
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            isLoading={isLoading}
-                            emptyMessage="No hay datos de ventas registrados para este período."
-                        />
+                        <div className={cn("flex items-center gap-1 text-sm font-bold", stats.profitGrowth >= 0 ? "text-green-600" : "text-destructive")}>
+                            {stats.profitGrowth >= 0 ? <ChevronUp className="w-4 h-4"/> : <ChevronDown className="w-4 h-4"/>}
+                            {Math.abs(stats.profitGrowth).toFixed(1)}% vs periodo anterior
+                        </div>
                     </CardContent>
                 </Card>
 
-                {/* CONDICIONAL: Solo si usa el módulo de Reparaciones */}
-                {showRepairsAnalysis && (
-                    <Card className="lg:col-span-1">
-                        <CardHeader>
-                            <CardTitle>Insumos más Utilizados</CardTitle>
-                            <CardDescription>Repuestos o materiales con mayor rotación en el área técnica.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <AnalysisTable
-                                headers={["Insumo / Repuesto", "Uso (Cant.)"]}
-                                data={topUsedParts}
-                                renderRow={(item: PartUsageInfo) => (
-                                    <TableRow key={item.productId}>
-                                        <TableCell className="font-medium">{item.name}</TableCell>
-                                        <TableCell className="text-right">
-                                            <Badge variant="secondary" className="font-bold">{item.quantityUsed}</Badge>
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                                isLoading={isLoading}
-                                emptyMessage="No hay registros de repuestos usados."
-                            />
-                        </CardContent>
-                    </Card>
-                )}
+                <Card className="border-l-4 border-l-green-600 shadow-md">
+                    <CardHeader className="pb-2">
+                        <CardDescription className="text-[10px] font-black uppercase">Margen de Ganancia Promedio</CardDescription>
+                        <CardTitle className="text-3xl font-black">{stats.avgMargin.toFixed(1)}%</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <Progress value={stats.avgMargin} className="h-2 bg-green-100" />
+                        <p className="text-[9px] text-muted-foreground mt-2 font-bold uppercase">Rentabilidad sobre costo de reposición</p>
+                    </CardContent>
+                </Card>
 
-                <div className={cn("space-y-6 flex flex-col", showRepairsAnalysis ? "lg:col-span-1" : "lg:col-span-2")}>
-                    {/* SIEMPRE VISIBLE: Rotación de Inventario */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Productos con Mayor Rotación</CardTitle>
-                            <CardDescription>Items que salen más rápido de tu inventario.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <AnalysisTable
-                                headers={["Producto", "Cantidad"]}
-                                data={topSellingProducts}
-                                renderRow={(item: ProductSaleInfo) => (
-                                    <TableRow key={item.productId}>
-                                        <TableCell className="font-medium">{item.name}</TableCell>
-                                        <TableCell className="text-right">
-                                            <Badge className="bg-primary">{item.quantitySold}</Badge>
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                                isLoading={isLoading}
-                                emptyMessage="Sin datos de rotación."
-                            />
-                        </CardContent>
-                    </Card>
-
-                    {/* CONDICIONAL: Solo si usa el módulo de Reparaciones */}
-                    {showRepairsAnalysis && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Frecuencia de Modelos</CardTitle>
-                                <CardDescription>Modelos de equipos que más ingresan a tu taller.</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <AnalysisTable
-                                    headers={["Modelo de Equipo", "Casos"]}
-                                    data={topRepairedDevices}
-                                    renderRow={(item: DeviceRepairInfo) => (
-                                        <TableRow key={item.device}>
-                                            <TableCell className="font-medium">{item.device}</TableCell>
-                                            <TableCell className="text-right">
-                                                <Badge variant="outline" className="font-bold">{item.count}</Badge>
-                                            </TableCell>
-                                        </TableRow>
-                                    )}
-                                    isLoading={isLoading}
-                                    emptyMessage="Sin historial técnico aún."
-                                />
-                            </CardContent>
-                        </Card>
-                    )}
-                </div>
+                <Card className="border-l-4 border-l-amber-500 shadow-md">
+                    <CardHeader className="pb-2">
+                        <CardDescription className="text-[10px] font-black uppercase">Salud del Inventario</CardDescription>
+                        <CardTitle className="text-3xl font-black">{products.length > 0 ? ((stats.inventoryHealth.filter(p => p.daysRemaining > 15).length / products.length) * 100).toFixed(0) : 0}%</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-[10px] bg-amber-50">{stats.toBuy.length} Por Agotarse</Badge>
+                            <Badge variant="outline" className="text-[10px] bg-slate-50">{stats.deadStock.length} Sin Movimiento</Badge>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
-        </div>
-    );
-}
 
-type AnalysisTableProps<T> = {
-    headers: string[];
-    data: T[];
-    renderRow: (item: T) => React.ReactNode;
-    isLoading?: boolean;
-    emptyMessage?: string;
-};
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card className="border-2 border-primary/10 shadow-lg overflow-hidden">
+                    <CardHeader className="bg-primary/5 border-b">
+                        <div className="flex items-center gap-2 text-primary">
+                            <Zap className="w-5 h-5 fill-primary" />
+                            <CardTitle className="text-sm font-black uppercase">¿Qué Comprar Hoy? (Alta Velocidad)</CardTitle>
+                        </div>
+                        <CardDescription>Productos que se agotarán en menos de 7 días según ritmo de venta.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="text-[10px] uppercase">Producto</TableHead>
+                                    <TableHead className="text-center text-[10px] uppercase">Vendido</TableHead>
+                                    <TableHead className="text-center text-[10px] uppercase">Quedan</TableHead>
+                                    <TableHead className="text-right text-[10px] uppercase">Acción</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {stats.toBuy.slice(0, 5).map(p => (
+                                    <TableRow key={p.id}>
+                                        <TableCell className="font-bold text-xs">{p.name}</TableCell>
+                                        <TableCell className="text-center font-bold text-blue-600">{p.soldInPeriod} {p.unit === 'unit' ? 'un.' : p.unit}</TableCell>
+                                        <TableCell className="text-center">
+                                            <Badge variant="destructive" className="animate-pulse">{p.daysRemaining} días</Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <Button size="sm" variant="outline" className="h-7 text-[10px] font-black uppercase">Reabastecer</Button>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {stats.toBuy.length === 0 && (
+                                    <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground italic text-xs">No hay riesgos de quiebre de stock detectados.</TableCell></TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
 
-function AnalysisTable<T>({ headers, data, renderRow, isLoading, emptyMessage = "No hay datos." }: AnalysisTableProps<T>) {
-    if (isLoading) {
-        return (
-            <div className="space-y-2">
-                {Array.from({ length: 5 }).map((_, i) => (
-                     <TableRow key={`loading-row-${i}`}>
-                        {headers.map((_, j) => (
-                            <TableCell key={`loading-cell-${i}-${j}`}>
-                               <Skeleton className="h-5 w-full" />
-                            </TableCell>
+                <Card className="border-2 border-slate-200 shadow-lg overflow-hidden">
+                    <CardHeader className="bg-slate-50 border-b">
+                        <div className="flex items-center gap-2 text-slate-600">
+                            <Ghost className="w-5 h-5" />
+                            <CardTitle className="text-sm font-black uppercase">Stock Muerto (Baja Rotación)</CardTitle>
+                        </div>
+                        <CardDescription>Items en estante hace +30 días sin una sola venta.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="text-[10px] uppercase">Producto</TableHead>
+                                    <TableHead className="text-center text-[10px] uppercase">En Estante</TableHead>
+                                    <TableHead className="text-center text-[10px] uppercase">Costo Atascado</TableHead>
+                                    <TableHead className="text-right text-[10px] uppercase">Recomendación</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {stats.deadStock.slice(0, 5).map(p => (
+                                    <TableRow key={p.id}>
+                                        <TableCell className="font-bold text-xs">{p.name}</TableCell>
+                                        <TableCell className="text-center text-xs font-medium">{p.available} {p.unit === 'unit' ? 'un.' : p.unit}</TableCell>
+                                        <TableCell className="text-center font-bold text-destructive">${formatCurrency(p.available * p.costPrice)}</TableCell>
+                                        <TableCell className="text-right">
+                                            <Badge className="bg-amber-500 text-black text-[9px] uppercase font-black">Liquidar / Promo</Badge>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {stats.deadStock.length === 0 && (
+                                    <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground italic text-xs">¡Excelente! Todo tu inventario tiene movimiento.</TableCell></TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <Card className="shadow-lg border-2 border-blue-100">
+                <CardHeader className="bg-blue-50/50 border-b">
+                    <div className="flex items-center gap-2 text-blue-700">
+                        <ArrowRightLeft className="w-5 h-5" />
+                        <CardTitle className="text-sm font-black uppercase">Correlación: Modelos vs Insumos</CardTitle>
+                    </div>
+                    <CardDescription>Piezas más demandadas por cada modelo de equipo que entra al taller.</CardDescription>
+                </CardHeader>
+                <CardContent className="pt-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {Object.entries(stats.modelCorrelation).slice(0, 6).map(([model, parts]) => (
+                            <div key={model} className="p-4 rounded-xl border bg-white shadow-sm space-y-3">
+                                <div className="flex items-center justify-between border-b pb-2">
+                                    <span className="text-xs font-black text-slate-700 truncate max-w-[150px]">{model}</span>
+                                    <Badge variant="secondary" className="text-[9px] uppercase font-bold">{Object.values(parts).reduce((a,b)=>a+b, 0)} Usos</Badge>
+                                </div>
+                                <div className="space-y-1">
+                                    {Object.entries(parts).sort((a,b)=>b[1]-a[1]).slice(0, 3).map(([part, count]) => (
+                                        <div key={part} className="flex justify-between text-[10px] items-center">
+                                            <span className="text-muted-foreground">{part}</span>
+                                            <span className="font-black text-primary">x{count}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         ))}
-                    </TableRow>
-                ))}
-            </div>
-        );
-    }
-    
-    if (data.length === 0) {
-        return <p className="text-sm text-muted-foreground text-center py-4">{emptyMessage}</p>;
-    }
+                    </div>
+                </CardContent>
+            </Card>
 
-    return (
-        <Table>
-            <TableHeader>
-                <TableRow>
-                    {headers.map((header, index) => (
-                        <TableHead key={header} className={cn(
-                            (header.includes("Cant") || header.includes("Stock")) && "text-center",
-                            (header.includes("Ganancia") || header.includes("Uso") || header.includes("Casos") || header.includes("Cantidad")) && "text-right"
-                        )}>{header}</TableHead>
-                    ))}
-                </TableRow>
-            </TableHeader>
-            <TableBody>
-                {data.map(renderRow)}
-            </TableBody>
-        </Table>
+            <Card className="shadow-xl">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2"><Layers className="w-5 h-5 text-primary"/> Inteligencia de Productos</CardTitle>
+                    <CardDescription>Análisis profundo de márgenes porcentuales y días de inventario restante.</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="text-[10px] uppercase">Producto</TableHead>
+                                <TableHead className="text-right text-[10px] uppercase">Margen %</TableHead>
+                                <TableHead className="text-right text-[10px] uppercase">Velocidad (Venta/Día)</TableHead>
+                                <TableHead className="text-right text-[10px] uppercase">Días de Stock</TableHead>
+                                <TableHead className="text-center text-[10px] uppercase">Estatus Estratégico</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {stats.inventoryHealth.sort((a,b) => b.soldInPeriod - a.soldInPeriod).slice(0, 15).map(p => (
+                                <TableRow key={p.id}>
+                                    <TableCell>
+                                        <p className="font-bold text-xs">{p.name}</p>
+                                        <p className="text-[9px] text-muted-foreground font-mono">{p.sku}</p>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <Badge variant="outline" className={cn("text-xs font-black", p.margin > 100 ? "text-green-600 border-green-200 bg-green-50" : "text-blue-600")}>
+                                            {p.margin.toFixed(0)}%
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono text-xs font-bold">
+                                        {p.velocity.toFixed(2)}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <div className="flex flex-col items-end">
+                                            <span className={cn("text-xs font-black", p.daysRemaining < 10 ? "text-destructive" : "text-slate-700")}>
+                                                {p.daysRemaining === Infinity ? '∞' : `${p.daysRemaining} días`}
+                                            </span>
+                                            <div className="w-16">
+                                                <Progress value={Math.min(100, (p.daysRemaining / 30) * 100)} className="h-1 mt-1" />
+                                            </div>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-center">
+                                        {p.velocity > 0.5 ? (
+                                            <Badge className="bg-orange-500 text-white text-[9px] uppercase"><Flame className="w-2 h-2 mr-1"/> Super Venta</Badge>
+                                        ) : p.margin > 150 ? (
+                                            <Badge className="bg-purple-600 text-white text-[9px] uppercase"><DollarSign className="w-2 h-2 mr-1"/> Alta Utilidad</Badge>
+                                        ) : (
+                                            <Badge variant="secondary" className="text-[9px] uppercase">Estable</Badge>
+                                        )}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
     );
 }

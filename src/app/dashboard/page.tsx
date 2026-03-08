@@ -41,7 +41,8 @@ export default function DashboardPage() {
             return { todaySalesCount: 0, todaySalesTotal: 0, todayRepairsCount: 0 };
         }
         const todaySales = sales.filter(s => s.transactionDate && isToday(new Date(s.transactionDate)) && s.status !== 'refunded');
-        const todaySalesTotal = todaySales.reduce((acc, s) => acc + s.totalAmount, 0);
+        // USAMOS EL MONTO REAL COBRADO PARA EVITAR DISCREPANCIAS CON EL EXCEL
+        const todaySalesTotal = todaySales.reduce((acc, s) => acc + (s.actualPaidAmount ?? s.totalAmount), 0);
         
         const todayRepairs = (repairJobs || []).filter(r => r.createdAt && isToday(new Date(r.createdAt)));
         
@@ -60,9 +61,9 @@ export default function DashboardPage() {
             <main className="flex-1 p-4 sm:p-6 space-y-6">
                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     <StatCard 
-                        title="Ventas de Hoy"
+                        title="Ingresos de Hoy (Neto)"
                         value={`${getSymbol()}${formatCurrency(stats.todaySalesTotal)}`}
-                        description={`${stats.todaySalesCount} transacciones`}
+                        description={`${stats.todaySalesCount} transacciones cobradas`}
                         icon={<ShoppingCart />}
                         href="/dashboard/reports"
                         isLoading={isLoading}

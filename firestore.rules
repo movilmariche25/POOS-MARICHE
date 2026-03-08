@@ -9,10 +9,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
     function isAdmin() {
       return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
@@ -35,19 +31,18 @@ service cloud.firestore {
 
     /**
      * Estructura Multi-Tenant
+     * Bloque principal para los datos de cada taller/negocio
      */
     match /users/{userId} {
-      // Permitimos get público para validar la existencia del taller durante el login
-      allow get: if true;
-      allow list: if isAdmin();
-      
-      // Permitimos crear/actualizar si el usuario es el dueño
-      // Importante: No usamos isOwner aquí directamente para permitir el "handshake" inicial de sesión
-      allow create, update: if isSignedIn() && request.auth.uid == userId;
-      allow delete: if isAdmin();
+      // Permitimos lectura y escritura al dueño del negocio o al administrador global
+      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
 
+      /**
+       * Subcolecciones (sale_transactions, products, repair_jobs, workers, etc.)
+       * Aplicamos la misma lógica de propiedad a todos los datos anidados.
+       */
       match /{allData=**} {
-        allow read, write: if isOwner(userId) || isAdmin();
+        allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       }
     }
   }

@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ArrowUpDown, MoreHorizontal, Edit, Trash2, TicketPercent, PackagePlus, Lock, Percent, Info, Clock, AlertTriangle } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Edit, Trash2, TicketPercent, PackagePlus, Lock, Percent, Info, Clock, AlertTriangle, Landmark } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { ProductFormDialog } from "./product-form-dialog"
 import { useToast } from "@/hooks/use-toast"
@@ -71,14 +71,14 @@ const ActionsCell = ({ product }: { product: Product }) => {
                     <AdminAuthDialog onAuthorized={handleTriggerEdit}>
                         <DropdownMenuItem onSelect={(e) => { e.preventDefault(); }}>
                             <Edit className="mr-2 h-4 w-4" />
-                            Editar
+                            Editar / Ajustar Stock
                         </DropdownMenuItem>
                     </AdminAuthDialog>
                     <DropdownMenuSeparator />
                     <AdminAuthDialog onAuthorized={() => setIsDeleteDialogOpen(true)}>
                         <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={(e) => { e.preventDefault(); }}>
                             <Trash2 className="mr-2 h-4 w-4" />
-                            Eliminar
+                            Eliminar permanentemente
                         </DropdownMenuItem>
                     </AdminAuthDialog>
                 </DropdownMenuContent>
@@ -202,6 +202,7 @@ export const columns: ColumnDef<Product>[] = [
                     {product.isCombo && <PackagePlus className="h-4 w-4 text-muted-foreground" title="Combo" />}
                     {product.isFixedPrice && <Lock className="h-3 w-3 text-amber-500" title="Precio Fijo" />}
                     {product.hasCustomMargin && !product.isFixedPrice && <Percent className="h-3 w-3 text-blue-500" title={`Margen Indiv: ${product.customMargin}%`} />}
+                    {product.hasIVA && <Landmark className="h-3 w-3 text-green-600" title="Aplica IVA (16%)" />}
                 </div>
                 {compatibleModels.length > 0 && (
                     <div className="text-xs text-muted-foreground truncate" title={compatibleModels.join(', ')}>
@@ -224,24 +225,33 @@ export const columns: ColumnDef<Product>[] = [
                 variant="ghost"
                 onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
             >
-                Stock Total
+                Total Físico
                 <ArrowUpDown className="ml-2 h-4 w-4" />
             </Button>
         </div>
     ),
     cell: ({ row }) => {
         const product = row.original;
-        const stock: number = product.stockLevel;
+        const stock = product.stockLevel || 0;
+        const unitLabel = product.unit && product.unit !== 'unit' ? ` ${product.unit}` : '';
+        
         if (product.isCombo) return <div className="text-center"><Badge variant="outline">Combo</Badge></div>
-        return <div className="text-center"><Badge variant="secondary">{stock}</Badge></div>
+        return (
+            <div className="text-center">
+                <Badge variant="secondary" className="font-bold">
+                    {stock}{unitLabel}
+                </Badge>
+            </div>
+        );
     }
   },
   {
     id: 'availableStock',
-    header: () => <div className="text-center">Disponible</div>,
+    header: () => <div className="text-center font-bold text-primary">Disponible (Venta)</div>,
     cell: ({ row, table }) => {
       const product = row.original;
       const allProducts = (table.options.meta as { allProducts: Product[] })?.allProducts || [];
+      const unitLabel = product.unit && product.unit !== 'unit' ? ` ${product.unit}` : '';
 
       let availableStock: number;
       if (product.isCombo) {
@@ -253,23 +263,27 @@ export const columns: ColumnDef<Product>[] = [
                   ...comboItems.map(item => {
                       const component = allProducts.find(p => p.id === item.productId);
                       if (!component) return 0;
-                      const componentAvailable = component.stockLevel - (component.reservedStock || 0) - (component.damagedStock || 0);
+                      const componentAvailable = (component.stockLevel || 0) - (component.reservedStock || 0) - (component.damagedStock || 0);
                       return Math.floor(componentAvailable / item.quantity);
                   })
               );
           }
       } else {
-          availableStock = product.stockLevel - (product.reservedStock || 0) - (product.damagedStock || 0);
+          availableStock = (product.stockLevel || 0) - (product.reservedStock || 0) - (product.damagedStock || 0);
       }
       
-      const threshold = product.lowStockThreshold;
+      const threshold = product.lowStockThreshold || 1;
       let variant: "default" | "secondary" | "destructive" | "outline" = "secondary";
       let className = "";
+      
       if (availableStock <= 0) {
         variant = "destructive"
       } else if (availableStock <= threshold) {
         variant = "outline";
-        className = "border-yellow-500 text-yellow-500"
+        className = "border-yellow-500 text-yellow-600 bg-yellow-50 font-black"
+      } else {
+        variant = "default";
+        className = "bg-green-600 hover:bg-green-700"
       }
 
       return (
@@ -277,18 +291,19 @@ export const columns: ColumnDef<Product>[] = [
             <TooltipProvider>
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <Badge variant={variant} className={cn(className, "cursor-help")}>
+                        <Badge variant={variant} className={cn(className, "cursor-help min-w-[40px] flex justify-center")}>
                             {availableStock}
                         </Badge>
                     </TooltipTrigger>
-                    <TooltipContent className="p-3 space-y-1" side="left">
-                        <p className="font-bold text-xs">Desglose de Stock:</p>
-                        <div className="text-[10px] space-y-0.5">
-                            <div className="flex justify-between gap-4"><span>Físico en estante:</span><span className="font-mono">{product.stockLevel}</span></div>
-                            <div className="flex justify-between gap-4 text-amber-500"><span>Reservado / En uso:</span><span className="font-mono">-{product.reservedStock || 0}</span></div>
-                            <div className="flex justify-between gap-4 text-destructive"><span>Dañado / Devolución:</span><span className="font-mono">-{product.damagedStock || 0}</span></div>
-                            <div className="border-t pt-1 flex justify-between gap-4 font-bold"><span>Disponible real:</span><span className="font-mono">{availableStock}</span></div>
+                    <TooltipContent className="p-3 space-y-2 shadow-xl border-2" side="left">
+                        <p className="font-black text-xs border-b pb-1">DESGLOSE DE STOCK:</p>
+                        <div className="text-[10px] space-y-1">
+                            <div className="flex justify-between gap-6"><span>Físico en estante:</span><span className="font-black">{product.stockLevel || 0}{unitLabel}</span></div>
+                            <div className="flex justify-between gap-6 text-amber-600 font-bold"><span>En taller (Reservado):</span><span className="font-black">-{product.reservedStock || 0}{unitLabel}</span></div>
+                            <div className="flex justify-between gap-6 text-destructive font-bold"><span>Dañado/Garantía:</span><span className="font-black">-{product.damagedStock || 0}{unitLabel}</span></div>
+                            <div className="border-t pt-1 flex justify-between gap-6 font-black text-primary text-[11px]"><span>DISPONIBLE REAL:</span><span className="font-black">{availableStock}{unitLabel}</span></div>
                         </div>
+                        {availableStock <= 0 && <p className="text-[9px] text-destructive font-bold italic pt-1 animate-pulse">¡Este producto está bloqueado para la venta!</p>}
                     </TooltipContent>
                 </Tooltip>
             </TooltipProvider>
@@ -301,10 +316,12 @@ export const columns: ColumnDef<Product>[] = [
     header: () => <div className="text-right">Precio de Costo</div>,
     cell: function Cell({ row }) {
         const { format } = useCurrency();
+        const product = row.original;
         const amountUSD = parseFloat(row.getValue("costPrice"));
+        const unitLabel = product.unit && product.unit !== 'unit' ? ` / ${product.unit}` : '';
         return (
           <div className="text-right">
-            <div className="font-medium">${format(amountUSD)}</div>
+            <div className="font-medium">${format(amountUSD)}{unitLabel}</div>
           </div>
         );
     },
@@ -315,6 +332,7 @@ export const columns: ColumnDef<Product>[] = [
     cell: function Cell({ row }) {
         const { format, convert, getFinalPrice } = useCurrency();
         const product = row.original;
+        const unitLabel = product.unit && product.unit !== 'unit' ? ` / ${product.unit}` : '';
         
         const basePrice = getFinalPrice(product);
         const promoPrice = (typeof product.promoPrice === 'number' && product.promoPrice > 0) ? product.promoPrice : 0;
@@ -326,10 +344,11 @@ export const columns: ColumnDef<Product>[] = [
         return (
           <div className="text-right">
             <div className={cn("font-medium flex items-center justify-end gap-1", hasPromo && "text-green-600")}>
+              {product.hasIVA && <Badge variant="outline" className="text-[8px] h-3 px-1 border-green-600 text-green-600 font-bold">IVA</Badge>}
               {product.isFixedPrice && !hasPromo && <Lock className="w-3 h-3 text-amber-500" title="Precio Fijo" />}
               {product.hasCustomMargin && !product.isFixedPrice && !hasPromo && <Percent className="w-3 h-3 text-blue-500" title={`Margen Individual: ${product.customMargin}%`} />}
               {hasPromo && <TicketPercent className="w-3 h-3 inline-block" />}
-              ${format(displayPrice)}
+              ${format(displayPrice)}{unitLabel}
             </div>
 
             {hasPromo && basePrice !== promoPrice && (

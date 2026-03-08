@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Toaster } from '@/components/ui/toaster';
@@ -53,7 +52,20 @@ function AppContent({ children }: { children: React.ReactNode }) {
         const profileSnap = await getDoc(profileRef);
         const existingData = profileSnap.exists() ? profileSnap.data() : {};
 
-        const allAvailableModules = ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'payroll'];
+        // Lista actualizada de todos los módulos disponibles
+        const allAvailableModules = [
+            'inventory', 
+            'pos', 
+            'repairs', 
+            'reports', 
+            'analysis', 
+            'fiados', 
+            'payroll', 
+            'treasury', 
+            'loans', 
+            'exchange',
+            'inventory_aging'
+        ];
 
         const profileData = {
           uid: user.uid,
@@ -73,7 +85,9 @@ function AppContent({ children }: { children: React.ReactNode }) {
             businessRIF: "",
             businessAddress: ""
           } : {
-            enabledModules: existingData.enabledModules?.concat(allAvailableModules.filter(m => !existingData.enabledModules.includes(m))) || allAvailableModules
+            // Aseguramos que los nuevos módulos se añadan a perfiles existentes pero sin sobreescribir si el admin los quitó
+            // Solo añadimos los que NO estaban en la lista total previa para evitar reactivar módulos desactivados manualmente
+            enabledModules: Array.from(new Set([...(existingData.enabledModules || []), ...allAvailableModules]))
           })
         };
 
@@ -188,7 +202,7 @@ export default function RootLayout({
       <head>
         <meta name="theme-color" content="#FFFFFF" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
-        <title>POOS MARICHE - Gestión de Negocio</title>
+        <title>POS MARICHE - Gestión de Negocio</title>
       </head>
       <body className={cn("font-sans antialiased", process.env.NODE_ENV === 'development' ? 'debug-screens' : '')}>
         <FirebaseClientProvider>

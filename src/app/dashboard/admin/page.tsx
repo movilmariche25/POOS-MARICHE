@@ -1,8 +1,7 @@
-
 "use client";
 
 import { PageHeader } from "@/components/page-header";
-import { useCollection, useFirebase, useMemoFirebase, updateDocumentNonBlocking, setDocumentNonBlocking, useDoc } from "@/firebase";
+import { useCollection, useFirebase, useMemoFirebase, updateDocumentNonBlocking, setDocumentNonBlocking, useDoc, deleteDocumentNonBlocking } from "@/firebase";
 import { collection, doc, writeBatch, getDocs } from "firebase/firestore";
 import type { UserProfile, UserModule } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,7 +29,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,18 +37,29 @@ import { Edit, Mail, Megaphone, Save, Trash2, Loader2, Circle, Users, LayoutGrid
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
-import { AdminAuthDialog } from "@/components/admin-auth-dialog";
+import { SecurityGate } from "@/components/security-gate";
 
 const ALL_MODULES: { id: UserModule, label: string }[] = [
     { id: 'inventory', label: 'Inventario' },
     { id: 'pos', label: 'Punto de Venta' },
     { id: 'repairs', label: 'Reparaciones' },
-    { id: 'reports', label: 'Reportes' },
-    { id: 'analysis', label: 'Análisis' },
+    { id: 'reports', label: 'Reportes Financieros' },
+    { id: 'analysis', label: 'Análisis de Negocio' },
     { id: 'fiados', label: 'Fiados / Créditos' },
-    { id: 'payroll', label: 'Registro de Pago (Nómina)' },
-    { id: 'inventory_aging', label: 'Antigüedad / Vencimiento' },
+    { id: 'payroll', label: 'Registro de Pago' },
+    { id: 'loans', label: 'Préstamos' },
+    { id: 'exchange', label: 'Cambio de Divisa' },
+    { id: 'treasury', label: 'Tesorería' },
+    { id: 'inventory_aging', label: 'Antigüedad de Stock' },
 ];
+
+export default function AdminPage() {
+    return (
+        <SecurityGate module="admin">
+            <AdminContent />
+        </SecurityGate>
+    );
+}
 
 function AnnouncementEditor() {
     const { firestore } = useFirebase();
@@ -195,14 +204,14 @@ function UserEditDialog({ user, onSave, isOpen, onOpenChange }: { user: UserProf
     );
 }
 
-export default function AdminPage() {
+function AdminContent() {
     const { firestore, user: currentUser } = useFirebase();
     const { toast } = useToast();
     const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
-    const [isDeleting, setIsDeleting] = useState(false);
+    const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
 
     const usersCollection = useMemoFirebase(() => 
-        firestore ? collection(firestore, "users") : null, 
+        (firestore) ? collection(firestore, "users") : null, 
         [firestore]
     );
     const { data: users, isLoading } = useCollection<UserProfile>(usersCollection);
@@ -214,24 +223,20 @@ export default function AdminPage() {
         toast({ title: "Usuario Actualizado" });
     };
 
-    const handleResetUserData = async (userId: string, email: string) => {
-        if (!firestore || isDeleting) return;
-        setIsDeleting(true);
-        try {
-            const batch = writeBatch(firestore);
-            const sub = ['products', 'repair_jobs', 'sale_transactions', 'daily_reconciliations', 'app-settings', 'held_sales', 'fiados', 'workers', 'payroll_payments'];
-            for (const s of sub) {
-                const col = collection(firestore, 'users', userId, s);
-                const snap = await getDocs(col);
-                snap.forEach(d => batch.delete(doc(firestore, 'users', userId, s, d.id)));
-            }
-            await batch.commit();
-            toast({ title: "Datos Reiniciados" });
-        } catch (error) {
-            toast({ variant: "destructive", title: "Error al reiniciar" });
-        } finally {
-            setIsDeleting(false);
+    const handleDeleteUser = () => {
+        if (!firestore || !userToDelete) return;
+        
+        // Evitar que el admin se borre a sí mismo
+        if (userToDelete.uid === currentUser?.uid) {
+            toast({ title: "Acción Denegada", description: "No puedes eliminar tu propia cuenta de administrador.", variant: "destructive" });
+            setUserToDelete(null);
+            return;
         }
+
+        const userRef = doc(firestore, 'users', userToDelete.uid);
+        deleteDocumentNonBlocking(userRef);
+        toast({ title: "Negocio Eliminado", description: "El perfil del negocio ha sido borrado correctamente." });
+        setUserToDelete(null);
     };
 
     const sortedUsers = useMemo(() => {
@@ -258,15 +263,38 @@ export default function AdminPage() {
                     <CardHeader><CardTitle>Usuarios del Sistema</CardTitle></CardHeader>
                     <CardContent className="p-0">
                         <Table>
-                            <TableHeader><TableRow><TableHead>Negocio</TableHead><TableHead>Licencia</TableHead><TableHead>Última Actividad</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Negocio</TableHead>
+                                    <TableHead>Licencia</TableHead>
+                                    <TableHead>Última Actividad</TableHead>
+                                    <TableHead className="text-right">Acciones</TableHead>
+                                </TableRow>
+                            </TableHeader>
                             <TableBody>
                                 {sortedUsers.map((u) => (
                                     <TableRow key={u.uid}>
-                                        <TableCell><div className="font-bold">{u.businessName || "Sin nombre"}</div><div className="text-xs text-muted-foreground">{u.email}</div></TableCell>
-                                        <TableCell><Badge variant={u.licenseStatus === 'active' ? 'default' : 'destructive'}>{u.licenseStatus.toUpperCase()}</Badge></TableCell>
-                                        <TableCell className="text-xs">{u.updatedAt ? format(parseISO(u.updatedAt), "dd/MM/yy HH:mm", { locale: es }) : 'N/A'}</TableCell>
+                                        <TableCell>
+                                            <div className="font-bold">{u.businessName || "Sin nombre"}</div>
+                                            <div className="text-xs text-muted-foreground">{u.email}</div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge variant={u.licenseStatus === 'active' ? 'default' : 'destructive'}>
+                                                {u.licenseStatus.toUpperCase()}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-xs">
+                                            {u.updatedAt ? format(parseISO(u.updatedAt), "dd/MM/yy HH:mm", { locale: es }) : 'N/A'}
+                                        </TableCell>
                                         <TableCell className="text-right">
-                                            <Button variant="outline" size="sm" onClick={() => setEditingUser(u)}>Gestionar</Button>
+                                            <div className="flex justify-end gap-2">
+                                                <Button variant="outline" size="sm" onClick={() => setEditingUser(u)}>
+                                                    <Edit className="w-3.5 h-3.5 mr-1" /> Gestionar
+                                                </Button>
+                                                <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10" onClick={() => setUserToDelete(u)}>
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </Button>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -275,7 +303,33 @@ export default function AdminPage() {
                     </CardContent>
                 </Card>
             </main>
-            {editingUser && <UserEditDialog user={editingUser} isOpen={!!editingUser} onOpenChange={(o) => !o && setEditingUser(null)} onSave={(d) => handleUpdateUser(editingUser.uid, d)} />}
+
+            {editingUser && (
+                <UserEditDialog 
+                    user={editingUser} 
+                    isOpen={!!editingUser} 
+                    onOpenChange={(o) => !o && setEditingUser(null)} 
+                    onSave={(d) => handleUpdateUser(editingUser.uid, d)} 
+                />
+            )}
+
+            <AlertDialog open={!!userToDelete} onOpenChange={(o) => !o && setUserToDelete(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>¿Estás completamente seguro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Esta acción eliminará el perfil del negocio <span className="font-bold text-foreground">"{userToDelete?.businessName}"</span> ({userToDelete?.email}). 
+                            El acceso del usuario será revocado.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeleteUser} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                            Eliminar Negocio
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </>
     );
 }

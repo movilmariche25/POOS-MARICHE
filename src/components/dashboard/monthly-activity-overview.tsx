@@ -16,12 +16,6 @@ type MonthlyActivityOverviewProps = {
   isLoading?: boolean;
 };
 
-type ChartData = {
-    name: string;
-    ventas: number;
-    reparaciones: number;
-}[];
-
 export function MonthlyActivityOverview({ sales, repairJobs, isLoading }: MonthlyActivityOverviewProps) {
   const { format: formatCurrency, getSymbol } = useCurrency();
   
@@ -35,9 +29,10 @@ export function MonthlyActivityOverview({ sales, repairJobs, isLoading }: Monthl
     const daysInMonth = eachDayOfInterval({ start: firstDayOfMonth, end: lastDayOfMonth });
 
     const data = daysInMonth.map(day => {
+      // USAMOS actualPaidAmount PARA QUE EL GRÁFICO REFLEJE EL DINERO REAL EN CAJA
       const dailySales = sales
         .filter(s => s.transactionDate && isSameDay(new Date(s.transactionDate), day) && s.status !== 'refunded')
-        .reduce((acc, s) => acc + s.totalAmount, 0);
+        .reduce((acc, s) => acc + (s.actualPaidAmount ?? s.totalAmount), 0);
       
       const dailyRepairs = repairJobs
         .filter(r => r.createdAt && isSameDay(new Date(r.createdAt), day))
@@ -58,12 +53,12 @@ export function MonthlyActivityOverview({ sales, repairJobs, isLoading }: Monthl
     <Card>
       <CardHeader>
         <CardTitle>Actividad Mensual ({currentMonth})</CardTitle>
-        <CardDescription>Un resumen de las ventas y reparaciones registradas este mes.</CardDescription>
+        <CardDescription>Resumen de ingresos netos y reparaciones registradas.</CardDescription>
       </CardHeader>
       <CardContent className="pl-2">
         {isLoading ? (
             <div className="w-full h-[350px] flex items-center justify-center">
-                <Skeleton className="w-full h-full" />
+                <Skeleton className="h-full w-full" />
             </div>
         ) : (
         <ResponsiveContainer width="100%" height={350}>
@@ -102,7 +97,7 @@ export function MonthlyActivityOverview({ sales, repairJobs, isLoading }: Monthl
               }}
               formatter={(value, name) => {
                 if (name === 'ventas') {
-                  return [`${getSymbol()}${(formatCurrency(value as number))}`, 'Ventas'];
+                  return [`${getSymbol()}${(formatCurrency(value as number))}`, 'Ingreso Neto'];
                 }
                 if (name === 'reparaciones') {
                   return [value, 'Reparaciones'];
@@ -111,8 +106,8 @@ export function MonthlyActivityOverview({ sales, repairJobs, isLoading }: Monthl
               }}
             />
             <Legend />
-            <Line yAxisId="left" type="monotone" dataKey="ventas" name="Ventas" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 4, fill: "hsl(var(--chart-1))" }} activeDot={{ r: 6 }} />
-            <Line yAxisId="right" type="monotone" dataKey="reparaciones" name="Reparaciones" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={{ r: 4, fill: "hsl(var(--chart-2))" }} activeDot={{ r: 6 }} />
+            <Line yAxisId="left" type="monotone" dataKey="ventas" name="ventas" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 4, fill: "hsl(var(--chart-1))" }} activeDot={{ r: 6 }} />
+            <Line yAxisId="right" type="monotone" dataKey="reparaciones" name="reparaciones" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={{ r: 4, fill: "hsl(var(--chart-2))" }} activeDot={{ r: 6 }} />
           </LineChart>
         </ResponsiveContainer>
         )}

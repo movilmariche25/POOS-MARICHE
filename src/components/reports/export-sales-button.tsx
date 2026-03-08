@@ -30,7 +30,7 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
     to: new Date(),
   });
   const { toast } = useToast();
-  const { bcvRate } = useCurrency();
+  const { bcvRate: currentBcvRate } = useCurrency();
 
   const handleExport = () => {
     if (!date?.from || !sales || !repairJobs || !products) {
@@ -64,27 +64,36 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
         repairJob: RepairJob,
         lastDate: string,
         lastSaleId: string,
-        paymentMethods: Set<string>
+        paymentMethods: Set<string>,
+        bcvRate: number
     }>();
 
     const productLines: any[] = [];
 
     filteredSales.forEach(sale => {
-        const otherItemsInSale = sale.items.filter(i => !i.isRepair);
-        const otherItemsTotalRequested = otherItemsInSale.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+        const totalCollected = sale.actualPaidAmount ?? sale.totalAmount;
+        const saleBcvRate = sale.bcvRateAtTime || currentBcvRate;
         
-        const totalReceivedInSale = sale.actualPaidAmount ?? sale.totalAmount;
-        const repairRevenueInSale = Math.max(0, totalReceivedInSale - otherItemsTotalRequested);
+        const otherItemsInSale = sale.items.filter(i => !i.isRepair);
+        const productTotalRequested = otherItemsInSale.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+        
+        const productPaymentRatio = productTotalRequested > 0 
+            ? Math.min(1, totalCollected / productTotalRequested) 
+            : 1;
+
+        let totalCollectedFromProducts = 0;
 
         otherItemsInSale.forEach(item => {
+            const lineCollected = (item.price * item.quantity) * productPaymentRatio;
+            totalCollectedFromProducts += lineCollected;
+
             const product = products.find(p => p.id === item.productId);
             const costPrice = item.isCustom 
                 ? (item.customCostPrice || 0) 
                 : (product?.costPrice || 0);
             
-            const totalUSD = item.price * item.quantity;
             const totalCost = costPrice * item.quantity;
-            const profit = totalUSD - totalCost;
+            const profit = lineCollected - totalCost;
             
             productLines.push({
                 'Fecha': format(new Date(sale.transactionDate), 'dd/MM/yyyy HH:mm'),
@@ -93,16 +102,17 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
                 'Costo Repuestos ($)': Number(totalCost.toFixed(2)),
                 'Precio Venta ($)': Number(item.price.toFixed(2)),
                 'Cantidad': item.quantity,
-                'Ingreso Recibido ($)': Number(totalUSD.toFixed(2)),
+                'Ingreso Recibido ($)': Number(lineCollected.toFixed(2)),
                 'Ganancia Est. ($)': Number(profit.toFixed(2)),
-                'Total (Bs)': Number((totalUSD * bcvRate).toFixed(2)),
-                'Tasa BCV': Number(bcvRate.toFixed(2)),
+                'Total (Bs)': Number((lineCollected * saleBcvRate).toFixed(2)),
+                'Tasa BCV Aplicada': Number(saleBcvRate.toFixed(2)),
                 'Método de Pago': sale.paymentMethod
             });
         });
 
         const repairItem = sale.items.find(i => i.isRepair);
         const rId = sale.repairJobId || repairItem?.productId;
+        const repairRevenueInSale = Math.max(0, totalCollected - totalCollectedFromProducts);
         
         if (rId && repairRevenueInSale > 0) {
             const repairJob = repairJobs.find(job => job.id === rId);
@@ -114,6 +124,7 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
                     if (new Date(sale.transactionDate) > new Date(existing.lastDate)) {
                         existing.lastDate = sale.transactionDate;
                         existing.lastSaleId = sale.id!;
+                        existing.bcvRate = saleBcvRate; // Actualizamos a la tasa más reciente de este trabajo si aplica
                     }
                 } else {
                     repairsActivity.set(rId, {
@@ -121,7 +132,8 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
                         repairJob,
                         lastDate: sale.transactionDate,
                         lastSaleId: sale.id!,
-                        paymentMethods: new Set([sale.paymentMethod])
+                        paymentMethods: new Set([sale.paymentMethod]),
+                        bcvRate: saleBcvRate
                     });
                 }
             }
@@ -134,6 +146,7 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
         
         const income = entry.revenue;
         const profit = income - totalPartsCost;
+        const saleBcv = entry.bcvRate;
 
         return {
             'Fecha': format(new Date(entry.lastDate), 'dd/MM/yyyy HH:mm'),
@@ -144,8 +157,8 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
             'Cantidad': 1,
             'Ingreso Recibido ($)': Number(income.toFixed(2)),
             'Ganancia Est. ($)': Number(profit.toFixed(2)),
-            'Total (Bs)': Number((income * bcvRate).toFixed(2)),
-            'Tasa BCV': Number(bcvRate.toFixed(2)),
+            'Total (Bs)': Number((income * saleBcv).toFixed(2)),
+            'Tasa BCV Aplicada': Number(saleBcv.toFixed(2)),
             'Método de Pago': Array.from(entry.paymentMethods).join(' + ')
         };
     });
@@ -160,7 +173,6 @@ export function ExportSalesButton({ sales, products, repairJobs }: ExportSalesBu
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte_PoosMariche");
     
-    // Auto-ajustar ancho de columnas
     const cols = Object.keys(dataToExport[0] || {});
     const colWidths = cols.map(col => ({
         wch: Math.max(...dataToExport.map(row => (row[col as keyof typeof row] ?? '').toString().length), col.length + 2)

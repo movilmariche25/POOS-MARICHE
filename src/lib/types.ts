@@ -7,6 +7,8 @@ export type ComboItem = {
   quantity: number;
 }
 
+export type ProductUnit = 'unit' | 'kg' | 'g' | 'lb' | 'liter';
+
 export type Product = {
   id?: string;
   name: string;
@@ -26,7 +28,9 @@ export type Product = {
   fixedPrice?: number;
   hasCustomMargin?: boolean;
   customMargin?: number;
-  createdAt?: string; // Fecha de ingreso al inventario
+  hasIVA?: boolean;
+  unit: ProductUnit;
+  createdAt?: string;
 };
 
 export type ReservedPart = {
@@ -60,6 +64,7 @@ export type RepairJob = {
   completedAt?: string;
   warrantyEndDate?: string;
   partsConsumed?: boolean; 
+  isPromo?: boolean;
 };
 
 export type FiadoStatus = 'Pendiente' | 'Pagado';
@@ -76,12 +81,12 @@ export type Fiado = {
   customerName: string;
   customerID: string;
   customerPhone: string;
-  concept: string; // Descripción de por qué se fío (ej: Pantalla + Mica)
+  concept: string;
   totalAmount: number;
   amountPaid: number;
   status: FiadoStatus;
   createdAt: string;
-  dueDate?: string; // Fecha límite de pago (Alerta)
+  dueDate?: string;
   notes?: string;
   items?: FiadoItem[];
 };
@@ -100,11 +105,66 @@ export type PayrollPayment = {
   workerName: string;
   amountUSD: number;
   amountBs: number;
+  methodUSD: PaymentMethod;
+  methodBs: PaymentMethod;
   dateFrom: string;
   dateTo: string;
   createdAt: string;
   notes?: string;
+  loanId?: string;
+  loanDeduction?: number;
 };
+
+export type LoanStatus = 'active' | 'paid';
+
+export type Loan = {
+  id?: string;
+  partnerName: string;
+  totalAmount: number;
+  remainingAmount: number;
+  currency: Currency;
+  sourceMethod: PaymentMethod;
+  hasWeeklyDeduction: boolean;
+  weeklyDeduction: number;
+  status: LoanStatus;
+  createdAt: string;
+  notes?: string;
+};
+
+export type CurrencyExchange = {
+  id?: string;
+  bsAmount: number;
+  usdAmount: number;
+  rate: number;
+  sourceMethod: PaymentMethod;
+  notes?: string;
+  createdAt: string;
+};
+
+export type BsTransfer = {
+  id?: string;
+  amountSent: number;
+  amountReceived: number;
+  sourceMethod: PaymentMethod;
+  targetMethod: PaymentMethod;
+  notes?: string;
+  createdAt: string;
+};
+
+export type ExpenseCategory = 'Mercancía' | 'Servicios' | 'Alquiler' | 'Retiro Personal' | 'Otros';
+
+export type Expense = {
+  id?: string;
+  description: string;
+  category: ExpenseCategory;
+  amountUSD: number;
+  amountBs: number;
+  methodUSD: PaymentMethod;
+  methodBs: PaymentMethod;
+  createdAt: string;
+};
+
+export type UserModule = 'inventory' | 'pos' | 'repairs' | 'reports' | 'analysis' | 'fiados' | 'inventory_aging' | 'payroll' | 'treasury' | 'loans' | 'exchange';
 
 export type CartItem = {
   productId: string;
@@ -125,7 +185,7 @@ export type HeldSale = {
   items: CartItem[];
 };
 
-export type PaymentMethod = 'Efectivo USD' | 'Efectivo Bs' | 'Tarjeta' | 'Pago Móvil' | 'Transferencia';
+export type PaymentMethod = 'Efectivo USD' | 'Efectivo Bs' | 'Tarjeta' | 'Pago Móvil' | 'Transferencia' | 'Tarjeta / Pago Móvil';
 
 export type Payment = {
   method: PaymentMethod;
@@ -137,7 +197,7 @@ export type Sale = {
   id?: string;
   items: (CartItem & { price: number })[];
   repairJobId?: string;
-  fiadoId?: string; // Vinculación con fiados
+  fiadoId?: string;
   consumedParts?: ReservedPart[];
   subtotal: number;
   discount: number;
@@ -152,6 +212,8 @@ export type Sale = {
   totalChangeInUSD?: number;
   changeGiven?: Payment[];
   actualPaidAmount?: number;
+  bcvRateAtTime?: number;
+  parallelRateAtTime?: number;
 };
 
 export type ReconciliationPaymentMethodSummary = {
@@ -185,9 +247,19 @@ export type AppSettings = {
     profitMargin: number;
     autoUpdateBcv?: boolean;
     lastUpdated?: string;
+    balancesUpdatedAt?: string;
+    weeklyRent?: number;
+    investmentPercentage?: number;
+    partnersCount?: number;
+    initialBalances?: {
+        'Efectivo USD'?: number;
+        'Efectivo Bs'?: number;
+        'Tarjeta'?: number;
+        'Pago Móvil'?: number;
+        'Transferencia'?: number;
+        'Tarjeta / Pago Móvil'?: number;
+    };
 };
-
-export type UserModule = 'inventory' | 'pos' | 'repairs' | 'reports' | 'analysis' | 'fiados' | 'inventory_aging' | 'payroll';
 
 export type UserProfile = {
   id?: string;
@@ -206,7 +278,7 @@ export type UserProfile = {
   enabledModules?: UserModule[];
   securityPin?: string;
   isPinRequired?: boolean;
-  // Campos de políticas de reparación
+  lockedModules?: UserModule[];
   repairWarrantyPolicy?: string;
   repairPickupPolicy?: string;
   repairDisclaimer?: string;

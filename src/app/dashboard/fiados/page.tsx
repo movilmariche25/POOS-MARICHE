@@ -213,21 +213,9 @@ export default function FiadosPage() {
                                                 <div className="flex justify-end gap-1.5">
                                                     {fiado.status === 'Pendiente' && (
                                                         <>
-                                                            <SetDeadlineDialog fiado={fiado}>
-                                                                <Button size="sm" variant="outline" className={cn("h-8 px-2", fiado.dueDate ? "text-amber-600 border-amber-200" : "text-muted-foreground")} title="Establecer alerta de pago">
-                                                                    <Clock className="w-4 h-4" />
-                                                                </Button>
-                                                            </SetDeadlineDialog>
-                                                            <AddItemsToFiadoDialog fiado={fiado}>
-                                                                <Button size="sm" variant="outline" className="h-8 px-2" title="Añadir más productos a esta cuenta">
-                                                                    <ShoppingCart className="w-4 h-4" />
-                                                                </Button>
-                                                            </AddItemsToFiadoDialog>
-                                                            <CobrarFiadoDialog fiado={fiado}>
-                                                                <Button size="sm" variant="outline" className="h-8 text-green-600 border-green-200 hover:bg-green-50">
-                                                                    <DollarSign className="w-3.5 h-3.5 mr-1" /> Abonar
-                                                                </Button>
-                                                            </CobrarFiadoDialog>
+                                                            <SetDeadlineDialog fiado={fiado} />
+                                                            <AddItemsToFiadoDialog fiado={fiado} />
+                                                            <CobrarFiadoDialog fiado={fiado} />
                                                         </>
                                                     )}
                                                     <AdminAuthDialog onAuthorized={() => handleDeleteFiado(fiado.id!)}>
@@ -249,7 +237,7 @@ export default function FiadosPage() {
     );
 }
 
-function SetDeadlineDialog({ fiado, children }: { fiado: Fiado, children: React.ReactNode }) {
+function SetDeadlineDialog({ fiado }: { fiado: Fiado }) {
     const { firestore, user } = useFirebase();
     const { toast } = useToast();
     const [open, setOpen] = useState(false);
@@ -266,7 +254,11 @@ function SetDeadlineDialog({ fiado, children }: { fiado: Fiado, children: React.
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>{children}</DialogTrigger>
+            <DialogTrigger asChild>
+                <Button size="sm" variant="outline" className={cn("h-8 px-2", fiado.dueDate ? "text-amber-600 border-amber-200" : "text-muted-foreground")} title="Establecer alerta de pago">
+                    <Clock className="w-4 h-4" />
+                </Button>
+            </DialogTrigger>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle>Establecer Fecha Límite de Pago</DialogTitle>
@@ -378,10 +370,6 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
         setLoading(true);
         try {
             await runTransaction(firestore, async (transaction) => {
-                const fiadosRef = collection(firestore, 'users', user.uid, 'fiados');
-                const newDoc = doc(fiadosRef);
-                
-                // LECTURAS PRIMERO
                 const productSnaps = new Map();
                 for(const item of selectedItems) {
                     if (!productSnaps.has(item.productId)) {
@@ -390,18 +378,19 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
                     }
                 }
 
-                // ESCRITURAS DESPUÉS
                 for (const item of selectedItems) {
                     const pDoc = productSnaps.get(item.productId);
                     if (pDoc?.exists()) {
                         const currentStock = pDoc.data().stockLevel || 0;
                         if (currentStock < item.quantity) {
-                            throw new Error(`Stock insuficiente para ${item.productName}`);
+                            throw new Error(`¡Conflicto de Inventario! Stock insuficiente para "${item.productName}". Alguien más podría haber modificado este producto.`);
                         }
                         transaction.update(pDoc.ref, { stockLevel: currentStock - item.quantity });
                     }
                 }
 
+                const fiadosRef = collection(firestore, 'users', user.uid, 'fiados');
+                const newDoc = doc(fiadosRef);
                 const data: Fiado = {
                     id: newDoc.id,
                     customerID,
@@ -421,7 +410,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
             setIsOpen(false);
             setCustomerID(""); setCustomerName(""); setCustomerPhone(""); setConcept(""); setTotalAmount(""); setSelectedItems([]);
         } catch (e: any) {
-            toast({ title: "Error", description: e.message, variant: "destructive" });
+            toast({ title: "Error en base de datos", description: e.message, variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -433,7 +422,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
             <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
                     <DialogTitle>Registrar Nuevo Crédito</DialogTitle>
-                    <DialogDescription>Los productos seleccionados se restarán del inventario inmediatamente.</DialogDescription>
+                    <DialogDescription>Los productos seleccionados se restarán del inventario inmediatamente de forma segura.</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -527,7 +516,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
                     </div>
                     <DialogFooter>
                         <Button type="submit" className="w-full" disabled={loading || selectedItems.length === 0}>
-                            {loading ? "Procesando..." : "Crear Fiado y Descontar Stock"}
+                            {loading ? "PROCESANDO TRANSACCIÓN SEGURA..." : "Crear Fiado y Descontar Stock"}
                         </Button>
                     </DialogFooter>
                 </form>
@@ -536,7 +525,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
     );
 }
 
-function AddItemsToFiadoDialog({ fiado, children }: { fiado: Fiado, children: React.ReactNode }) {
+function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
     const { firestore, user } = useFirebase();
     const { toast } = useToast();
     const { getFinalPrice } = useCurrency();
@@ -574,11 +563,9 @@ function AddItemsToFiadoDialog({ fiado, children }: { fiado: Fiado, children: Re
         try {
             await runTransaction(firestore, async (transaction) => {
                 const fiadoRef = doc(firestore, 'users', user.uid, 'fiados', fiado.id!);
-                
-                // LECTURAS PRIMERO
                 const fiadoSnap = await transaction.get(fiadoRef);
-                if (!fiadoSnap.exists()) throw new Error("El fiado no existe.");
-                const currentData = fiadoSnap.data() as Fiado;
+                if (!fiadoSnap.exists()) throw new Error("El registro de deuda ya no existe.");
+                const currentFiadoData = fiadoSnap.data() as Fiado;
 
                 const productSnaps = new Map();
                 for (const item of selectedItems) {
@@ -588,22 +575,21 @@ function AddItemsToFiadoDialog({ fiado, children }: { fiado: Fiado, children: Re
                     }
                 }
 
-                // ESCRITURAS DESPUÉS
                 for (const item of selectedItems) {
                     const pDoc = productSnaps.get(item.productId);
                     if (pDoc?.exists()) {
                         const currentStock = pDoc.data().stockLevel || 0;
                         if (currentStock < item.quantity) {
-                            throw new Error(`Stock insuficiente para ${item.productName}`);
+                            throw new Error(`¡Error de Sincronización! No hay stock suficiente para "${item.productName}".`);
                         }
                         transaction.update(pDoc.ref, { stockLevel: currentStock - item.quantity });
                     }
                 }
 
                 const addedTotal = selectedItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-                const newTotal = currentData.totalAmount + addedTotal;
-                const newItems = [...(currentData.items || []), ...selectedItems];
-                const newConcept = currentData.concept + ", " + selectedItems.map(i => `${i.quantity}x ${i.productName}`).join(", ");
+                const newTotal = currentFiadoData.totalAmount + addedTotal;
+                const newItems = [...(currentFiadoData.items || []), ...selectedItems];
+                const newConcept = currentFiadoData.concept + ", " + selectedItems.map(i => `${i.quantity}x ${i.productName}`).join(", ");
 
                 transaction.update(fiadoRef, {
                     totalAmount: newTotal,
@@ -612,11 +598,11 @@ function AddItemsToFiadoDialog({ fiado, children }: { fiado: Fiado, children: Re
                 });
             });
 
-            toast({ title: "Cuenta actualizada" });
+            toast({ title: "Cuenta actualizada correctamente" });
             setOpen(false);
             setSelectedItems([]);
         } catch (e: any) {
-            toast({ title: "Error", description: e.message, variant: "destructive" });
+            toast({ title: "Error en la operación", description: e.message, variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -624,11 +610,15 @@ function AddItemsToFiadoDialog({ fiado, children }: { fiado: Fiado, children: Re
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>{children}</DialogTrigger>
+            <DialogTrigger asChild>
+                <Button size="sm" variant="outline" className="h-8 px-2" title="Añadir más productos a esta cuenta">
+                    <ShoppingCart className="w-4 h-4" />
+                </Button>
+            </DialogTrigger>
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Añadir a la cuenta de {fiado.customerName}</DialogTitle>
-                    <DialogDescription>Los productos se sumarán a la deuda actual y se descontarán del inventario.</DialogDescription>
+                    <DialogDescription>Los productos se sumarán a la deuda actual y se descontarán del inventario de forma atómica.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <Popover open={searchOpen} onOpenChange={setSearchOpen}>
@@ -671,7 +661,7 @@ function AddItemsToFiadoDialog({ fiado, children }: { fiado: Fiado, children: Re
                 </div>
                 <DialogFooter>
                     <Button onClick={handleUpdate} className="w-full" disabled={loading || selectedItems.length === 0}>
-                        {loading ? "Actualizando..." : "Confirmar y Añadir a Deuda"}
+                        {loading ? "SINCRONIZANDO CON INVENTARIO..." : "Confirmar y Añadir a Deuda"}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -679,10 +669,10 @@ function AddItemsToFiadoDialog({ fiado, children }: { fiado: Fiado, children: Re
     );
 }
 
-function CobrarFiadoDialog({ fiado, children }: { fiado: Fiado, children: React.ReactNode }) {
+function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
     const { firestore, user } = useFirebase();
     const { toast } = useToast();
-    const { format: formatCurrency, getSymbol, bcvRate, convert } = useCurrency();
+    const { format: formatCurrency, getSymbol, bcvRate, parallelRate, convert } = useCurrency();
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [payments, setPayments] = useState<(Payment & { id: number })[]>([]);
@@ -778,7 +768,9 @@ function CobrarFiadoDialog({ fiado, children }: { fiado: Fiado, children: React.
                     payments: payments.map(({id, ...rest}) => rest),
                     actualPaidAmount: finalNetAbonoInUSD,
                     changeGiven: isGivingChange ? changePayments.map(({id, ...rest}) => rest) : [],
-                    totalChangeInUSD: isGivingChange ? totalChangeGivenInUSD : 0
+                    totalChangeInUSD: isGivingChange ? totalChangeGivenInUSD : 0,
+                    bcvRateAtTime: bcvRate,
+                    parallelRateAtTime: parallelRate
                 };
 
                 transaction.set(saleRef, saleData);
@@ -802,7 +794,11 @@ function CobrarFiadoDialog({ fiado, children }: { fiado: Fiado, children: React.
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>{children}</DialogTrigger>
+            <DialogTrigger asChild>
+                <Button size="sm" variant="outline" className="h-8 text-green-600 border-green-200 hover:bg-green-50">
+                    <DollarSign className="w-3.5 h-3.5 mr-1" /> Abonar
+                </Button>
+            </DialogTrigger>
             <DialogContent className={cn(
                 "transition-all duration-300",
                 isGivingChange ? "sm:max-w-4xl" : "sm:max-w-md"
@@ -815,7 +811,6 @@ function CobrarFiadoDialog({ fiado, children }: { fiado: Fiado, children: React.
                 </DialogHeader>
                 
                 <div className={cn("grid grid-cols-1 gap-6 py-2", isGivingChange && "md:grid-cols-2")}>
-                    {/* COLUMNA IZQUIERDA: PAGOS */}
                     <div className="space-y-4">
                         <div className="space-y-2">
                             <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Añadir Métodos de Pago</Label>
@@ -904,7 +899,6 @@ function CobrarFiadoDialog({ fiado, children }: { fiado: Fiado, children: React.
                         )}
                     </div>
 
-                    {/* COLUMNA DERECHA: VUELTOS */}
                     {isGivingChange && (
                         <div className="space-y-4 md:border-l md:pl-6 animate-in slide-in-from-right-4 duration-300">
                             <div className="text-center p-3 rounded-lg bg-primary/10 border border-primary/20">
@@ -974,7 +968,7 @@ function CobrarFiadoDialog({ fiado, children }: { fiado: Fiado, children: React.
                 </div>
 
                 <DialogFooter className="mt-4">
-                    <Button onClick={handleAbono} className="w-full h-12 text-base font-black shadow-md" disabled={payments.length === 0 || totalAbonoInUSD <= 0 || loading || (isGivingChange && Math.abs(changeDifference) > 0.01)}>
+                    <Button onClick={handleAbono} className="w-full h-12 text-base font-black shadow-md" disabled={payments.length === 0 || totalAbonoInUSD <= 0 || loading}>
                         {loading ? "PROCESANDO PAGO..." : "CONFIRMAR ABONO"}
                     </Button>
                 </DialogFooter>

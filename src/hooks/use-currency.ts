@@ -47,20 +47,32 @@ export const useCurrency = () => {
             ? Number(overrideMargin) 
             : profitMargin;
         const marginToUse = !isNaN(numericMargin) ? numericMargin : profitMargin;
+        
+        // Precio basado en tasa de reposición para proteger el capital
         const costInBs = costPrice * parallelRate;
         const priceWithProfitInBs = costInBs * (1 + marginToUse / 100);
+        
+        // Convertimos de vuelta a USD BCV que es lo que el cliente ve en factura
         const finalPriceInBcvUsd = priceWithProfitInBs / bcvRate;
         return parseFloat(finalPriceInBcvUsd.toFixed(2));
     }, [parallelRate, profitMargin, bcvRate]);
 
     const getFinalPrice = useCallback((product: Product) => {
+        let basePrice = 0;
         if (product.isFixedPrice && product.fixedPrice && product.fixedPrice > 0) {
-            return product.fixedPrice;
+            basePrice = product.fixedPrice;
+        } else if (product.hasCustomMargin && product.customMargin !== undefined) {
+            basePrice = getDynamicPrice(product.costPrice, product.customMargin);
+        } else {
+            basePrice = getDynamicPrice(product.costPrice);
         }
-        if (product.hasCustomMargin && product.customMargin !== undefined) {
-            return getDynamicPrice(product.costPrice, product.customMargin);
+
+        // Si tiene IVA habilitado, sumamos el 16% al precio de venta final
+        if (product.hasIVA) {
+            return parseFloat((basePrice * 1.16).toFixed(2));
         }
-        return getDynamicPrice(product.costPrice);
+        
+        return basePrice;
     }, [getDynamicPrice]);
 
     return {

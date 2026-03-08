@@ -1,11 +1,10 @@
-
 "use client";
 
 import { useState, useMemo } from "react";
 import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
-import { PlusCircle, CalendarIcon, X as ClearIcon } from "lucide-react";
+import { PlusCircle, CalendarIcon, X as ClearIcon, Clock, DollarSign, LayoutGrid } from "lucide-react";
 import { DataTable } from "@/components/data-table";
 import { columns } from "@/components/repairs/columns";
 import { useCollection, useFirebase, useMemoFirebase } from "@/firebase";
@@ -17,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { RepairFormDialog } from "@/components/repairs/repair-form-dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { FilterFn } from "@tanstack/react-table";
 
 // Filtro personalizado para reparaciones
@@ -34,9 +34,12 @@ const repairFilterFn: FilterFn<RepairJob> = (row, columnId, value) => {
     );
 };
 
+type StatusFilter = 'all' | 'unpaid' | 'undelivered';
+
 export default function RepairsPage() {
     const { firestore, user } = useFirebase();
     const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+    const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
 
     const repairJobsQuery = useMemoFirebase(() =>
         (firestore && user) 
@@ -48,11 +51,24 @@ export default function RepairsPage() {
 
     const filteredRepairJobs = useMemo(() => {
         if (!repairJobs) return [];
-        if (!dateRange?.from) return repairJobs;
-        const from = startOfDay(dateRange.from);
-        const to = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
-        return repairJobs.filter(job => job.createdAt && isWithinInterval(new Date(job.createdAt), { start: from, end: to }));
-    }, [repairJobs, dateRange]);
+        let temp = repairJobs;
+
+        // Filtro de Fecha
+        if (dateRange?.from) {
+            const from = startOfDay(dateRange.from);
+            const to = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
+            temp = temp.filter(job => job.createdAt && isWithinInterval(new Date(job.createdAt), { start: from, end: to }));
+        }
+
+        // Filtros de Estado
+        if (statusFilter === 'unpaid') {
+            temp = temp.filter(job => !job.isPaid);
+        } else if (statusFilter === 'undelivered') {
+            temp = temp.filter(job => job.status !== 'Completado');
+        }
+
+        return temp;
+    }, [repairJobs, dateRange, statusFilter]);
 
     return (
         <>
@@ -61,7 +77,21 @@ export default function RepairsPage() {
                     <Button><PlusCircle className="mr-2 h-4 w-4" /> Registrar Reparación</Button>
                 </RepairFormDialog>
             </PageHeader>
-            <main className="flex-1 p-4 sm:p-6">
+            <main className="flex-1 p-4 sm:p-6 space-y-4">
+                <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="w-full">
+                    <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
+                        <TabsTrigger value="all" className="flex items-center gap-2">
+                            <LayoutGrid className="w-3.5 h-3.5" /> Todas
+                        </TabsTrigger>
+                        <TabsTrigger value="unpaid" className="flex items-center gap-2 text-destructive font-bold">
+                            <DollarSign className="w-3.5 h-3.5" /> Por Cobrar
+                        </TabsTrigger>
+                        <TabsTrigger value="undelivered" className="flex items-center gap-2 text-amber-600 font-bold">
+                            <Clock className="w-3.5 h-3.5" /> Por Entregar
+                        </TabsTrigger>
+                    </TabsList>
+                </Tabs>
+
                 <DataTable 
                     columns={columns} 
                     data={filteredRepairJobs || []}

@@ -9,11 +9,14 @@ import {
   Wrench,
   ShoppingCart,
   BarChart2,
-  Settings,
+  User,
   TrendingUp,
   ShieldCheck,
   HandCoins,
   ReceiptText,
+  PiggyBank,
+  HandHelping,
+  RefreshCcw,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -26,7 +29,7 @@ import {
 } from '@/components/ui/sidebar';
 import { AppLogo } from '@/components/icons';
 import { cn } from '@/lib/utils';
-import { Separator } from './ui/separator';
+import { Separator } from '@/components/ui/separator';
 import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import type { UserProfile, UserModule } from '@/lib/types';
@@ -44,7 +47,10 @@ const navItems: NavItem[] = [
   { href: '/dashboard/repairs', icon: Wrench, label: 'Reparaciones', module: 'repairs' },
   { href: '/dashboard/pos', icon: ShoppingCart, label: 'Punto de Venta', module: 'pos' },
   { href: '/dashboard/fiados', icon: HandCoins, label: 'Fiados / Créditos', module: 'fiados' },
-  { href: '/dashboard/payroll', icon: ReceiptText, label: 'Registro de Pago', module: 'payroll' },
+  { href: '/dashboard/payroll', icon: ReceiptText, label: 'Registro de Pagos', module: 'payroll' },
+  { href: '/dashboard/loans', icon: HandHelping, label: 'Préstamos', module: 'loans' },
+  { href: '/dashboard/exchange', icon: RefreshCcw, label: 'Cambio de Divisa', module: 'exchange' },
+  { href: '/dashboard/treasury', icon: PiggyBank, label: 'Tesorería', module: 'treasury' },
   { href: '/dashboard/reports', icon: BarChart2, label: 'Reportes', module: 'reports' },
   { href: '/dashboard/analysis', icon: TrendingUp, label: 'Análisis', module: 'analysis' },
 ];
@@ -65,7 +71,7 @@ export function SidebarNav() {
       if (!item.module) return true;
       if (!profile) return false;
       
-      const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'payroll'];
+      const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'payroll', 'treasury', 'loans', 'exchange'];
       return enabledModules.includes(item.module);
   });
 
@@ -78,7 +84,7 @@ export function SidebarNav() {
                 "text-lg font-semibold text-sidebar-foreground",
                 "group-data-[collapsible=icon]:hidden"
             )}>
-                Poos Mariche
+                POS Mariche
             </span>
         </Link>
       </SidebarHeader>
@@ -120,10 +126,10 @@ export function SidebarNav() {
         <Separator className="my-2 bg-sidebar-border/50"/>
         <SidebarMenu>
             <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip={{children: 'Configuración'}} isActive={pathname === '/dashboard/settings'}>
+                <SidebarMenuButton asChild tooltip={{children: 'Mi Perfil / Ajustes'}} isActive={pathname === '/dashboard/settings'}>
                     <Link href="/dashboard/settings">
-                        <Settings />
-                        <span>Configuración</span>
+                        <User />
+                        <span className="truncate">{profile?.email || user?.email || 'Mi Cuenta'}</span>
                     </Link>
                 </SidebarMenuButton>
             </SidebarMenuItem>

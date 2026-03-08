@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo } from "react";
@@ -10,12 +9,14 @@ import { useFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { collection, doc, writeBatch } from "firebase/firestore";
 import { format as formatDate, parseISO } from "date-fns";
+import { es } from "date-fns/locale";
 import { DoorClosed, Loader2, Printer } from "lucide-react";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { cn } from "@/lib/utils";
 import { ReconciliationTicket, handlePrintReconciliation } from "./reconciliation-ticket";
+import { ScrollArea } from "../ui/scroll-area";
 
 type CashReconciliationDialogProps = {
   openSales: Sale[];
@@ -200,52 +201,73 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
           </DialogTrigger>
         </CardContent>
       </Card>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
         {completedReconciliation ? (
             <>
                 <DialogHeader><DialogTitle>Cierre Completado</DialogTitle></DialogHeader>
-                <div className="py-4"><ReconciliationTicket reconciliation={completedReconciliation} currency={currency} /></div>
-                <DialogFooter>
+                <ScrollArea className="flex-1 pr-4 py-4">
+                    <ReconciliationTicket reconciliation={completedReconciliation} currency={currency} />
+                </ScrollArea>
+                <DialogFooter className="mt-4">
                     <Button onClick={onPrint} variant="outline"><Printer className="mr-2 h-4 w-4" /> Imprimir</Button>
                     <Button onClick={handleFinishAndReset}>Finalizar</Button>
                 </DialogFooter>
             </>
         ) : (
             <>
-                <DialogHeader><DialogTitle>Cuadre de Caja - {formatDate(new Date(), "PPP")}</DialogTitle></DialogHeader>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
-                    <div className="space-y-4">
-                        <h3 className="font-semibold text-lg">Montos Contados</h3>
-                        {paymentMethodsOrder.map(method => (
-                            <div key={method}>
-                                <Label htmlFor={`counted-${method}`} className="text-base">{method}</Label>
-                                <Input id={`counted-${method}`} type="number" value={countedAmounts[method] || ''} onChange={(e) => handleAmountChange(method, e.target.value)} className="mt-1" />
-                            </div>
-                        ))}
-                    </div>
-                    <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
-                        <h3 className="font-semibold text-lg">Resumen del Cuadre</h3>
-                        {paymentMethodsOrder.map(method => {
-                            if (expectedAmounts[method] === 0 && countedAmounts[method] === 0) return null;
-                            const symbol = getSymbol(method === 'Efectivo USD' ? 'USD' : 'Bs');
-                            return (
-                                <div key={method} className="p-3 bg-background rounded-md flex justify-between text-sm">
-                                    <span>{method}:</span>
-                                    <span className={cn(differences[method] < 0 ? 'text-destructive' : 'text-green-600')}>
-                                        {differences[method] >= 0 ? '+' : ''}{symbol}{formatCurrency(differences[method])}
-                                    </span>
+                <DialogHeader>
+                    <DialogTitle>Cuadre de Caja - {formatDate(new Date(), "PPP", { locale: es })}</DialogTitle>
+                    <DialogDescription>Ingresa los montos físicos para verificar que todo cuadre correctamente.</DialogDescription>
+                </DialogHeader>
+                <ScrollArea className="flex-1 pr-4 py-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                            <h3 className="font-black text-xs uppercase tracking-widest text-muted-foreground">Montos Contados</h3>
+                            {paymentMethodsOrder.map(method => (
+                                <div key={method} className="space-y-1">
+                                    <Label htmlFor={`counted-${method}`} className="text-[10px] font-bold uppercase">{method}</Label>
+                                    <Input 
+                                        id={`counted-${method}`} 
+                                        type="number" 
+                                        step="any"
+                                        value={countedAmounts[method] || ''} 
+                                        onChange={(e) => handleAmountChange(method, e.target.value)} 
+                                        className="h-10 font-bold" 
+                                        placeholder="0.00"
+                                    />
                                 </div>
-                            );
-                        })}
-                        <div className="border-t pt-4 mt-4 flex justify-between font-bold text-lg">
-                            <span>Diferencia Total ($):</span>
-                            <span className={cn(totalDifference < 0 ? 'text-destructive' : 'text-green-600')}>{totalDifference >= 0 ? '+' : ''}${formatCurrency(totalDifference)}</span>
+                            ))}
+                        </div>
+                        <div className="space-y-4 p-4 bg-muted/50 rounded-xl border">
+                            <h3 className="font-black text-xs uppercase tracking-widest text-muted-foreground">Resumen del Cuadre</h3>
+                            <div className="space-y-2">
+                                {paymentMethodsOrder.map(method => {
+                                    if (expectedAmounts[method] === 0 && countedAmounts[method] === 0) return null;
+                                    const symbol = getSymbol(method === 'Efectivo USD' ? 'USD' : 'Bs');
+                                    return (
+                                        <div key={method} className="p-3 bg-background rounded-lg flex justify-between items-center text-xs border shadow-sm">
+                                            <span className="font-bold text-muted-foreground uppercase">{method}:</span>
+                                            <span className={cn("font-black", differences[method] < 0 ? 'text-destructive' : 'text-green-600')}>
+                                                {differences[method] >= 0 ? '+' : ''}{symbol}{formatCurrency(differences[method])}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <div className="border-t pt-4 mt-4 flex justify-between items-center">
+                                <span className="font-black text-xs uppercase text-slate-600">Diferencia Total ($):</span>
+                                <span className={cn("text-xl font-black", totalDifference < 0 ? 'text-destructive' : 'text-green-600')}>
+                                    {totalDifference >= 0 ? '+' : ''}${formatCurrency(totalDifference)}
+                                </span>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <DialogFooter>
+                </ScrollArea>
+                <DialogFooter className="mt-4 border-t pt-4">
                     <Button variant="outline" onClick={() => setIsOpen(false)}>Cancelar</Button>
-                    <Button onClick={handleCloseDay} disabled={isClosing}>{isClosing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Cerrar Día'}</Button>
+                    <Button onClick={handleCloseDay} disabled={isClosing} className="min-w-[120px]">
+                        {isClosing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Confirmar Cierre'}
+                    </Button>
                 </DialogFooter>
             </>
         )}
