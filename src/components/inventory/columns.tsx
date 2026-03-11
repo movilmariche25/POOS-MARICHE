@@ -1,4 +1,3 @@
-
 "use client"
 
 import type { ColumnDef } from "@tanstack/react-table"
@@ -12,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ArrowUpDown, MoreHorizontal, Edit, Trash2, TicketPercent, PackagePlus, Lock, Percent, Info, Clock, AlertTriangle, Landmark } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Edit, Trash2, TicketPercent, PackagePlus, Lock, Percent, Info, Clock, AlertTriangle, Landmark, PlusCircle } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { ProductFormDialog } from "./product-form-dialog"
 import { useToast } from "@/hooks/use-toast"
@@ -68,12 +67,14 @@ const ActionsCell = ({ product }: { product: Product }) => {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                     <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                    
                     <AdminAuthDialog onAuthorized={handleTriggerEdit}>
                         <DropdownMenuItem onSelect={(e) => { e.preventDefault(); }}>
                             <Edit className="mr-2 h-4 w-4" />
                             Editar / Ajustar Stock
                         </DropdownMenuItem>
                     </AdminAuthDialog>
+                    
                     <DropdownMenuSeparator />
                     <AdminAuthDialog onAuthorized={() => setIsDeleteDialogOpen(true)}>
                         <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={(e) => { e.preventDefault(); }}>

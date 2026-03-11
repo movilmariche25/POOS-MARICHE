@@ -23,6 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
+import { SecurityGate } from "@/components/security-gate";
 
 const paymentMethodOptions: { value: PaymentMethod, label: string, icon: any, hasReference: boolean, isBs: boolean }[] = [
     { value: 'Efectivo USD', label: 'Efectivo USD', icon: DollarSign, hasReference: false, isBs: false },
@@ -39,6 +40,14 @@ const changeMethodOptions: { value: PaymentMethod, label: string, icon: any, isB
 ];
 
 export default function FiadosPage() {
+    return (
+        <SecurityGate module="fiados">
+            <FiadosContent />
+        </SecurityGate>
+    );
+}
+
+function FiadosContent() {
     const { firestore, user } = useFirebase();
     const { toast } = useToast();
     const { format: formatCurrency, getSymbol } = useCurrency();

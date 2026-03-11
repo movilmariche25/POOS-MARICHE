@@ -54,14 +54,14 @@ const profileSchema = z.object({
     repairDisclaimer: z.string().optional(),
 });
 
-const DEFAULT_PIN = "2026";
-
 const PROTECTABLE_MODULES: { id: UserModule, label: string }[] = [
     { id: 'inventory', label: 'Inventario' },
     { id: 'pos', label: 'Punto de Venta' },
     { id: 'repairs', label: 'Reparaciones' },
     { id: 'fiados', label: 'Fiados / Créditos' },
     { id: 'payroll', label: 'Registro de Pago' },
+    { id: 'exchange', label: 'Cambio de Divisa' },
+    { id: 'loans', label: 'Préstamos' },
     { id: 'treasury', label: 'Tesorería' },
     { id: 'reports', label: 'Reportes Financieros' },
     { id: 'analysis', label: 'Análisis de Negocio' },
@@ -149,7 +149,7 @@ function SettingsContent() {
 
     const availableProtectableModules = useMemo(() => {
         if (!profile) return [];
-        const enabled = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'payroll', 'treasury'];
+        const enabled = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'payroll', 'treasury', 'loans', 'exchange'];
         return PROTECTABLE_MODULES.filter(m => enabled.includes(m.id));
     }, [profile]);
 
@@ -194,7 +194,7 @@ function SettingsContent() {
                 setInitialEmailSet(true);
             }
             setIsPinRequired(profile.isPinRequired !== false);
-            setLockedModules(profile.lockedModules || ['treasury', 'reports', 'analysis']);
+            setLockedModules(profile.lockedModules || ['treasury', 'reports', 'analysis', 'loans', 'exchange', 'payroll']);
         }
     }, [profile, profileForm, initialEmailSet]);
 
@@ -216,7 +216,6 @@ function SettingsContent() {
         if (!settingsRef) return;
         setIsSavingBalances(true);
         try {
-            // Guardamos los fondos y establecemos el marcador de tiempo del Arqueo
             await setDocumentNonBlocking(settingsRef, { 
                 initialBalances: values.initialBalances,
                 balancesUpdatedAt: new Date().toISOString() 
@@ -247,21 +246,47 @@ function SettingsContent() {
     };
 
     const handleUpdatePinSettings = async () => {
-        if (!userProfileRef || !currentPinVerify) return;
-        const requiredPin = profile?.securityPin || DEFAULT_PIN;
-        if (currentPinVerify !== requiredPin) {
-            toast({ variant: "destructive", title: "Autorización Fallida", description: "El PIN ingresado para autorizar no es correcto." });
+        if (!userProfileRef) return;
+
+        if (profile?.securityPin) {
+            if (!currentPinVerify) {
+                toast({ variant: "destructive", title: "PIN Actual Requerido", description: "Debes ingresar tu clave actual para autorizar cambios." });
+                return;
+            }
+            if (currentPinVerify !== profile.securityPin) {
+                toast({ variant: "destructive", title: "Autorización Fallida", description: "El PIN actual ingresado no es correcto." });
+                return;
+            }
+        }
+
+        if (isPinRequired && !profile?.securityPin && !newPin) {
+            toast({ variant: "destructive", title: "Configuración Incompleta", description: "Debes definir un PIN nuevo para poder activar la seguridad global." });
             return;
         }
+
         setIsUpdatingPin(true);
         try {
             const updateData: Partial<UserProfile> = { 
                 isPinRequired: isPinRequired,
                 lockedModules: lockedModules
             };
-            if (newPin) updateData.securityPin = newPin;
+            
+            if (newPin) {
+                if (newPin.length < 4) {
+                    toast({ variant: "destructive", title: "PIN muy corto", description: "El PIN debe tener al menos 4 dígitos." });
+                    setIsUpdatingPin(false);
+                    return;
+                }
+                updateData.securityPin = newPin;
+            }
+
             await updateDocumentNonBlocking(userProfileRef, updateData);
             toast({ title: "Seguridad Actualizada" });
+            
+            // IMPORTANTE: Limpiar el permiso de sesión para que el usuario deba re-autenticarse
+            // Esto permite que el usuario pruebe los nuevos bloqueos inmediatamente.
+            sessionStorage.removeItem('mm_security_unlocked');
+            
             setNewPin("");
             setCurrentPinVerify("");
         } catch (e) {
@@ -349,7 +374,12 @@ function SettingsContent() {
         }
     };
 
-    const showRepairs = profile?.enabledModules?.includes('repairs') ?? true;
+    const handleLockManually = () => {
+        sessionStorage.removeItem('mm_security_unlocked');
+        window.location.reload();
+    };
+
+    const isManagerModeActive = typeof window !== 'undefined' && sessionStorage.getItem('mm_security_unlocked') === 'true';
 
     return (
         <>
@@ -370,41 +400,56 @@ function SettingsContent() {
                             <Switch checked={isPinRequired} onCheckedChange={setIsPinRequired} />
                         </div>
 
-                        {isPinRequired && (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-3 p-4 bg-white rounded-lg border shadow-sm">
-                                    <Label className="flex items-center gap-2 text-xs font-black uppercase text-muted-foreground"><ShieldAlert className="w-3.5 h-3.5" /> Bloquear estas secciones:</Label>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        {availableProtectableModules.map(m => (
-                                            <div key={m.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded border border-transparent hover:border-slate-100 transition-all">
-                                                <Label className="text-xs cursor-pointer" htmlFor={`lock-${m.id}`}>{m.label}</Label>
-                                                <Switch id={`lock-${m.id}`} checked={lockedModules.includes(m.id)} onCheckedChange={() => toggleModuleLock(m.id)} />
-                                            </div>
-                                        ))}
-                                        <div className="flex items-center justify-between p-2 opacity-50 bg-slate-50 rounded italic border border-slate-200">
-                                            <Label className="text-xs">Configuración (Siempre Bloqueado)</Label>
-                                            <Switch checked disabled />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-3 p-4 bg-white rounded-lg border shadow-sm">
+                                <Label className="flex items-center gap-2 text-xs font-black uppercase text-muted-foreground"><ShieldAlert className="w-3.5 h-3.5" /> Bloquear estas secciones:</Label>
+                                <div className="grid grid-cols-1 gap-2">
+                                    {availableProtectableModules.map(m => (
+                                        <div key={m.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded border border-transparent hover:border-slate-100 transition-all">
+                                            <Label className="text-xs cursor-pointer" htmlFor={`lock-${m.id}`}>{m.label}</Label>
+                                            <Switch id={`lock-${m.id}`} checked={lockedModules.includes(m.id)} onCheckedChange={() => toggleModuleLock(m.id)} />
                                         </div>
+                                    ))}
+                                    <div className="flex items-center justify-between p-2 opacity-50 bg-slate-50 rounded italic border border-slate-200">
+                                        <Label className="text-xs">Configuración (Siempre Bloqueado)</Label>
+                                        <Switch checked disabled />
                                     </div>
-                                </div>
-                                <div className="space-y-4 p-4 bg-white rounded-lg border shadow-sm flex flex-col justify-between">
-                                    <div className="space-y-4">
-                                        <div className="space-y-2">
-                                            <Label className="text-xs font-black uppercase">{profile?.securityPin ? "PIN Actual *" : "PIN por Defecto (2026) *"}</Label>
-                                            <Input type="password" value={currentPinVerify} onChange={(e) => setCurrentPinVerify(e.target.value)} placeholder={profile?.securityPin ? "PIN actual para autorizar" : "Escribe 2026"} className="h-12 text-xl tracking-[0.5em] text-center" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label className="text-xs font-black uppercase">{profile?.securityPin ? "Cambiar por Nuevo PIN" : "Crear mi PIN de Gerente *"}</Label>
-                                            <Input type="password" value={newPin} onChange={(e) => setNewPin(e.target.value)} placeholder="4-8 dígitos nuevos" className="h-12 text-xl tracking-[0.5em] text-center" />
-                                        </div>
-                                    </div>
-                                    <Button className="w-full h-12" onClick={handleUpdatePinSettings} disabled={isUpdatingPin || !currentPinVerify || (!profile?.securityPin && !newPin)}>
-                                        {isUpdatingPin ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                                        {profile?.securityPin ? "Guardar Ajustes" : "Activar mi PIN Personal"}
-                                    </Button>
                                 </div>
                             </div>
-                        )}
+                            <div className="space-y-4 p-4 bg-white rounded-lg border shadow-sm flex flex-col justify-between">
+                                <div className="space-y-4">
+                                    {profile?.securityPin && (
+                                        <div className="space-y-2">
+                                            <Label className="text-xs font-black uppercase">PIN Actual para autorizar *</Label>
+                                            <Input type="password" value={currentPinVerify} onChange={(e) => setCurrentPinVerify(e.target.value)} placeholder="PIN guardado" className="h-12 text-xl tracking-[0.5em] text-center" />
+                                        </div>
+                                    )}
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-black uppercase">{profile?.securityPin ? "Cambiar por Nuevo PIN (Opcional)" : "Crear mi PIN de Gerente *"}</Label>
+                                        <Input type="password" value={newPin} onChange={(e) => setNewPin(e.target.value)} placeholder="4-8 dígitos" className="h-12 text-xl tracking-[0.5em] text-center" />
+                                    </div>
+                                </div>
+                                
+                                <div className="space-y-2">
+                                    <Button className="w-full h-12" onClick={handleUpdatePinSettings} disabled={isUpdatingPin}>
+                                        {isUpdatingPin ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                        {profile?.securityPin ? "Guardar Ajustes de Seguridad" : "Establecer PIN y Activar"}
+                                    </Button>
+                                    
+                                    {isManagerModeActive && (
+                                        <Button variant="outline" className="w-full border-destructive text-destructive hover:bg-destructive/5" onClick={handleLockManually}>
+                                            <Lock className="w-4 h-4 mr-2" /> Bloquear Acceso Ahora
+                                        </Button>
+                                    )}
+                                </div>
+
+                                {!profile?.securityPin && (
+                                    <p className="text-[10px] text-amber-600 font-bold text-center italic">
+                                        ⚠️ No has configurado un PIN. Crea uno para poder activar la seguridad global.
+                                    </p>
+                                )}
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
 

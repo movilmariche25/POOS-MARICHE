@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { RepairFormDialog } from "@/components/repairs/repair-form-dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { FilterFn } from "@tanstack/react-table";
+import { SecurityGate } from "@/components/security-gate";
 
 // Filtro personalizado para reparaciones
 const repairFilterFn: FilterFn<RepairJob> = (row, columnId, value) => {
@@ -37,6 +38,14 @@ const repairFilterFn: FilterFn<RepairJob> = (row, columnId, value) => {
 type StatusFilter = 'all' | 'unpaid' | 'undelivered';
 
 export default function RepairsPage() {
+    return (
+        <SecurityGate module="repairs">
+            <RepairsContent />
+        </SecurityGate>
+    );
+}
+
+function RepairsContent() {
     const { firestore, user } = useFirebase();
     const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');

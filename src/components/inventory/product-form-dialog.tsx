@@ -87,7 +87,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
   const [internalOpen, setInternalOpen] = useState(false);
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
   const { toast } = useToast();
-  const { getDynamicPrice, convert, format: formatCurrency, getSymbol, profitMargin, bcvRate } = useCurrency();
+  const { getDynamicPrice, convert, format: formatCurrency, getSymbol, profitMargin, bcvRate, parallelRate } = useCurrency();
 
   const open = isOpen !== undefined ? isOpen : internalOpen;
   const setOpen = onOpenChange !== undefined ? onOpenChange : setInternalOpen;
@@ -141,7 +141,9 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
   const selectedUnit = form.watch("unit");
   const isEditing = !!product;
   
+  // Cálculo sugerido basado en las tasas actuales (Reactivo a useCurrency)
   const { suggestedRetailPrice, suggestedPromoPrice } = useMemo(() => {
+    // El precio de oferta es lineal: costo + margen en USD
     const suggestedPromo = costPrice > 0 ? costPrice * (1 + profitMargin / 100) : 0;
     
     let retail = 0;
@@ -153,12 +155,12 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
     }
 
     if (hasIVA) {
-        retail = parseFloat((retail * 1.16).toFixed(2));
+        retail = retail * 1.16;
     }
     
     return { 
         suggestedPromoPrice: parseFloat(suggestedPromo.toFixed(2)), 
-        suggestedRetailPrice: retail 
+        suggestedRetailPrice: parseFloat(retail.toFixed(2))
     };
   }, [isFixedPrice, fixedPrice, hasCustomMargin, customMarginValue, costPrice, getDynamicPrice, profitMargin, hasIVA]);
 
@@ -215,7 +217,20 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
   async function onSubmit(values: ProductFormData) {
     if (!firestore || !user) return;
 
-    // Explicitly build final object to avoid 'undefined' reaching Firestore
+    const isDuplicate = allProducts?.some(p => 
+        p.name.toLowerCase().trim() === values.name.toLowerCase().trim() && 
+        p.id !== product?.id
+    );
+
+    if (isDuplicate) {
+        toast({
+            variant: "destructive",
+            title: "Producto ya existe",
+            description: `Ya tienes un artículo llamado "${values.name}" en tu inventario. Por favor, usa un nombre diferente o edita el existente.`
+        });
+        return;
+    }
+
     const finalValues: any = {
         name: values.name,
         category: values.category,
@@ -411,7 +426,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                 <div className="p-4 rounded-xl bg-slate-900 text-white space-y-3 shadow-lg">
                     <div className="flex items-center justify-between border-b border-white/10 pb-2">
                         <span className="text-[10px] font-black uppercase tracking-tighter text-slate-400 flex items-center gap-2">
-                            <TrendingUp className="w-3.5 h-3.5" /> Análisis Sugerido
+                            <TrendingUp className="w-3.5 h-3.5" /> Análisis Sugerido (Reactivo)
                         </span>
                         {hasIVA && <Badge variant="outline" className="text-[8px] h-4 border-green-500 text-green-500 font-bold">CON IVA INCL.</Badge>}
                     </div>
@@ -435,7 +450,8 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                     
                     <div className="pt-2 border-t border-white/5">
                         <p className="text-[8px] text-slate-500 italic leading-tight">
-                            * El P. Venta protege tu capital usando la tasa de reposición. El P. Oferta aplica el {profitMargin}% directamente sobre el costo en dólares.
+                            * El P. Venta se ajusta solo cuando cambias las tasas (Ref: {parallelRate.toFixed(2)} Bs). 
+                            Protege tu capacidad de recompra ante devaluaciones.
                         </p>
                     </div>
                 </div>

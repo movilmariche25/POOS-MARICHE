@@ -4,14 +4,14 @@
 import { PageHeader } from "@/components/page-header";
 import { useCollection, useFirebase, useMemoFirebase, setDocumentNonBlocking } from "@/firebase";
 import { collection, doc } from "firebase/firestore";
-import type { Sale, Product, RepairJob, Loan, CurrencyExchange, PaymentMethod } from "@/lib/types";
+import type { Sale, Product, RepairJob, Loan, CurrencyExchange, PaymentMethod, Expense, PayrollPayment } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useMemo } from "react";
 import { format, startOfDay, endOfDay, isWithinInterval, addWeeks, isAfter, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { useCurrency } from "@/hooks/use-currency";
 import { 
-    CalendarIcon, TrendingUp, ShoppingBag, Home, Users, Wallet, Settings2, Save, Banknote, HandCoins, HandHelping, PieChart, Rocket, ArrowRightCircle, Info, Landmark, ArrowRightLeft, DollarSign, Smartphone, CreditCard, RefreshCcw
+    CalendarIcon, TrendingUp, ShoppingBag, Home, Users, Wallet, Settings2, Save, Banknote, HandCoins, HandHelping, PieChart, Rocket, ArrowRightCircle, Info, Landmark, ArrowRightLeft, DollarSign, Smartphone, CreditCard, RefreshCcw, ArrowDownCircle
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -193,13 +193,14 @@ function TreasuryContent() {
     }, [sales, exchanges, payroll, loans, expenses, settings]);
 
     const cashBoxStatus = useMemo(() => {
-        if (!sales || !settings || !date?.from) return { usdTotal: 0, bsAvailable: 0, breakdown: {} };
+        if (!sales || !settings || !date?.from) return { usdTotal: 0, bsAvailable: 0, breakdown: {}, totalExpensesUSD: 0 };
 
         const from = startOfDay(date.from);
         const to = date.to ? endOfDay(date.to) : endOfDay(date.from);
 
         const breakdown: Record<string, number> = { 'Efectivo Bs': 0, 'Tarjeta / Pago Móvil': 0, 'Transferencia': 0 };
         let usdAccumulated = 0;
+        let totalExpensesUSD = 0;
 
         sales.filter(s => {
             if (s.status !== 'completed' || !s.transactionDate) return false;
@@ -237,8 +238,19 @@ function TreasuryContent() {
             }
         });
 
-        return { usdTotal: usdAccumulated, breakdown, bsAvailable: Object.values(breakdown).reduce((a, b) => a + b, 0) };
-    }, [sales, exchanges, settings, date]);
+        // Calculamos egresos totales (gastos + nómina + préstamos) del periodo para información
+        (expenses || []).filter(ex => isWithinInterval(parseISO(ex.createdAt), { start: from, end: to })).forEach(ex => {
+            totalExpensesUSD += ex.amountUSD + convert(ex.amountBs, 'Bs', 'USD');
+        });
+        (payroll || []).filter(p => isWithinInterval(parseISO(p.createdAt), { start: from, end: to })).forEach(p => {
+            totalExpensesUSD += p.amountUSD + convert(p.amountBs, 'Bs', 'USD');
+        });
+        (loans || []).filter(l => isWithinInterval(parseISO(l.createdAt), { start: from, end: to })).forEach(l => {
+            totalExpensesUSD += l.currency === 'USD' ? l.totalAmount : convert(l.totalAmount, 'Bs', 'USD');
+        });
+
+        return { usdTotal: usdAccumulated, breakdown, bsAvailable: Object.values(breakdown).reduce((a, b) => a + b, 0), totalExpensesUSD };
+    }, [sales, exchanges, expenses, payroll, loans, settings, date, convert]);
 
     const stats = useMemo(() => {
         if (!date?.from || !sales || !repairJobs || !products) return { V: 0, C: 0, G: 0, investment: 0, salary: 0, totalMerchandise: 0, perPartner: 0, projectionData: [] };
@@ -303,17 +315,23 @@ function TreasuryContent() {
 
             <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-5xl mx-auto w-full pb-20">
                 
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-3">
                     <Card className="bg-slate-900 text-white shadow-xl border-none overflow-hidden relative">
-                        <div className="absolute right-2 top-2 opacity-10"><DollarSign className="w-20 h-20" /></div>
-                        <CardHeader className="pb-2"><CardTitle className="text-xs uppercase font-black text-slate-400">Flujo Neto Divisa (Periodo)</CardTitle></CardHeader>
-                        <CardContent><div className="text-4xl font-black">${formatCurrency(cashBoxStatus.usdTotal)}</div><p className="text-[9px] text-slate-500 mt-1 uppercase font-bold tracking-widest">Ingresos USD menos vueltos y egresos del periodo</p></CardContent>
+                        <div className="absolute right-2 top-2 opacity-10"><DollarSign className="w-16 h-16" /></div>
+                        <CardHeader className="pb-2"><CardTitle className="text-[10px] uppercase font-black text-slate-400">Ingreso Neto Divisa (Ventas)</CardTitle></CardHeader>
+                        <CardContent><div className="text-3xl font-black">${formatCurrency(cashBoxStatus.usdTotal)}</div><p className="text-[8px] text-slate-500 mt-1 uppercase font-bold tracking-widest">Ingresos USD menos vueltos del periodo</p></CardContent>
                     </Card>
 
-                    <Card className="bg-white border-2 border-primary/10 shadow-lg overflow-hidden relative">
-                        <div className="absolute right-2 top-2 opacity-5"><Landmark className="w-20 h-20" /></div>
-                        <CardHeader className="pb-2"><CardTitle className="text-xs uppercase font-black text-muted-foreground flex justify-between items-center">Movimiento Bolívares (Periodo)<Link href="/dashboard/exchange"><Button variant="ghost" size="sm" className="h-6 text-[9px] font-black text-blue-600 hover:bg-blue-50"><ArrowRightLeft className="w-3 h-3 mr-1" /> COMPRAR USD</Button></Link></CardTitle></CardHeader>
-                        <CardContent className="space-y-3"><div className="text-4xl font-black text-primary">Bs {formatCurrency(cashBoxStatus.bsAvailable)}</div><div className="grid grid-cols-2 gap-2 mt-2">{Object.entries(cashBoxStatus.breakdown).map(([method, amount]) => { const Icon = methodIcons[method] || Landmark; return (<div key={method} className="flex justify-between items-center bg-muted/30 p-1.5 rounded text-[9px]"><span className="font-bold flex items-center gap-1 uppercase"><Icon className="w-2.5 h-2.5" /> {method}:</span><span className={cn("font-black", (amount as number) < 0 ? "text-destructive" : "text-slate-700")}>Bs {formatCurrency(amount as number)}</span></div>);})}</div></CardContent>
+                    <Card className="bg-white border-2 border-destructive/10 shadow-md overflow-hidden relative">
+                        <div className="absolute right-2 top-2 opacity-5"><ArrowDownCircle className="w-16 h-16 text-destructive" /></div>
+                        <CardHeader className="pb-2"><CardTitle className="text-[10px] uppercase font-black text-muted-foreground flex justify-between items-center">Egresos del Periodo<Link href="/dashboard/reports"><Button variant="ghost" size="icon" className="h-6 w-6"><Info className="w-3 h-3"/></Button></Link></CardTitle></CardHeader>
+                        <CardContent><div className="text-3xl font-black text-destructive">-${formatCurrency(cashBoxStatus.totalExpensesUSD)}</div><p className="text-[8px] text-muted-foreground mt-1 uppercase font-bold tracking-widest">Total Gastos, Nóminas y Préstamos registrados</p></CardContent>
+                    </Card>
+
+                    <Card className="bg-white border-2 border-primary/10 shadow-md overflow-hidden relative">
+                        <div className="absolute right-2 top-2 opacity-5"><Landmark className="w-16 h-16" /></div>
+                        <CardHeader className="pb-2"><CardTitle className="text-[10px] uppercase font-black text-muted-foreground flex justify-between items-center">Movimiento Bolívares</CardTitle></CardHeader>
+                        <CardContent className="space-y-2"><div className="text-2xl font-black text-primary">Bs {formatCurrency(cashBoxStatus.bsAvailable)}</div><div className="grid grid-cols-1 gap-1">{Object.entries(cashBoxStatus.breakdown).map(([method, amount]) => { const Icon = methodIcons[method] || Landmark; return (<div key={method} className="flex justify-between items-center bg-muted/30 px-1.5 py-0.5 rounded text-[8px]"><span className="font-bold flex items-center gap-1 uppercase"><Icon className="w-2 h-2" /> {method}:</span><span className={cn("font-black", (amount as number) < 0 ? "text-destructive" : "text-slate-700")}>Bs {formatCurrency(amount as number)}</span></div>);})}</div></CardContent>
                     </Card>
                 </div>
 
@@ -332,7 +350,7 @@ function TreasuryContent() {
                     <div className="p-4 bg-muted/50 border rounded-xl flex items-center gap-3">
                         <Info className="w-5 h-5 text-slate-400 shrink-0" />
                         <p className="text-[10px] text-slate-600 leading-tight">
-                            Si el <strong>Saldo Real</strong> no coincide con tu dinero físico, ve a <strong>Ajustes</strong> y realiza un nuevo <strong>Arqueo</strong> para que el sistema cuente desde tu saldo actual.
+                            Registrar las compras de pantallas como <strong>Gastos</strong> es correcto para mantener tu <strong>Saldo Real</strong> al día. La utilidad operativa se calcula por separado restando el costo al momento de la venta.
                         </p>
                     </div>
                 </div>

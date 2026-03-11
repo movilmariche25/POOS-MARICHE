@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Toaster } from '@/components/ui/toaster';
@@ -80,14 +81,14 @@ function AppContent({ children }: { children: React.ReactNode }) {
               : new Date().toISOString(),
             createdAt: existingData.createdAt || new Date().toISOString(),
             enabledModules: allAvailableModules,
-            isPinRequired: true,
+            lockedModules: [], // Comenzar sin nada bloqueado
+            isPinRequired: false, // Seguridad apagada por defecto para nuevos usuarios
             showInfoOnReceipt: true,
             businessRIF: "",
             businessAddress: ""
           } : {
-            // Aseguramos que los nuevos módulos se añadan a perfiles existentes pero sin sobreescribir si el admin los quitó
-            // Solo añadimos los que NO estaban en la lista total previa para evitar reactivar módulos desactivados manualmente
-            enabledModules: Array.from(new Set([...(existingData.enabledModules || []), ...allAvailableModules]))
+            enabledModules: Array.from(new Set([...(existingData.enabledModules || []), ...allAvailableModules])),
+            ...(!existingData.lockedModules && { lockedModules: [] })
           })
         };
 

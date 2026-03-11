@@ -1,4 +1,3 @@
-
 "use client";
 
 import { ProductGrid } from "@/components/pos/product-grid";
@@ -17,6 +16,7 @@ import { HoldSaleDialog } from "@/components/pos/hold-sale-dialog";
 import { HeldSalesSheet } from "@/components/pos/held-sales-sheet";
 import { PriceCalculatorDialog } from "@/components/tools/price-calculator-dialog";
 import { CustomItemDialog } from "@/components/pos/custom-item-dialog";
+import { SecurityGate } from "@/components/security-gate";
 
 function POSContent() {
     const { firestore, user, isUserLoading } = useFirebase();
@@ -138,5 +138,11 @@ function POSContent() {
 }
 
 export default function POSPage() {
-    return <Suspense fallback={<div>Cargando...</div>}><POSContent /></Suspense>
+    return (
+        <SecurityGate module="pos">
+            <Suspense fallback={<div>Cargando...</div>}>
+                <POSContent />
+            </Suspense>
+        </SecurityGate>
+    )
 }

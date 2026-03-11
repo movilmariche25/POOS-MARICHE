@@ -1,3 +1,4 @@
+
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -33,7 +34,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Edit, Mail, Megaphone, Save, Trash2, Loader2, Circle, Users, LayoutGrid, AlertTriangle } from "lucide-react";
+import { Edit, Mail, Megaphone, Save, Trash2, Loader2, Circle, Users, LayoutGrid, AlertTriangle, ShieldOff, KeyRound } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
@@ -132,12 +133,13 @@ function AnnouncementEditor() {
     );
 }
 
-function UserEditDialog({ user, onSave, isOpen, onOpenChange }: { user: UserProfile, onSave: (data: Partial<UserProfile>) => void, isOpen: boolean, onOpenChange: (val: boolean) => void }) {
+function UserEditDialog({ user, onSave, onResetPin, isOpen, onOpenChange }: { user: UserProfile, onSave: (data: Partial<UserProfile>) => void, onResetPin: (userId: string) => void, isOpen: boolean, onOpenChange: (val: boolean) => void }) {
     const [businessName, setBusinessName] = useState(user.businessName || "");
     const [email, setEmail] = useState(user.email || "");
     const [status, setStatus] = useState(user.licenseStatus);
     const [expiry, setExpiry] = useState(user.licenseExpiry?.split('T')[0] || "");
     const [enabledModules, setEnabledModules] = useState<UserModule[]>(user.enabledModules || ALL_MODULES.map(m => m.id));
+    const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
 
     const handleToggleModule = (moduleId: UserModule) => {
         setEnabledModules(prev => prev.includes(moduleId) ? prev.filter(m => m !== moduleId) : [...prev, moduleId]);
@@ -149,58 +151,107 @@ function UserEditDialog({ user, onSave, isOpen, onOpenChange }: { user: UserProf
     };
 
     return (
-        <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>Gestionar Negocio</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-6 py-4">
-                    <div className="space-y-4">
-                        <div className="space-y-2">
-                            <Label>Nombre</Label>
-                            <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Email</Label>
-                            <Input value={email} onChange={(e) => setEmail(e.target.value)} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
+        <>
+            <Dialog open={isOpen} onOpenChange={onOpenChange}>
+                <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Gestionar Negocio</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-6 py-4">
+                        <div className="space-y-4">
                             <div className="space-y-2">
-                                <Label>Licencia</Label>
-                                <Select value={status} onValueChange={(val: any) => setStatus(val)}>
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="active">Activa</SelectItem>
-                                        <SelectItem value="trial">Prueba</SelectItem>
-                                        <SelectItem value="expired">Expirada</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <Label>Nombre</Label>
+                                <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
                             </div>
                             <div className="space-y-2">
-                                <Label>Vencimiento</Label>
-                                <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} />
+                                <Label>Email</Label>
+                                <Input value={email} onChange={(e) => setEmail(e.target.value)} />
                             </div>
-                        </div>
-                    </div>
-                    <Separator />
-                    <div className="space-y-4">
-                        <Label className="font-bold">Módulos Habilitados</Label>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {ALL_MODULES.map((m) => (
-                                <div key={m.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
-                                    <Label className="text-xs">{m.label}</Label>
-                                    <Switch checked={enabledModules.includes(m.id)} onCheckedChange={() => handleToggleModule(m.id)} />
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Licencia</Label>
+                                    <Select value={status} onValueChange={(val: any) => setStatus(val)}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="active">Activa</SelectItem>
+                                            <SelectItem value="trial">Prueba</SelectItem>
+                                            <SelectItem value="expired">Expirada</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </div>
-                            ))}
+                                <div className="space-y-2">
+                                    <Label>Vencimiento</Label>
+                                    <Input type="date" value={expiry} onChange={(e) => setExpiry(e.target.value)} />
+                                </div>
+                            </div>
+                        </div>
+                        <Separator />
+                        <div className="space-y-4">
+                            <Label className="font-bold">Módulos Habilitados</Label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {ALL_MODULES.map((m) => (
+                                    <div key={m.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/50">
+                                        <Label className="text-xs">{m.label}</Label>
+                                        <Switch checked={enabledModules.includes(m.id)} onCheckedChange={() => handleToggleModule(m.id)} />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <Separator />
+                        <div className="space-y-4 p-4 border border-destructive/20 bg-destructive/5 rounded-xl">
+                            <Label className="font-black text-destructive uppercase text-[10px] tracking-widest flex items-center gap-2">
+                                <AlertTriangle className="w-3 h-3" /> Seguridad y PIN
+                            </Label>
+                            <div className="flex justify-between items-center gap-4">
+                                <div className="space-y-0.5">
+                                    <p className="text-xs font-bold text-slate-800">Clave de Seguridad del Usuario</p>
+                                    <p className="text-[10px] text-muted-foreground leading-tight">Si el usuario olvidó su PIN de gerente, puedes resetearlo aquí para que cree uno nuevo.</p>
+                                </div>
+                                <Button 
+                                    type="button" 
+                                    variant="destructive" 
+                                    size="sm" 
+                                    className="shrink-0 h-8 font-black text-[10px]"
+                                    onClick={() => setIsResetConfirmOpen(true)}
+                                >
+                                    <ShieldOff className="w-3.5 h-3.5 mr-1.5" /> RESETEAR PIN
+                                </Button>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-                    <Button onClick={handleSave}>Guardar Cambios</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+                        <Button onClick={handleSave}>Guardar Cambios</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <AlertDialog open={isResetConfirmOpen} onOpenChange={setIsResetConfirmOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                            <KeyRound className="text-destructive w-5 h-5" /> ¿Eliminar PIN de seguridad?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Esta acción borrará la clave actual de <span className="font-bold text-slate-900">{user.businessName}</span>. 
+                            El usuario deberá configurar una clave nueva la próxima vez que intente usar funciones de gerente.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction 
+                            onClick={() => {
+                                onResetPin(user.uid);
+                                setIsResetConfirmOpen(false);
+                            }}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                            Confirmar Reseteo
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+        </>
     );
 }
 
@@ -221,6 +272,20 @@ function AdminContent() {
         const userRef = doc(firestore, 'users', userId);
         updateDocumentNonBlocking(userRef, data);
         toast({ title: "Usuario Actualizado" });
+    };
+
+    const handleResetPin = (userId: string) => {
+        if (!firestore) return;
+        const userRef = doc(firestore, 'users', userId);
+        // Borramos el PIN y desactivamos el requerimiento temporalmente para que el usuario pueda reconfigurarlo
+        updateDocumentNonBlocking(userRef, { 
+            securityPin: "", 
+            isPinRequired: false 
+        });
+        toast({ 
+            title: "PIN Reseteado", 
+            description: "La seguridad del negocio ha sido reiniciada correctamente." 
+        });
     };
 
     const handleDeleteUser = () => {
@@ -310,6 +375,7 @@ function AdminContent() {
                     isOpen={!!editingUser} 
                     onOpenChange={(o) => !o && setEditingUser(null)} 
                     onSave={(d) => handleUpdateUser(editingUser.uid, d)} 
+                    onResetPin={handleResetPin}
                 />
             )}
 

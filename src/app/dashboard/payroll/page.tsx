@@ -1,4 +1,3 @@
-
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -21,10 +20,19 @@ import { AdminAuthDialog } from "@/components/admin-auth-dialog";
 import { useCurrency } from "@/hooks/use-currency";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SecurityGate } from "@/components/security-gate";
 
 const BS_PAYMENT_METHODS: PaymentMethod[] = ['Efectivo Bs', 'Tarjeta / Pago Móvil', 'Transferencia'];
 
 export default function PayrollPage() {
+    return (
+        <SecurityGate module="payroll">
+            <PayrollContent />
+        </SecurityGate>
+    );
+}
+
+function PayrollContent() {
     const { firestore, user } = useFirebase();
     const { toast } = useToast();
     const { format: formatCurrency } = useCurrency();

@@ -17,6 +17,7 @@ import {
   PiggyBank,
   HandHelping,
   RefreshCcw,
+  Lock,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -33,6 +34,7 @@ import { Separator } from '@/components/ui/separator';
 import { useFirebase, useDoc, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import type { UserProfile, UserModule } from '@/lib/types';
+import { Button } from './ui/button';
 
 type NavItem = {
     href: string;
@@ -74,6 +76,13 @@ export function SidebarNav() {
       const enabledModules = profile.enabledModules || ['inventory', 'pos', 'repairs', 'reports', 'analysis', 'fiados', 'payroll', 'treasury', 'loans', 'exchange'];
       return enabledModules.includes(item.module);
   });
+
+  const isManagerMode = typeof window !== 'undefined' && sessionStorage.getItem('mm_security_unlocked') === 'true';
+
+  const handleLockManager = () => {
+      sessionStorage.removeItem('mm_security_unlocked');
+      window.location.reload();
+  };
 
   return (
     <Sidebar>
@@ -122,7 +131,18 @@ export function SidebarNav() {
           )}
         </SidebarMenu>
       </SidebarContent>
-      <SidebarFooter className='mt-auto'>
+      <SidebarFooter className='mt-auto p-4 space-y-2'>
+        {isManagerMode && (
+            <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full justify-start h-9 text-[10px] font-black border-destructive/30 text-destructive hover:bg-destructive/5"
+                onClick={handleLockManager}
+            >
+                <Lock className="w-3 h-3 mr-2" />
+                CERRAR SESIÓN GERENTE
+            </Button>
+        )}
         <Separator className="my-2 bg-sidebar-border/50"/>
         <SidebarMenu>
             <SidebarMenuItem>

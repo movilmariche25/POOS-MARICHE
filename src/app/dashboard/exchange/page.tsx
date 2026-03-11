@@ -237,7 +237,8 @@ function ExchangeContent() {
     const combinedHistory = useMemo(() => {
         const history = [
             ...(exchanges || []).map(e => ({ ...e, type: 'exchange' })),
-            ...(transfers || []).map(t => ({ ...t, type: 'transfer' }))
+            ...(transfers || []).map(t => ({ ...t, type: 'transfer' })),
+            ...(expenses || []).map(ex => ({ ...ex, type: 'expense' }))
         ];
         
         if (!dateRange?.from) return history.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -248,11 +249,14 @@ function ExchangeContent() {
         return history
             .filter(item => isWithinInterval(parseISO(item.createdAt), { start: from, end: to }))
             .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    }, [exchanges, transfers, dateRange]);
+    }, [exchanges, transfers, expenses, dateRange]);
 
     const handleDelete = (id: string, type: string) => {
         if (!firestore || !user) return;
-        const collectionName = type === 'exchange' ? 'currency_exchanges' : 'bs_transfers';
+        const collectionName = 
+            type === 'exchange' ? 'currency_exchanges' : 
+            type === 'transfer' ? 'bs_transfers' : 
+            'expenses';
         deleteDocumentNonBlocking(doc(firestore, 'users', user.uid, collectionName, id));
         toast({ title: "Registro eliminado", variant: "destructive" });
     };
@@ -289,7 +293,7 @@ function ExchangeContent() {
                     </AddExchangeDialog>
                 </div>
             </PageHeader>
-            <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-6xl mx-auto w-full">
+            <main className="flex-1 p-4 sm:p-6 space-y-6 max-w-7xl mx-auto w-full">
                 
                 <div className="grid gap-4 md:grid-cols-2">
                     <Card className="bg-green-600 text-white shadow-xl overflow-hidden relative">
@@ -335,29 +339,41 @@ function ExchangeContent() {
                                     <TableBody>
                                         {combinedHistory.map((item: any) => {
                                             const isExchange = item.type === 'exchange';
+                                            const isExpense = item.type === 'expense';
+                                            const isTransfer = item.type === 'transfer';
+                                            
                                             return (
                                                 <TableRow key={item.id}>
                                                     <TableCell className="text-xs font-medium">{format(parseISO(item.createdAt), "dd/MM/yy hh:mm a")}</TableCell>
                                                     <TableCell>
                                                         <div className="flex flex-col gap-1">
-                                                            <Badge variant={isExchange ? "default" : "outline"} className="text-[9px] uppercase font-bold w-fit">
-                                                                {isExchange ? "COMPRA USD" : "CAMBIO BS"}
+                                                            <Badge variant={isExchange ? "default" : isExpense ? "destructive" : "outline"} className="text-[9px] uppercase font-bold w-fit">
+                                                                {isExchange ? "COMPRA USD" : isExpense ? "GASTO / EGRESO" : "CAMBIO BS"}
                                                             </Badge>
                                                             <span className="text-[10px] font-black uppercase text-slate-600">
-                                                                {item.sourceMethod} {!isExchange && `-> ${item.targetMethod}`}
+                                                                {isExpense ? item.description : item.sourceMethod} 
+                                                                {isTransfer && ` -> ${item.targetMethod}`}
                                                             </span>
-                                                            {item.notes && <span className="text-[9px] text-muted-foreground italic font-bold uppercase truncate max-w-[150px]" title={item.notes}>{item.notes}</span>}
+                                                            {(isExchange || isTransfer) && item.notes && <span className="text-[9px] text-muted-foreground italic font-bold uppercase truncate max-w-[150px]" title={item.notes}>{item.notes}</span>}
+                                                            {isExpense && <span className="text-[9px] text-muted-foreground font-bold uppercase">{item.category}</span>}
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className="text-right font-bold text-amber-600">
-                                                        Bs {formatCurrency(isExchange ? item.bsAmount : item.amountSent)}
+                                                        {isExpense ? (
+                                                            <div className="flex flex-col items-end">
+                                                                {item.amountUSD > 0 && <span>$ {formatCurrency(item.amountUSD)}</span>}
+                                                                {item.amountBs > 0 && <span>Bs {formatCurrency(item.amountBs)}</span>}
+                                                            </div>
+                                                        ) : (
+                                                            `Bs ${formatCurrency(isExchange ? item.bsAmount : item.amountSent)}`
+                                                        )}
                                                     </TableCell>
                                                     <TableCell className="text-right font-black text-green-600">
-                                                        {isExchange ? `$ ${formatCurrency(item.usdAmount)}` : `Bs ${formatCurrency(item.amountReceived)}`}
+                                                        {isExpense ? "-" : (isExchange ? `$ ${formatCurrency(item.usdAmount)}` : `Bs ${formatCurrency(item.amountReceived)}`)}
                                                     </TableCell>
                                                     <TableCell className="text-center">
                                                         <Badge className="font-mono text-[10px] bg-slate-800">
-                                                            {isExchange ? item.rate.toFixed(2) : "1:1"}
+                                                            {isExchange ? item.rate.toFixed(2) : isExpense ? "EGRESO" : "1:1"}
                                                         </Badge>
                                                     </TableCell>
                                                     <TableCell className="text-right">

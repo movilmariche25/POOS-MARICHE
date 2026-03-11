@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { Suspense, useState, useMemo } from 'react';
@@ -30,6 +29,7 @@ import { PriceCalculatorDialog } from '@/components/tools/price-calculator-dialo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { differenceInDays, parseISO } from 'date-fns';
 import { cn } from "@/lib/utils";
+import { SecurityGate } from "@/components/security-gate";
 
 const productFilterFn: FilterFn<Product> = (row, columnId, value) => {
     const term = String(value).toLowerCase();
@@ -196,5 +196,11 @@ function InventoryContent() {
 }
 
 export default function Page() {
-  return <Suspense fallback={<div>Cargando...</div>}><InventoryContent /></Suspense>;
+  return (
+    <SecurityGate module="inventory">
+        <Suspense fallback={<div>Cargando...</div>}>
+            <InventoryContent />
+        </Suspense>
+    </SecurityGate>
+  );
 }
