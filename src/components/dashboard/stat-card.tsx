@@ -13,7 +13,7 @@ type StatCardProps = {
     isLoading?: boolean;
 };
 
-export function StatCard({ title, value, icon, description, href, isLoading }: StatCardProps) {
+export default function StatCard({ title, value, icon, description, href, isLoading }: StatCardProps) {
     const cardContent = (
         <Card className={cn("transition-colors", href && "hover:border-primary")}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

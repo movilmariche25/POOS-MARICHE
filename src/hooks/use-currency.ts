@@ -30,12 +30,16 @@ export const useCurrency = () => {
      * Formatea un número según el estándar de moneda (punto para miles, coma para decimales)
      */
     const format = useCallback((value: number, targetCurrency?: Currency) => {
-        const formatter = new Intl.NumberFormat('de-DE', {
-            style: 'decimal',
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-        });
-        return formatter.format(value || 0);
+        try {
+            const formatter = new Intl.NumberFormat('de-DE', {
+                style: 'decimal',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+            return formatter.format(value || 0);
+        } catch (e) {
+            return "0,00";
+        }
     }, []);
 
     /**
@@ -50,7 +54,7 @@ export const useCurrency = () => {
      * Convierte montos entre USD y Bs usando estrictamente la TASA BCV
      */
     const convert = useCallback((value: number, from: Currency, to: Currency) => {
-        if (!value) return 0;
+        if (!value || isNaN(value)) return 0;
         if (from === to) return value;
         if (from === 'USD' && to === 'Bs') return value * bcvRate;
         if (from === 'Bs' && to === 'USD') return value / bcvRate;
@@ -64,52 +68,60 @@ export const useCurrency = () => {
      * @returns El precio sugerido en "Dólares BCV" para la factura
      */
     const getDynamicPrice = useCallback((costPrice: number, overrideMargin?: number | string) => {
-        if (!costPrice || costPrice <= 0) return 0;
+        if (!costPrice || costPrice <= 0 || isNaN(costPrice)) return 0;
         
-        const numericMargin = (overrideMargin !== undefined && overrideMargin !== null && overrideMargin !== "") 
-            ? Number(overrideMargin) 
-            : profitMargin;
-        const marginToUse = !isNaN(numericMargin) ? numericMargin : profitMargin;
-        
-        // 1. Llevamos el costo a Bs usando la tasa de reposición (Parallel)
-        const costInBs = costPrice * parallelRate;
-        
-        // 2. Aplicamos el margen de ganancia sobre el costo en Bs
-        const priceWithProfitInBs = costInBs * (1 + marginToUse / 100);
-        
-        // 3. Convertimos a USD BCV (que es lo que el cliente paga)
-        // Esto garantiza que el monto en Bs recibido sea exactamente lo que necesitamos 
-        // para recomprar la pieza y mantener la ganancia.
-        const finalPriceInBcvUsd = priceWithProfitInBs / bcvRate;
-        
-        return parseFloat(finalPriceInBcvUsd.toFixed(2));
+        try {
+            const numericMargin = (overrideMargin !== undefined && overrideMargin !== null && overrideMargin !== "") 
+                ? Number(overrideMargin) 
+                : profitMargin;
+            const marginToUse = !isNaN(numericMargin) ? numericMargin : profitMargin;
+            
+            // 1. Llevamos el costo a Bs usando la tasa de reposición (Parallel)
+            const costInBs = costPrice * (parallelRate || 1);
+            
+            // 2. Aplicamos el margen de ganancia sobre el costo en Bs
+            const priceWithProfitInBs = costInBs * (1 + marginToUse / 100);
+            
+            // 3. Convertimos a USD BCV (que es lo que el cliente paga)
+            const finalPriceInBcvUsd = priceWithProfitInBs / (bcvRate || 1);
+            
+            return isFinite(finalPriceInBcvUsd) ? parseFloat(finalPriceInBcvUsd.toFixed(2)) : 0;
+        } catch (e) {
+            console.error("Error calculating dynamic price:", e);
+            return 0;
+        }
     }, [parallelRate, bcvRate, profitMargin]);
 
     /**
      * Obtiene el precio final de venta de un producto considerando todas sus reglas
      */
     const getFinalPrice = useCallback((product: Product) => {
-        if (!product) return 0;
-        
-        let basePrice = 0;
-        
-        if (product.isFixedPrice && product.fixedPrice && product.fixedPrice > 0) {
-            // Precio bloqueado manualmente por el usuario
-            basePrice = product.fixedPrice;
-        } else if (product.hasCustomMargin && product.customMargin !== undefined) {
-            // Precio dinámico con margen específico para este producto
-            basePrice = getDynamicPrice(product.costPrice, product.customMargin);
-        } else {
-            // Precio dinámico con margen global del negocio
-            basePrice = getDynamicPrice(product.costPrice);
-        }
+        try {
+            if (!product) return 0;
+            
+            let basePrice = 0;
+            
+            if (product.isFixedPrice && product.fixedPrice && product.fixedPrice > 0) {
+                // Precio bloqueado manualmente por el usuario
+                basePrice = product.fixedPrice;
+            } else if (product.hasCustomMargin && product.customMargin !== undefined) {
+                // Precio dinámico con margen específico para este producto
+                basePrice = getDynamicPrice(product.costPrice, product.customMargin);
+            } else {
+                // Precio dinámico con margen global del negocio
+                basePrice = getDynamicPrice(product.costPrice);
+            }
 
-        // Si el producto tiene IVA (16%), lo sumamos al precio final calculado
-        if (product.hasIVA) {
-            basePrice = basePrice * 1.16;
+            // Si el producto tiene IVA (16%), lo sumamos al precio final calculado
+            if (product.hasIVA) {
+                basePrice = basePrice * 1.16;
+            }
+            
+            return isFinite(basePrice) ? parseFloat((basePrice || 0).toFixed(2)) : 0;
+        } catch (e) {
+            console.error("Error in getFinalPrice:", e);
+            return 0;
         }
-        
-        return parseFloat(basePrice.toFixed(2));
     }, [getDynamicPrice]);
 
     return {

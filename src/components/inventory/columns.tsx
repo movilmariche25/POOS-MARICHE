@@ -1,3 +1,4 @@
+
 "use client"
 
 import type { ColumnDef } from "@tanstack/react-table"
@@ -193,9 +194,11 @@ export const columns: ColumnDef<Product>[] = [
         </Button>
       )
     },
-    cell: ({ row }) => {
+    cell: ({ row, table }) => {
         const product = row.original;
         const compatibleModels = product.compatibleModels || [];
+        const showRepairs = (table.options.meta as any)?.showRepairs ?? true;
+
         return (
             <div className="max-w-xs">
                 <div className="font-medium flex items-center gap-2">
@@ -205,7 +208,7 @@ export const columns: ColumnDef<Product>[] = [
                     {product.hasCustomMargin && !product.isFixedPrice && <Percent className="h-3 w-3 text-blue-500" title={`Margen Indiv: ${product.customMargin}%`} />}
                     {product.hasIVA && <Landmark className="h-3 w-3 text-green-600" title="Aplica IVA (16%)" />}
                 </div>
-                {compatibleModels.length > 0 && (
+                {showRepairs && compatibleModels.length > 0 && (
                     <div className="text-xs text-muted-foreground truncate" title={compatibleModels.join(', ')}>
                         Info Adicional: {compatibleModels.join(', ')}
                     </div>

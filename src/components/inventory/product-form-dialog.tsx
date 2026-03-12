@@ -34,7 +34,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Textarea } from "../ui/textarea";
 import { useCurrency } from "@/hooks/use-currency";
 import { Separator } from "../ui/separator";
-import { Info, PackagePlus, Search, Trash2, Percent, Lock, Check, ChevronsUpDown, CalendarIcon, Gift, Landmark, Scale, AlertTriangle, Hammer, Wrench, Tag, Calculator, TrendingUp } from "lucide-react";
+import { Info, PackagePlus, Search, Trash2, Percent, Lock, Check, ChevronsUpDown, CalendarIcon, Gift, Landmark, Scale, AlertTriangle, Hammer, Wrench, Tag, Calculator, TrendingUp, Smartphone } from "lucide-react";
 import { format } from "date-fns";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
@@ -92,6 +92,12 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
   const open = isOpen !== undefined ? isOpen : internalOpen;
   const setOpen = onOpenChange !== undefined ? onOpenChange : setInternalOpen;
 
+  const profileRef = useMemoFirebase(() => 
+    (firestore && user) ? doc(firestore, 'users', user.uid) : null,
+    [firestore, user?.uid]
+  );
+  const { data: profile } = useDoc<UserProfile>(profileRef);
+
   const productsCollection = useMemoFirebase(() => 
     (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null, 
     [firestore, user?.uid]
@@ -141,9 +147,9 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
   const selectedUnit = form.watch("unit");
   const isEditing = !!product;
   
-  // Cálculo sugerido basado en las tasas actuales (Reactivo a useCurrency)
+  const showRepairsFeature = profile?.enabledModules?.includes('repairs') ?? true;
+
   const { suggestedRetailPrice, suggestedPromoPrice } = useMemo(() => {
-    // El precio de oferta es lineal: costo + margen en USD
     const suggestedPromo = costPrice > 0 ? costPrice * (1 + profitMargin / 100) : 0;
     
     let retail = 0;
@@ -349,6 +355,16 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                     </FormItem>
                 )} />
             </div>
+
+            {showRepairsFeature && (
+                <FormField control={form.control} name="compatibleModels" render={({ field }) => (
+                    <FormItem className="bg-muted/10 p-3 rounded-lg border border-dashed animate-in fade-in">
+                        <FormLabel className="flex items-center gap-2 text-primary font-bold"><Smartphone className="w-3.5 h-3.5" /> Modelos Compatibles</FormLabel>
+                        <FormControl><Input {...field} placeholder="Ej: S23 Ultra, A51, Redmi Note 12..." /></FormControl>
+                        <FormDescription className="text-[10px]">Escribe los modelos separados por coma para que aparezcan en el buscador de reparaciones.</FormDescription>
+                    </FormItem>
+                )} />
+            )}
 
             <div className="space-y-4">
                 <div className="flex items-center gap-2 text-primary font-black text-[10px] uppercase tracking-widest border-b pb-1">

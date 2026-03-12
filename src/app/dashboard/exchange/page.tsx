@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo } from "react";
 import { PlusCircle, Trash2, Landmark, DollarSign, ArrowRightLeft, History, TrendingUp, Info, Calendar as CalendarIcon, X as ClearIcon, CreditCard, Smartphone, Banknote, Sigma, ShoppingBag, ArrowUpCircle, Wallet, Settings, Receipt, MinusCircle, RefreshCcw, Repeat } from "lucide-react";
-import { format, parseISO, isWithinInterval, startOfDay, endOfDay, isAfter } from "date-fns";
+import { format, parseISO, isWithinInterval, startOfDay, endOfDay, isAfter, isValid } from "date-fns";
 import { es } from "date-fns/locale";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AdminAuthDialog } from "@/components/admin-auth-dialog";
@@ -100,10 +100,14 @@ function ExchangeContent() {
         };
         let usdBalance = settings.initialBalances?.['Efectivo USD'] || 0;
 
-        const filterByReset = (dateStr: string) => isAfter(parseISO(dateStr), resetDate);
+        const filterByReset = (dateStr?: string) => {
+            if (!dateStr) return false;
+            const date = parseISO(dateStr);
+            return isValid(date) && isAfter(date, resetDate);
+        };
 
         sales.forEach(s => {
-            if (s.status !== 'completed' || !s.transactionDate || !filterByReset(s.transactionDate)) return;
+            if (s.status !== 'completed' || !filterByReset(s.transactionDate)) return;
             s.payments.forEach(p => {
                 if (p.method === 'Efectivo USD') usdBalance += p.amount;
                 else if (p.method === 'Efectivo Bs') bsBreakdown['Efectivo Bs'] += p.amount;
@@ -126,24 +130,24 @@ function ExchangeContent() {
 
         (exchanges || []).forEach(e => {
             if (!filterByReset(e.createdAt)) return;
-            usdBalance += e.usdAmount;
+            usdBalance += e.usdAmount || 0;
             const source = e.sourceMethod === 'Tarjeta' || e.sourceMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : e.sourceMethod;
-            if (bsBreakdown[source] !== undefined) bsBreakdown[source] -= e.bsAmount;
+            if (bsBreakdown[source] !== undefined) bsBreakdown[source] -= (e.bsAmount || 0);
         });
 
         (transfers || []).forEach(t => {
             if (!filterByReset(t.createdAt)) return;
             const source = t.sourceMethod === 'Tarjeta' || t.sourceMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : t.sourceMethod;
             const target = t.targetMethod === 'Tarjeta' || t.targetMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : t.targetMethod;
-            if (bsBreakdown[source] !== undefined) bsBreakdown[source] -= t.amountSent;
-            if (bsBreakdown[target] !== undefined) bsBreakdown[target] += t.amountReceived;
+            if (bsBreakdown[source] !== undefined) bsBreakdown[source] -= (t.amountSent || 0);
+            if (bsBreakdown[target] !== undefined) bsBreakdown[target] += (t.amountReceived || 0);
         });
 
         (payroll || []).forEach(p => {
             if (!filterByReset(p.createdAt)) return;
             if (p.amountUSD > 0) usdBalance -= p.amountUSD;
             if (p.amountBs > 0) {
-                const method = p.methodBs === 'Tarjeta' || p.methodBs === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : p.methodBs;
+                const method = p.methodBs === 'Tarjeta' || p.methodBs === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : (p.methodBs || 'Tarjeta / Pago Móvil');
                 if (bsBreakdown[method] !== undefined) bsBreakdown[method] -= p.amountBs;
                 else bsBreakdown['Tarjeta / Pago Móvil'] -= p.amountBs;
             }
@@ -151,11 +155,11 @@ function ExchangeContent() {
 
         (loans || []).forEach(l => {
             if (!filterByReset(l.createdAt)) return;
-            if (l.currency === 'USD') usdBalance -= l.totalAmount;
+            if (l.currency === 'USD') usdBalance -= (l.totalAmount || 0);
             else {
-                const method = l.sourceMethod === 'Tarjeta' || l.sourceMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : l.sourceMethod;
-                if (bsBreakdown[method] !== undefined) bsBreakdown[method] -= l.totalAmount;
-                else bsBreakdown['Transferencia'] -= l.totalAmount;
+                const method = l.sourceMethod === 'Tarjeta' || l.sourceMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : (l.sourceMethod || 'Transferencia');
+                if (bsBreakdown[method] !== undefined) bsBreakdown[method] -= (l.totalAmount || 0);
+                else bsBreakdown['Transferencia'] -= (l.totalAmount || 0);
             }
         });
 
@@ -163,7 +167,7 @@ function ExchangeContent() {
             if (!filterByReset(ex.createdAt)) return;
             if (ex.amountUSD > 0) usdBalance -= ex.amountUSD;
             if (ex.amountBs > 0) {
-                const method = ex.methodBs === 'Tarjeta' || ex.methodBs === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : ex.methodBs;
+                const method = ex.methodBs === 'Tarjeta' || ex.methodBs === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : (ex.methodBs || 'Tarjeta / Pago Móvil');
                 if (bsBreakdown[method] !== undefined) bsBreakdown[method] -= ex.amountBs;
                 else bsBreakdown['Tarjeta / Pago Móvil'] -= ex.amountBs;
             }
@@ -188,8 +192,8 @@ function ExchangeContent() {
 
         sales.forEach(s => {
             if (s.status !== 'completed' || !s.transactionDate) return;
-            const saleDate = new Date(s.transactionDate);
-            if (isWithinInterval(saleDate, { start: from, end: to })) {
+            const saleDate = parseISO(s.transactionDate);
+            if (isValid(saleDate) && isWithinInterval(saleDate, { start: from, end: to })) {
                 s.payments.forEach(p => {
                     if (p.method === 'Efectivo USD') usdFromSales += p.amount;
                     else if (p.method === 'Efectivo Bs') { breakdown['Efectivo Bs'] += p.amount; bsFromSales += p.amount; }
@@ -212,22 +216,24 @@ function ExchangeContent() {
         });
 
         (exchanges || []).forEach(e => {
+            if (!e.createdAt) return;
             const exchangeDate = parseISO(e.createdAt);
-            if (isWithinInterval(exchangeDate, { start: from, end: to })) {
-                bsSpent += e.bsAmount;
-                usdFromExchanges += e.usdAmount;
+            if (isValid(exchangeDate) && isWithinInterval(exchangeDate, { start: from, end: to })) {
+                bsSpent += (e.bsAmount || 0);
+                usdFromExchanges += (e.usdAmount || 0);
                 const source = e.sourceMethod === 'Tarjeta' || e.sourceMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : e.sourceMethod;
-                if (breakdown[source] !== undefined) breakdown[source] -= e.bsAmount;
+                if (breakdown[source] !== undefined) breakdown[source] -= (e.bsAmount || 0);
             }
         });
 
         (transfers || []).forEach(t => {
+            if (!t.createdAt) return;
             const transferDate = parseISO(t.createdAt);
-            if (isWithinInterval(transferDate, { start: from, end: to })) {
+            if (isValid(transferDate) && isWithinInterval(transferDate, { start: from, end: to })) {
                 const source = t.sourceMethod === 'Tarjeta' || t.sourceMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : t.sourceMethod;
                 const target = t.targetMethod === 'Tarjeta' || t.targetMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : t.targetMethod;
-                if (breakdown[source] !== undefined) breakdown[source] -= t.amountSent;
-                if (breakdown[target] !== undefined) breakdown[target] += t.amountReceived;
+                if (breakdown[source] !== undefined) breakdown[source] -= (t.amountSent || 0);
+                if (breakdown[target] !== undefined) breakdown[target] += (t.amountReceived || 0);
             }
         });
 
@@ -241,18 +247,23 @@ function ExchangeContent() {
             ...(expenses || []).map(ex => ({ ...ex, type: 'expense' }))
         ];
         
-        if (!dateRange?.from) return history.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-        
-        const from = startOfDay(dateRange.from);
-        const to = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
-        
-        return history
-            .filter(item => isWithinInterval(parseISO(item.createdAt), { start: from, end: to }))
-            .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        const filtered = history.filter(item => {
+            if (!item.createdAt) return false;
+            const itemDate = parseISO(item.createdAt);
+            if (!isValid(itemDate)) return false;
+            
+            if (!dateRange?.from) return true;
+            
+            const from = startOfDay(dateRange.from);
+            const to = dateRange.to ? endOfDay(dateRange.to) : endOfDay(dateRange.from);
+            return isWithinInterval(itemDate, { start: from, end: to });
+        });
+
+        return filtered.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     }, [exchanges, transfers, expenses, dateRange]);
 
     const handleDelete = (id: string, type: string) => {
-        if (!firestore || !user) return;
+        if (!firestore || !user || !id) return;
         const collectionName = 
             type === 'exchange' ? 'currency_exchanges' : 
             type === 'transfer' ? 'bs_transfers' : 
@@ -341,18 +352,21 @@ function ExchangeContent() {
                                             const isExchange = item.type === 'exchange';
                                             const isExpense = item.type === 'expense';
                                             const isTransfer = item.type === 'transfer';
+                                            const itemDate = item.createdAt ? parseISO(item.createdAt) : null;
                                             
                                             return (
                                                 <TableRow key={item.id}>
-                                                    <TableCell className="text-xs font-medium">{format(parseISO(item.createdAt), "dd/MM/yy hh:mm a")}</TableCell>
+                                                    <TableCell className="text-xs font-medium">
+                                                        {itemDate && isValid(itemDate) ? format(itemDate, "dd/MM/yy hh:mm a") : 'N/A'}
+                                                    </TableCell>
                                                     <TableCell>
                                                         <div className="flex flex-col gap-1">
                                                             <Badge variant={isExchange ? "default" : isExpense ? "destructive" : "outline"} className="text-[9px] uppercase font-bold w-fit">
                                                                 {isExchange ? "COMPRA USD" : isExpense ? "GASTO / EGRESO" : "CAMBIO BS"}
                                                             </Badge>
                                                             <span className="text-[10px] font-black uppercase text-slate-600">
-                                                                {isExpense ? item.description : item.sourceMethod} 
-                                                                {isTransfer && ` -> ${item.targetMethod}`}
+                                                                {isExpense ? (item.description || 'Sin descripción') : (item.sourceMethod || 'N/A')} 
+                                                                {isTransfer && ` -> ${item.targetMethod || 'N/A'}`}
                                                             </span>
                                                             {(isExchange || isTransfer) && item.notes && <span className="text-[9px] text-muted-foreground italic font-bold uppercase truncate max-w-[150px]" title={item.notes}>{item.notes}</span>}
                                                             {isExpense && <span className="text-[9px] text-muted-foreground font-bold uppercase">{item.category}</span>}
@@ -361,19 +375,19 @@ function ExchangeContent() {
                                                     <TableCell className="text-right font-bold text-amber-600">
                                                         {isExpense ? (
                                                             <div className="flex flex-col items-end">
-                                                                {item.amountUSD > 0 && <span>$ {formatCurrency(item.amountUSD)}</span>}
-                                                                {item.amountBs > 0 && <span>Bs {formatCurrency(item.amountBs)}</span>}
+                                                                {(item.amountUSD || 0) > 0 && <span>$ {formatCurrency(item.amountUSD)}</span>}
+                                                                {(item.amountBs || 0) > 0 && <span>Bs {formatCurrency(item.amountBs)}</span>}
                                                             </div>
                                                         ) : (
-                                                            `Bs ${formatCurrency(isExchange ? item.bsAmount : item.amountSent)}`
+                                                            `Bs ${formatCurrency(isExchange ? (item.bsAmount || 0) : (item.amountSent || 0))}`
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-right font-black text-green-600">
-                                                        {isExpense ? "-" : (isExchange ? `$ ${formatCurrency(item.usdAmount)}` : `Bs ${formatCurrency(item.amountReceived)}`)}
+                                                        {isExpense ? "-" : (isExchange ? `$ ${formatCurrency(item.usdAmount || 0)}` : `Bs ${formatCurrency(item.amountReceived || 0)}`)}
                                                     </TableCell>
                                                     <TableCell className="text-center">
                                                         <Badge className="font-mono text-[10px] bg-slate-800">
-                                                            {isExchange ? item.rate.toFixed(2) : isExpense ? "EGRESO" : "1:1"}
+                                                            {isExchange ? (item.rate || 0).toFixed(2) : isExpense ? "EGRESO" : "1:1"}
                                                         </Badge>
                                                     </TableCell>
                                                     <TableCell className="text-right">
@@ -382,6 +396,9 @@ function ExchangeContent() {
                                                 </TableRow>
                                             );
                                         })}
+                                        {combinedHistory.length === 0 && (
+                                            <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No se encontraron movimientos en este periodo.</TableCell></TableRow>
+                                        )}
                                     </TableBody>
                                 </Table>
                             </CardContent>
@@ -418,7 +435,7 @@ function ExchangeContent() {
                                         <RefreshCcw className="w-3 h-3" /> Sincronizado:
                                     </div>
                                     <p className="text-[9px] text-blue-700 leading-tight">
-                                        Este saldo cuenta desde tu ajuste manual en <strong>Ajustes</strong> ({walletBalance.lastReset ? format(walletBalance.lastReset, "dd/MM/yy HH:mm") : 'No definido'}). 
+                                        Este saldo cuenta desde tu ajuste manual en <strong>Ajustes</strong> ({walletBalance.lastReset && isValid(walletBalance.lastReset) ? format(walletBalance.lastReset, "dd/MM/yy HH:mm") : 'No definido'}). 
                                         Solo suma y resta lo ocurrido desde ese momento.
                                     </p>
                                 </div>
@@ -475,7 +492,7 @@ function AddTransferDialog({ children, onAdded, isOpen, setIsOpen }: { children:
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>{children}</DialogTrigger>
             <DialogContent className="sm:max-w-md">
-                <DialogHeader><DialogTitle className="flex items-center gap-2"><Repeat className="w-5 h-5 text-blue-600"/> Venta de Efectivo (Bs -> Digital)</DialogTitle><DialogDescription>Usa esta opción cuando entregas billetes para que te paguen por móvil o transferencia.</DialogDescription></DialogHeader>
+                <DialogHeader><DialogTitle className="flex items-center gap-2"><Repeat className="w-5 h-5 text-blue-600"/> Venta de Efectivo (Bs -> Digital)</DialogTitle><DialogDescription>Usa esta option cuando entregas billetes para que te paguen por móvil o transferencia.</DialogDescription></DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-6 py-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2"><Label className="text-[10px] font-black uppercase">Desde (Entregas)</Label><Select value={sourceMethod} onValueChange={(v: any) => setSourceMethod(v)}><SelectTrigger className="h-10 text-xs font-bold"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Efectivo Bs" className="text-xs">EFECTIVO BS</SelectItem><SelectItem value="Tarjeta / Pago Móvil" className="text-xs">TARJETA / P. MÓVIL</SelectItem></SelectContent></Select></div>

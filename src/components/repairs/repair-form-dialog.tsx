@@ -65,7 +65,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
   const [open, setOpen] = useState(false);
   const [partsPopoverOpen, setPartsPopoverOpen] = useState(false);
   const { toast } = useToast();
-  const { getFinalPrice, format: formatCurrency, bcvRate } = useCurrency();
+  const { getFinalPrice, format: formatCurrency, bcvRate, getDynamicPrice, profitMargin } = useCurrency();
   const [mainPart, setMainPart] = useState<Product | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
@@ -88,6 +88,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
       estimatedCost: 0, 
       reservedParts: [],
       isPromo: false,
+      notes: "",
     },
   });
 
@@ -178,26 +179,39 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
   }, [open, products, repairJob]);
 
   const handlePartSelect = (p: Product) => {
-      setMainPart(p);
-      const price = getFinalPrice(p);
-      form.setValue('estimatedCost', price, { shouldValidate: true });
-      form.setValue('reservedParts', [{ productId: p.id!, productName: p.name, quantity: 1, costPrice: p.costPrice }], { shouldValidate: true });
-      form.setValue('isPromo', false, { shouldValidate: true });
-      setPartsPopoverOpen(false);
+      try {
+          setMainPart(p);
+          const price = getFinalPrice(p);
+          form.setValue('estimatedCost', price, { shouldValidate: true });
+          form.setValue('reservedParts', [{ productId: p.id!, productName: p.name, quantity: 1, costPrice: p.costPrice }], { shouldValidate: true });
+          form.setValue('isPromo', false, { shouldValidate: true });
+          setPartsPopoverOpen(false);
+      } catch (e) {
+          toast({ variant: "destructive", title: "Error", description: "No se pudo vincular la pieza." });
+      }
   };
 
   const applyPromoPrice = () => {
       if (mainPart && mainPart.promoPrice && mainPart.promoPrice > 0) {
-          const currentPrice = form.getValues('estimatedCost');
-          const promoPrice = mainPart.promoPrice;
-          const regularPrice = getFinalPrice(mainPart);
+          try {
+              const currentPrice = form.getValues('estimatedCost');
+              const promoPrice = mainPart.promoPrice;
+              const regularPrice = getFinalPrice(mainPart);
 
-          if (Math.abs(currentPrice - promoPrice) < 0.01) {
-              form.setValue('estimatedCost', regularPrice, { shouldValidate: true });
-              form.setValue('isPromo', false, { shouldValidate: true });
-          } else {
-              form.setValue('estimatedCost', promoPrice, { shouldValidate: true });
-              form.setValue('isPromo', true, { shouldValidate: true });
+              // Si ya tiene el precio de promo, volvemos al regular. Si no, ponemos el de promo.
+              if (Math.abs(currentPrice - promoPrice) < 0.01) {
+                  form.setValue('estimatedCost', regularPrice, { shouldValidate: true });
+                  form.setValue('isPromo', false, { shouldValidate: true });
+              } else {
+                  form.setValue('estimatedCost', promoPrice, { shouldValidate: true });
+                  form.setValue('isPromo', true, { shouldValidate: true });
+              }
+          } catch (e) {
+              toast({ 
+                  variant: "destructive", 
+                  title: "Error de Cálculo", 
+                  description: "No se pudo aplicar el precio de oferta. Verifica los datos de la pieza." 
+              });
           }
       }
   };
@@ -238,7 +252,6 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                 }
             }
 
-            // Explicitly build finalData to ensure NO 'undefined' fields reach Firestore
             const finalData: any = { 
                 customerName: values.customerName,
                 customerPhone: values.customerPhone,
@@ -256,7 +269,6 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                 amountPaid: repairJob?.amountPaid || 0,
                 isPaid: repairJob?.isPaid || false,
                 createdAt: repairJob?.createdAt || new Date().toISOString(),
-                // Safety defaults for other fields in RepairJob type
                 partsCost: repairJob?.partsCost || 0,
                 laborCost: repairJob?.laborCost || 0,
                 partsConsumed: !!repairJob?.partsConsumed

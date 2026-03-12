@@ -1,4 +1,3 @@
-
 "use client"
 
 import { Line, LineChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from "recharts"
@@ -16,7 +15,7 @@ type MonthlyActivityOverviewProps = {
   isLoading?: boolean;
 };
 
-export function MonthlyActivityOverview({ sales, repairJobs, isLoading }: MonthlyActivityOverviewProps) {
+export default function MonthlyActivityOverview({ sales, repairJobs, isLoading }: MonthlyActivityOverviewProps) {
   const { format: formatCurrency, getSymbol } = useCurrency();
   
   const { chartData, currentMonth } = useMemo(() => {
@@ -29,7 +28,6 @@ export function MonthlyActivityOverview({ sales, repairJobs, isLoading }: Monthl
     const daysInMonth = eachDayOfInterval({ start: firstDayOfMonth, end: lastDayOfMonth });
 
     const data = daysInMonth.map(day => {
-      // USAMOS actualPaidAmount PARA QUE EL GRÁFICO REFLEJE EL DINERO REAL EN CAJA
       const dailySales = sales
         .filter(s => s.transactionDate && isSameDay(new Date(s.transactionDate), day) && s.status !== 'refunded')
         .reduce((acc, s) => acc + (s.actualPaidAmount ?? s.totalAmount), 0);

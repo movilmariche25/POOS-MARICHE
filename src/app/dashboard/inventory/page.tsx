@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { Suspense, useState, useMemo } from 'react';
@@ -116,6 +117,7 @@ function InventoryContent() {
     const [categoryFilter, setCategoryFilter] = useState('all');
 
     const showAging = profile?.enabledModules?.includes('inventory_aging') ?? false;
+    const showRepairs = profile?.enabledModules?.includes('repairs') ?? true;
 
     const categories = useMemo(() => {
         if (!products) return [];
@@ -176,7 +178,7 @@ function InventoryContent() {
                     data={filteredProducts}
                     isLoading={isLoading}
                     filterPlaceholder="Buscar productos o descripción..."
-                    meta={{ allProducts: products || [], showAging }}
+                    meta={{ allProducts: products || [], showAging, showRepairs }}
                     globalFilterFn={productFilterFn}
                 >
                     {(table) => (
