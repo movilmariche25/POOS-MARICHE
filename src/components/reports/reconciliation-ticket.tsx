@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { DailyReconciliation, PaymentMethod } from "@/lib/types";
@@ -10,18 +9,19 @@ import { useCurrency } from "@/hooks/use-currency";
 type ReconciliationTicketProps = {
     reconciliation: DailyReconciliation;
     currency: ReturnType<typeof useCurrency>;
+    businessName?: string;
 }
 
 const paymentMethodsOrder: PaymentMethod[] = ['Efectivo USD', 'Efectivo Bs', 'Tarjeta', 'Pago Móvil', 'Transferencia'];
 
-export function ReconciliationTicket({ reconciliation, currency }: ReconciliationTicketProps) {
+export function ReconciliationTicket({ reconciliation, currency, businessName }: ReconciliationTicketProps) {
     const { format, getSymbol } = currency;
     
     return (
         <div className="recon-ticket">
             <div className="text-center mb-4">
                 <h3 className="recon-header bold-header">CIERRE DE CAJA</h3>
-                <p className="business-name bold-header">POOS MARICHE</p>
+                <p className="business-name bold-header">{businessName || 'POS MARICHE'}</p>
                 <p className="meta-info mt-2">FECHA: {formatDate(parseISO(reconciliation.closedAt), "dd/MM/yy hh:mm a", { locale: es })}</p>
                 <p className="meta-info">ID: {reconciliation.id}</p>
             </div>
@@ -40,13 +40,13 @@ export function ReconciliationTicket({ reconciliation, currency }: Reconciliatio
             <div className="cash-flow-section uppercase mt-4">
                  <div className="flex-row">
                     <span>PAGOS RECIBIDOS:</span>
-                    <span style={{ color: 'green' }}>+{getSymbol('USD')}{format(reconciliation.totalPaymentsReceived ?? 0, 'USD')}</span>
+                    <span className="bold-header">+{getSymbol('USD')}{format(reconciliation.totalPaymentsReceived ?? 0, 'USD')}</span>
                 </div>
                 <div className="flex-row">
                     <span>VUELTOS ENTREGADOS:</span>
-                    <span style={{ color: 'red' }}>-{getSymbol('USD')}{format(reconciliation.totalChangeGiven ?? 0, 'USD')}</span>
+                    <span className="bold-header">-{getSymbol('USD')}{format(reconciliation.totalChangeGiven ?? 0, 'USD')}</span>
                 </div>
-                <div className="flex-row net-expected mt-2 bold-header">
+                <div className="flex-row net-expected mt-2 bold-header border-t pt-1">
                     <span>NETO ESPERADO:</span>
                     <span>{getSymbol('USD')}{format(reconciliation.totalExpected, 'USD')}</span>
                 </div>
@@ -133,13 +133,14 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                     .method-name-header { text-align: center; border: 1px solid #000 !important; padding: 2px; margin-bottom: 4px; text-transform: uppercase; }
                     .diff-row { padding-top: 2px; }
                     .grand-total { text-transform: uppercase; border-top: 2px solid #000 !important; margin-top: 8px; padding-top: 8px; }
-                    .footer-note { font-size: 8pt; text-transform: uppercase; opacity: 0.8; font-style: italic; }
+                    .footer-note { font-size: 8pt; text-transform: uppercase; font-weight: 900; font-style: italic; }
                     .uppercase { text-transform: uppercase; }
                     .mt-2 { margin-top: 0.5rem; }
                     .mt-4 { margin-top: 1rem; }
                     .mt-6 { margin-top: 1.5rem; }
                     .mt-10 { margin-top: 2.5rem; }
                     .mb-4 { margin-bottom: 1rem; }
+                    .border-t { border-top: 1px solid #000; }
                 </style>
             </head>
             <body>

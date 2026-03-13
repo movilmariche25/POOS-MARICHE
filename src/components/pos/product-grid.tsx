@@ -37,12 +37,17 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
 
   const filteredProducts = useMemo(() => {
     if (!products) return [];
+    const term = searchTerm.toLowerCase().trim();
+    
     return products.filter(
         (product) =>
         (activeCategory === 'Todos' || product.category === activeCategory) &&
-        (product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            (product.sku && product.sku.toLowerCase().includes(searchTerm.toLowerCase())) ||
-            (product.compatibleModels && product.compatibleModels.some(model => model.toLowerCase().includes(searchTerm.toLowerCase()))))
+        (
+            product.name.toLowerCase().includes(term) ||
+            (product.sku && product.sku.toLowerCase().includes(term)) ||
+            (product.barcode && product.barcode.toLowerCase().includes(term)) ||
+            (product.compatibleModels && product.compatibleModels.some(model => model.toLowerCase().includes(term)))
+        )
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [products, activeCategory, searchTerm]);
 
@@ -98,7 +103,7 @@ export function ProductGrid({ products, onProductSelect, isLoading }: ProductGri
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                     type="search"
-                    placeholder="Buscar por nombre, SKU, modelo compatible..."
+                    placeholder="Busca por nombre, SKU, Código de Barras..."
                     className="w-full pl-8"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}

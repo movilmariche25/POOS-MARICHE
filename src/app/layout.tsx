@@ -53,7 +53,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
         const profileSnap = await getDoc(profileRef);
         const existingData = profileSnap.exists() ? profileSnap.data() : {};
 
-        // Lista actualizada de todos los módulos disponibles
+        // Lista de todos los módulos disponibles en el sistema
         const allAvailableModules = [
             'inventory', 
             'pos', 
@@ -80,14 +80,15 @@ function AppContent({ children }: { children: React.ReactNode }) {
               ? new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000).toISOString() 
               : new Date().toISOString(),
             createdAt: existingData.createdAt || new Date().toISOString(),
-            enabledModules: allAvailableModules,
-            lockedModules: [], // Comenzar sin nada bloqueado
-            isPinRequired: false, // Seguridad apagada por defecto para nuevos usuarios
+            enabledModules: allAvailableModules, // Solo activamos todos para usuarios nuevos
+            lockedModules: [],
+            isPinRequired: false,
             showInfoOnReceipt: true,
             businessRIF: "",
             businessAddress: ""
           } : {
-            enabledModules: Array.from(new Set([...(existingData.enabledModules || []), ...allAvailableModules])),
+            // Para usuarios existentes, NO volvemos a sumar todos los módulos automáticamente
+            // para que las desactivaciones manuales sean respetadas.
             ...(!existingData.lockedModules && { lockedModules: [] })
           })
         };

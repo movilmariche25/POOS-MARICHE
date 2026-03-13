@@ -14,6 +14,7 @@ export type Product = {
   name: string;
   category: string;
   sku: string;
+  barcode?: string;
   costPrice: number;
   promoPrice?: number;
   stockLevel: number;

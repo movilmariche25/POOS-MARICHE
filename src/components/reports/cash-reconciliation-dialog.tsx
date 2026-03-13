@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { Sale, PaymentMethod, DailyReconciliation, ReconciliationPaymentMethodSummary } from "@/lib/types";
+import type { Sale, PaymentMethod, DailyReconciliation, ReconciliationPaymentMethodSummary, UserProfile } from "@/lib/types";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 import { useCurrency } from "@/hooks/use-currency";
-import { useFirebase } from "@/firebase";
+import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { collection, doc, writeBatch } from "firebase/firestore";
 import { format as formatDate, parseISO } from "date-fns";
@@ -39,6 +39,12 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
     'Pago Móvil': 0,
     'Transferencia': 0,
   });
+
+  const profileRef = useMemoFirebase(() => 
+    (firestore && user) ? doc(firestore, 'users', user.uid) : null,
+    [firestore, user?.uid]
+  );
+  const { data: profile } = useDoc<UserProfile>(profileRef);
 
   const {
     expectedAmounts,
@@ -121,7 +127,11 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
   
   const onPrint = () => {
     if (!completedReconciliation) return;
-    handlePrintReconciliation({ reconciliation: completedReconciliation, currency }, (error) => {
+    handlePrintReconciliation({ 
+        reconciliation: completedReconciliation, 
+        currency,
+        businessName: profile?.businessName
+    }, (error) => {
       toast({ variant: "destructive", title: "Error de Impresión", description: error });
     });
   };
@@ -206,7 +216,11 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
             <>
                 <DialogHeader><DialogTitle>Cierre Completado</DialogTitle></DialogHeader>
                 <ScrollArea className="flex-1 pr-4 py-4">
-                    <ReconciliationTicket reconciliation={completedReconciliation} currency={currency} />
+                    <ReconciliationTicket 
+                        reconciliation={completedReconciliation} 
+                        currency={currency} 
+                        businessName={profile?.businessName}
+                    />
                 </ScrollArea>
                 <DialogFooter className="mt-4">
                     <Button onClick={onPrint} variant="outline"><Printer className="mr-2 h-4 w-4" /> Imprimir</Button>
@@ -247,7 +261,7 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
                                     return (
                                         <div key={method} className="p-3 bg-background rounded-lg flex justify-between items-center text-xs border shadow-sm">
                                             <span className="font-bold text-muted-foreground uppercase">{method}:</span>
-                                            <span className={cn("font-black", differences[method] < 0 ? 'text-destructive' : 'text-green-600')}>
+                                            <span className={cn("font-black")}>
                                                 {differences[method] >= 0 ? '+' : ''}{symbol}{formatCurrency(differences[method])}
                                             </span>
                                         </div>
@@ -256,7 +270,7 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
                             </div>
                             <div className="border-t pt-4 mt-4 flex justify-between items-center">
                                 <span className="font-black text-xs uppercase text-slate-600">Diferencia Total ($):</span>
-                                <span className={cn("text-xl font-black", totalDifference < 0 ? 'text-destructive' : 'text-green-600')}>
+                                <span className={cn("text-xl font-black")}>
                                     {totalDifference >= 0 ? '+' : ''}${formatCurrency(totalDifference)}
                                 </span>
                             </div>

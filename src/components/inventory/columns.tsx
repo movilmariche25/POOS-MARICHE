@@ -1,4 +1,3 @@
-
 "use client"
 
 import type { ColumnDef } from "@tanstack/react-table"
@@ -12,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { ArrowUpDown, MoreHorizontal, Edit, Trash2, TicketPercent, PackagePlus, Lock, Percent, Info, Clock, AlertTriangle, Landmark, PlusCircle } from "lucide-react"
+import { ArrowUpDown, MoreHorizontal, Edit, Trash2, TicketPercent, PackagePlus, Lock, Percent, Info, Clock, AlertTriangle, Landmark, PlusCircle, Barcode } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { ProductFormDialog } from "./product-form-dialog"
 import { useToast } from "@/hooks/use-toast"
@@ -46,7 +45,7 @@ const ActionsCell = ({ product }: { product: Product }) => {
         const productRef = doc(firestore, 'users', user.uid, 'products', product.id);
         deleteDocumentNonBlocking(productRef);
         toast({
-            title: "Producto Eliminado",
+            title: "Producto Eliminar",
             description: `${product.name} ha sido eliminado del inventario.`,
             variant: "destructive"
         })
@@ -179,7 +178,21 @@ export const columns: ColumnDef<Product>[] = [
   },
   {
     accessorKey: "sku",
-    header: "SKU",
+    header: "ID / Código",
+    cell: ({ row }) => {
+        const p = row.original;
+        return (
+            <div className="flex flex-col gap-1">
+                <span className="font-mono text-[10px] font-bold">{p.sku}</span>
+                {p.barcode && (
+                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded w-fit">
+                        <Barcode className="w-2.5 h-2.5" />
+                        <span>{p.barcode}</span>
+                    </div>
+                )}
+            </div>
+        )
+    }
   },
   {
     accessorKey: "name",
@@ -255,6 +268,7 @@ export const columns: ColumnDef<Product>[] = [
     cell: ({ row, table }) => {
       const product = row.original;
       const allProducts = (table.options.meta as { allProducts: Product[] })?.allProducts || [];
+      const showRepairs = (table.options.meta as any)?.showRepairs ?? true;
       const unitLabel = product.unit && product.unit !== 'unit' ? ` ${product.unit}` : '';
 
       let availableStock: number;
@@ -303,7 +317,10 @@ export const columns: ColumnDef<Product>[] = [
                         <p className="font-black text-xs border-b pb-1">DESGLOSE DE STOCK:</p>
                         <div className="text-[10px] space-y-1">
                             <div className="flex justify-between gap-6"><span>Físico en estante:</span><span className="font-black">{product.stockLevel || 0}{unitLabel}</span></div>
-                            <div className="flex justify-between gap-6 text-amber-600 font-bold"><span>En taller (Reservado):</span><span className="font-black">-{product.reservedStock || 0}{unitLabel}</span></div>
+                            <div className="flex justify-between gap-6 text-amber-600 font-bold">
+                                <span>{showRepairs ? "En taller (Reservado):" : "Apartado / Reservado:"}</span>
+                                <span className="font-black">-{product.reservedStock || 0}{unitLabel}</span>
+                            </div>
                             <div className="flex justify-between gap-6 text-destructive font-bold"><span>Dañado/Garantía:</span><span className="font-black">-{product.damagedStock || 0}{unitLabel}</span></div>
                             <div className="border-t pt-1 flex justify-between gap-6 font-black text-primary text-[11px]"><span>DISPONIBLE REAL:</span><span className="font-black">{availableStock}{unitLabel}</span></div>
                         </div>

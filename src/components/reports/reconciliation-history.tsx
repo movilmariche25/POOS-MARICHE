@@ -1,7 +1,6 @@
-
 "use client";
 
-import type { DailyReconciliation, PaymentMethod } from "@/lib/types";
+import type { DailyReconciliation, PaymentMethod, UserProfile } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "../ui/accordion";
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from "date-fns";
@@ -18,6 +17,8 @@ import { useState, useMemo } from "react";
 import type { DateRange } from "react-day-picker";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Calendar } from "../ui/calendar";
+import { useFirebase, useDoc, useMemoFirebase } from "@/firebase";
+import { doc } from "firebase/firestore";
 
 type ReconciliationHistoryProps = {
   reconciliations: DailyReconciliation[];
@@ -37,10 +38,21 @@ export function ReconciliationHistory({ reconciliations, isLoading }: Reconcilia
   const currency = useCurrency();
   const { format: formatCurrency, getSymbol } = currency;
   const { toast } = useToast();
+  const { firestore, user } = useFirebase();
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
+  const profileRef = useMemoFirebase(() => 
+    (firestore && user) ? doc(firestore, 'users', user.uid) : null,
+    [firestore, user?.uid]
+  );
+  const { data: profile } = useDoc<UserProfile>(profileRef);
+
   const onPrint = (reconciliation: DailyReconciliation) => {
-    handlePrintReconciliation({ reconciliation, currency }, (error) => {
+    handlePrintReconciliation({ 
+        reconciliation, 
+        currency,
+        businessName: profile?.businessName
+    }, (error) => {
       toast({
         variant: "destructive",
         title: "Error de Impresión",
@@ -194,7 +206,7 @@ export function ReconciliationHistory({ reconciliations, isLoading }: Reconcilia
                                                             <TableCell className="py-2 text-xs font-medium">{method}</TableCell>
                                                             <TableCell className="py-2 text-right text-xs">{symbol}{formatCurrency(details.expected)}</TableCell>
                                                             <TableCell className="py-2 text-right text-xs">{symbol}{formatCurrency(details.counted)}</TableCell>
-                                                            <TableCell className={cn("py-2 text-right text-xs font-bold", details.difference < 0 ? 'text-destructive' : 'text-green-600')}>
+                                                            <TableCell className={cn("py-2 text-right text-xs font-bold")}>
                                                                 {details.difference >= 0 ? '+' : ''}{symbol}{formatCurrency(details.difference)}
                                                             </TableCell>
                                                         </TableRow>
@@ -202,7 +214,7 @@ export function ReconciliationHistory({ reconciliations, isLoading }: Reconcilia
                                                 })}
                                                 <TableRow className="font-black bg-primary/5 h-10">
                                                     <TableCell colSpan={3} className="text-xs uppercase text-primary">Diferencia Total Consolidada ($)</TableCell>
-                                                    <TableCell className={cn("text-right text-base", recon.totalDifference < 0 ? 'text-destructive' : 'text-green-600')}>
+                                                    <TableCell className={cn("text-right text-base")}>
                                                         {recon.totalDifference >= 0 ? '+' : ''}{getSymbol('USD')}{formatCurrency(recon.totalDifference, 'USD')}
                                                     </TableCell>
                                                 </TableRow>

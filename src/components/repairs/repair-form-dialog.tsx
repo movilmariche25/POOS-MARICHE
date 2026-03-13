@@ -198,7 +198,6 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
               const promoPrice = mainPart.promoPrice;
               const regularPrice = getFinalPrice(mainPart);
 
-              // Si ya tiene el precio de promo, volvemos al regular. Si no, ponemos el de promo.
               if (Math.abs(currentPrice - promoPrice) < 0.01) {
                   form.setValue('estimatedCost', regularPrice, { shouldValidate: true });
                   form.setValue('isPromo', false, { shouldValidate: true });
@@ -299,19 +298,21 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="sm:max-w-xl" onPointerDownOutside={(e) => e.preventDefault()}>
-        <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-                {repairJob ? 'Detalles de Reparación' : 'Nuevo Registro de Reparación'}
-                {repairJob?.isPaid && <CheckCircle2 className="w-5 h-5 text-green-500" />}
-            </DialogTitle>
-            <DialogDescription>Gestión técnica y resumen de cuenta blindado del equipo.</DialogDescription>
-        </DialogHeader>
+      <DialogContent className="sm:max-w-xl max-h-[90vh] flex flex-col p-0" onPointerDownOutside={(e) => e.preventDefault()}>
+        <div className="p-6 pb-2">
+            <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                    {repairJob ? 'Detalles de Reparación' : 'Nuevo Registro de Reparación'}
+                    {repairJob?.isPaid && <CheckCircle2 className="w-5 h-5 text-green-500" />}
+                </DialogTitle>
+                <DialogDescription>Gestión técnica y resumen de cuenta blindado del equipo.</DialogDescription>
+            </DialogHeader>
+        </div>
         
-        <div className="space-y-6 overflow-y-auto max-h-[75vh] pr-2">
-            <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                    <div className="space-y-4 p-3 border rounded-md bg-muted/5">
+        <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
+                <div className="flex-1 overflow-y-auto px-6 space-y-6">
+                    <div className="space-y-4 p-3 border rounded-md bg-muted/5 mt-2">
                         <div className="flex justify-between items-center">
                             <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Datos del Cliente</p>
                             {foundCustomer && !repairJob && (
@@ -465,7 +466,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                         )}
                     </div>
 
-                    <div className="p-4 bg-primary/5 rounded-lg border border-primary/10 space-y-3">
+                    <div className="p-4 bg-primary/5 rounded-lg border border-primary/10 space-y-3 mb-6">
                         <div className="flex items-center gap-2 text-primary font-black uppercase text-[10px] tracking-widest border-b border-primary/10 pb-2">
                             <History className="w-3.5 h-3.5" /> Estado de Cuenta
                         </div>
@@ -492,16 +493,18 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <DialogFooter className="gap-2 pt-4 border-t mt-4 sticky bottom-0 bg-white py-2">
+                <div className="px-6 py-4 border-t bg-white">
+                    <DialogFooter className="gap-2">
                         <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isSubmitting}>Cancelar</Button>
                         <Button type="submit" disabled={isSubmitting}>
                             {isSubmitting ? "SINCRONIZANDO..." : (repairJob ? "Guardar Cambios" : "Registrar e Imprimir")}
                         </Button>
                     </DialogFooter>
-                </form>
-            </Form>
-        </div>
+                </div>
+            </form>
+        </Form>
 
         <ProductFormDialog 
             product={productToEdit || undefined} 

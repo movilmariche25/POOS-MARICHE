@@ -11,7 +11,7 @@ import { format, startOfDay, endOfDay, isWithinInterval, addWeeks, isAfter, pars
 import { es } from "date-fns/locale";
 import { useCurrency } from "@/hooks/use-currency";
 import { 
-    CalendarIcon, TrendingUp, ShoppingBag, Home, Users, Wallet, Settings2, Save, Banknote, HandCoins, HandHelping, PieChart, Rocket, ArrowRightCircle, Info, Landmark, ArrowRightLeft, DollarSign, Smartphone, CreditCard, RefreshCcw, ArrowDownCircle
+    CalendarIcon, TrendingUp, ShoppingBag, Home, Users, Wallet, Settings2, Save, Banknote, HandCoins, HandHelping, PieChart, Rocket, ArrowRightCircle, Info, Landmark, ArrowRightLeft, DollarSign, Smartphone, CreditCard, RefreshCcw, ArrowDownCircle, Package
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -28,6 +28,7 @@ import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip as ChartToo
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { SecurityGate } from "@/components/security-gate";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import Link from "next/link";
 
 const methodIcons: Record<string, any> = {
@@ -253,30 +254,60 @@ function TreasuryContent() {
     }, [sales, exchanges, expenses, payroll, loans, settings, date, convert]);
 
     const stats = useMemo(() => {
-        if (!date?.from || !sales || !repairJobs || !products) return { V: 0, C: 0, G: 0, investment: 0, salary: 0, totalMerchandise: 0, perPartner: 0, projectionData: [] };
+        if (!date?.from || !sales || !repairJobs || !products) return { V: 0, C: 0, G: 0, investment: 0, salary: 0, totalMerchandise: 0, perPartner: 0, projectionData: [], itemsToReplenish: [] };
         const from = startOfDay(date.from);
         const to = endOfDay(date.to || date.from);
         const filteredSales = sales.filter(s => s.status === 'completed' && s.transactionDate && isWithinInterval(new Date(s.transactionDate), { start: from, end: to }));
         const V = filteredSales.reduce((sum, s) => sum + (s.actualPaidAmount ?? s.totalAmount), 0);
-        let C = 0; const involvedRepairs = new Set<string>();
+        
+        let C = 0; 
+        const involvedRepairs = new Set<string>();
+        const replenishmentMap = new Map<string, { name: string, quantity: number, unitCost: number, totalCost: number }>();
+
         filteredSales.forEach(sale => {
             sale.items.forEach(item => {
-                if (item.isRepair || sale.repairJobId) involvedRepairs.add(sale.repairJobId || item.productId);
-                else if (item.isCustom) C += (item.customCostPrice || 0) * item.quantity;
-                else { const p = products.find(prod => prod.id === item.productId); C += (p?.costPrice || 0) * item.quantity; }
+                if (item.isRepair || sale.repairJobId) {
+                    involvedRepairs.add(sale.repairJobId || item.productId);
+                } else if (item.isCustom) {
+                    const cost = (item.customCostPrice || 0) * item.quantity;
+                    C += cost;
+                } else {
+                    const p = products.find(prod => prod.id === item.productId);
+                    const cost = (p?.costPrice || 0) * item.quantity;
+                    C += cost;
+
+                    // Agregar a la lista de reposición (Solo mercancía de inventario estándar)
+                    const existing = replenishmentMap.get(item.productId);
+                    if (existing) {
+                        existing.quantity += item.quantity;
+                        existing.totalCost += cost;
+                    } else {
+                        replenishmentMap.set(item.productId, {
+                            name: item.name,
+                            quantity: item.quantity,
+                            unitCost: p?.costPrice || 0,
+                            totalCost: cost
+                        });
+                    }
+                }
             });
         });
+
         involvedRepairs.forEach(rid => {
             const repair = repairJobs.find(rj => rj.id === rid);
             if (repair && repair.reservedParts) C += repair.reservedParts.reduce((sum, p) => sum + (p.costPrice * p.quantity), 0);
         });
+
         const G = Math.max(0, V - C - currentRent);
         const investment = G * (currentInvPercent / 100);
         const salary = G * (1 - currentInvPercent / 100);
         const totalMerchandise = C + investment;
         const perPartner = currentPartners > 0 ? salary / currentPartners : 0;
         const projectionData = Array.from({ length: 13 }).map((_, i) => ({ name: format(addWeeks(new Date(), i), "dd MMM", { locale: es }), capital: investment * i }));
-        return { V, C, G, investment, salary, totalMerchandise, perPartner, projectionData };
+        
+        const itemsToReplenish = Array.from(replenishmentMap.values()).sort((a, b) => b.totalCost - a.totalCost);
+
+        return { V, C, G, investment, salary, totalMerchandise, perPartner, projectionData, itemsToReplenish };
     }, [date, sales, products, repairJobs, currentRent, currentInvPercent, currentPartners]);
 
     const remainingBs = useMemo(() => {
@@ -368,10 +399,68 @@ function TreasuryContent() {
                     <h2 className="text-sm font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><Wallet className="w-4 h-4" /> Distribución del Periodo Seleccionado</h2>
                     <div className="grid gap-4 md:grid-cols-3">
                         <Card className="border-none bg-slate-900 text-white shadow-xl overflow-hidden relative group"><div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform"><Home className="w-24 h-24 rotate-12" /></div><CardContent className="pt-6 space-y-1"><p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">1. Apartar para Alquiler</p><p className="text-3xl font-black">${formatCurrency(currentRent)}</p><p className="text-[9px] text-slate-500 font-bold uppercase">Monto Fijo</p></CardContent></Card>
-                        <Card className="border-none bg-primary text-white shadow-xl overflow-hidden relative group"><div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform"><ShoppingBag className="w-24 h-24 -rotate-12" /></div><CardContent className="pt-6 space-y-1"><p className="text-[10px] font-black text-primary-foreground/60 uppercase tracking-tighter">2. Comprar Mercancía</p><p className="text-3xl font-black">${formatCurrency(stats.totalMerchandise)}</p><p className="text-[9px] text-primary-foreground/40 font-bold uppercase">Reposición + Inversión Nueva</p></CardContent></Card>
+                        <Card className="border-none bg-primary text-white shadow-xl overflow-hidden relative group">
+                            <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform">
+                                <ShoppingBag className="w-24 h-24 -rotate-12" />
+                            </div>
+                            <CardContent className="pt-6 space-y-3 relative z-10">
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-black text-primary-foreground/60 uppercase tracking-tighter">2. Comprar Mercancía</p>
+                                    <p className="text-3xl font-black">${formatCurrency(stats.totalMerchandise)}</p>
+                                </div>
+                                <div className="pt-2 border-t border-white/10 space-y-1">
+                                    <div className="flex justify-between text-[9px] font-bold text-primary-foreground/50 uppercase">
+                                        <span>Reposición (Art. Vendidos):</span>
+                                        <span>${formatCurrency(stats.C)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-[9px] font-bold text-primary-foreground/50 uppercase">
+                                        <span>Inversión Nueva ({currentInvPercent}%):</span>
+                                        <span>${formatCurrency(stats.investment)}</span>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
                         <Card className="border-none bg-green-600 text-white shadow-xl overflow-hidden relative group"><div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform"><HandCoins className="w-24 h-24 rotate-12" /></div><CardContent className="pt-6 space-y-3 relative z-10"><div className="space-y-1"><p className="text-[10px] font-black text-green-100 uppercase tracking-tighter">3. Sueldo Socios ({currentPartners})</p><p className="text-3xl font-black">${formatCurrency(stats.salary)}</p></div><div className="pt-2 mt-1 border-t border-white/10"><div className="flex justify-between items-center mb-4"><span className="text-[10px] font-bold text-green-50/80 uppercase">CADA UNO:</span><span className="text-sm font-black text-white">${formatCurrency(stats.perPartner)}</span></div><div className="p-3 rounded-xl bg-black/20 border border-white/10 space-y-3"><p className="text-[8px] font-black text-green-200 uppercase tracking-widest text-center flex items-center justify-center gap-1.5"><Banknote className="w-3 h-3" /> Calculadora de Reparto ($ / Bs)</p><div className="grid grid-cols-2 gap-3"><div className="space-y-1"><label className="text-[7px] font-bold text-green-100 uppercase">Pagar en USD ($)</label><input type="number" step="0.01" value={usdSplit} onChange={(e) => setUsdSplit(e.target.value)} className="h-8 w-full rounded bg-white/10 border-none text-white px-2 text-[11px] font-black focus:ring-1 focus:ring-white/20" placeholder="0.00" /></div><div className="space-y-1 text-right"><label className="text-[7px] font-bold text-green-100 uppercase">Resto en Bs (BCV)</label><div className="h-8 flex items-center justify-end text-[11px] font-black text-white">Bs {formatCurrency(remainingBs)}</div></div></div></div></div></CardContent></Card>
                     </div>
                 </div>
+
+                {/* Lista de mercancía para reponer */}
+                {stats.itemsToReplenish.length > 0 && (
+                    <Card className="border-primary/10 shadow-md">
+                        <CardHeader className="py-3 bg-muted/20">
+                            <CardTitle className="text-xs uppercase font-black flex items-center gap-2 text-slate-600">
+                                <Package className="w-4 h-4" /> Mercancía Vendida (Para Reponer)
+                            </CardTitle>
+                            <CardDescription className="text-[10px]">Lista detallada de artículos que salieron de stock en este periodo.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-0">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="bg-muted/10">
+                                        <TableHead className="text-[10px] font-black uppercase">Producto</TableHead>
+                                        <TableHead className="text-center text-[10px] font-black uppercase">Cantidad</TableHead>
+                                        <TableHead className="text-right text-[10px] font-black uppercase">Costo Unit.</TableHead>
+                                        <TableHead className="text-right text-[10px] font-black uppercase">Total Reposición</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {stats.itemsToReplenish.map((item, idx) => (
+                                        <TableRow key={idx} className="h-8">
+                                            <TableCell className="py-2 text-[11px] font-bold uppercase text-slate-700">{item.name}</TableCell>
+                                            <TableCell className="py-2 text-center text-[11px] font-black text-primary">x{item.quantity}</TableCell>
+                                            <TableCell className="py-2 text-right text-[11px] text-muted-foreground">${formatCurrency(item.unitCost)}</TableCell>
+                                            <TableCell className="py-2 text-right text-[11px] font-black text-slate-900">${formatCurrency(item.totalCost)}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                    <TableRow className="bg-primary/5 font-black">
+                                        <TableCell colSpan={3} className="text-[10px] uppercase text-primary">Total Sugerido para Reposición:</TableCell>
+                                        <TableCell className="text-right text-sm text-primary">${formatCurrency(stats.itemsToReplenish.reduce((sum, i) => sum + i.totalCost, 0))}</TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                )}
 
                 <Separator className="my-8" />
 
