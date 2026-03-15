@@ -1,4 +1,3 @@
-
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -290,8 +289,9 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
     }
   }
 
-  const currentPaid = repairJob?.amountPaid || 0;
-  const currentTotal = form.watch('estimatedCost') || 0;
+  const currentPaid = Number(repairJob?.amountPaid || 0);
+  const currentTotalRaw = form.watch('estimatedCost');
+  const currentTotal = typeof currentTotalRaw === 'number' ? currentTotalRaw : parseFloat(currentTotalRaw) || 0;
   const currentPending = Math.max(0, currentTotal - currentPaid);
   const hasPromoAvailable = mainPart && mainPart.promoPrice && mainPart.promoPrice > 0;
 
@@ -426,7 +426,13 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                                 <FormLabel>Costo Estimado ($)</FormLabel>
                                 <div className="relative flex items-center">
                                     <DollarSign className="absolute left-2.5 h-4 w-4 text-muted-foreground" />
-                                    <Input type="number" step="0.01" {...field} className="pl-8 pr-10" disabled={repairJob?.isPaid} />
+                                    <Input 
+                                        type="number" 
+                                        step="0.01" 
+                                        {...field} 
+                                        className="pl-8 pr-10 bg-muted/50 cursor-not-allowed font-bold" 
+                                        readOnly 
+                                    />
                                     {hasPromoAvailable && !repairJob?.isPaid && (
                                         <TooltipProvider>
                                             <Tooltip>

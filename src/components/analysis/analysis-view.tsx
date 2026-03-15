@@ -10,11 +10,11 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { subDays, startOfMonth, isAfter, isBefore, differenceInDays, parseISO } from "date-fns";
+import { es } from "date-fns/locale";
 import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
 import { 
     TrendingUp, 
-    AlertTriangle, 
     ShoppingCart, 
     Flame, 
     Ghost, 
@@ -24,9 +24,13 @@ import {
     ChevronUp,
     ChevronDown,
     Layers,
-    DollarSign
+    DollarSign,
+    Package,
+    Info
 } from "lucide-react";
 import { Progress } from "../ui/progress";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { ReplenishStockDialog } from "../inventory/replenish-stock-dialog";
 
 type AnalysisViewProps = {
     sales: Sale[];
@@ -41,7 +45,10 @@ type DateRangeFilter = '7d' | '30d' | 'this_month';
 
 export function AnalysisView({ sales, products, repairJobs, isLoading, enabledModules, isAdmin }: AnalysisViewProps) {
     const [dateRange, setDateRange] = useState<DateRangeFilter>('30d');
+    const [replenishProduct, setReplenishProduct] = useState<Product | null>(null);
     const { format: formatCurrency, getSymbol, getFinalPrice } = useCurrency();
+
+    const showRepairs = enabledModules?.includes('repairs') ?? true;
 
     const stats = useMemo(() => {
         if (isLoading || !sales || !products || !repairJobs) return null;
@@ -60,7 +67,7 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
             case 'this_month':
                 currentStart = startOfMonth(now);
                 prevStart = startOfMonth(subDays(currentStart, 1));
-                daysInPeriod = differenceInDays(now, currentStart) || 1;
+                daysInPeriod = Math.max(1, differenceInDays(now, currentStart));
                 break;
             case '30d':
             default:
@@ -116,13 +123,15 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
         const deadStock = inventoryHealth.filter(p => p.soldInPeriod === 0 && p.available > 0 && (!p.createdAt || differenceInDays(now, parseISO(p.createdAt)) > 30));
 
         const modelCorrelation: Record<string, Record<string, number>> = {};
-        repairJobs.forEach(job => {
-            const model = `${job.deviceMake} ${job.deviceModel}`.toUpperCase();
-            if (!modelCorrelation[model]) modelCorrelation[model] = {};
-            job.reservedParts?.forEach(part => {
-                modelCorrelation[model][part.productName] = (modelCorrelation[model][part.productName] || 0) + part.quantity;
+        if (showRepairs) {
+            repairJobs.forEach(job => {
+                const model = `${job.deviceMake} ${job.deviceModel}`.toUpperCase();
+                if (!modelCorrelation[model]) modelCorrelation[model] = {};
+                job.reservedParts?.forEach(part => {
+                    modelCorrelation[model][part.productName] = (modelCorrelation[model][part.productName] || 0) + part.quantity;
+                });
             });
-        });
+        }
 
         return { 
             currentProfit, 
@@ -131,18 +140,21 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
             toBuy, 
             deadStock, 
             modelCorrelation,
+            daysInPeriod,
             avgMargin: inventoryHealth.length > 0 ? inventoryHealth.reduce((acc, p) => acc + p.margin, 0) / products.length : 0
         };
-    }, [sales, products, repairJobs, isLoading, dateRange, getFinalPrice]);
+    }, [sales, products, repairJobs, isLoading, dateRange, getFinalPrice, showRepairs]);
 
     if (isLoading) return <div className="p-8 text-center"><Skeleton className="h-96 w-full" /></div>;
     if (!stats) return null;
+
+    const periodLabel = dateRange === '7d' ? '7 días' : dateRange === '30d' ? '30 días' : 'este mes';
 
     return (
         <div className="space-y-8 pb-20">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-black tracking-tight text-slate-800">PANEL DE DECISIONES ESTRATÉGICAS</h1>
+                    <h1 className="text-2xl font-black tracking-tight text-slate-800 uppercase">Análisis Estratégico de Artículos</h1>
                     <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Inteligencia de Datos para Maximizar Capital</p>
                 </div>
                 <Select value={dateRange} onValueChange={(v: any) => setDateRange(v)}>
@@ -203,14 +215,14 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
                             <Zap className="w-5 h-5 fill-primary" />
                             <CardTitle className="text-sm font-black uppercase">¿Qué Comprar Hoy? (Alta Velocidad)</CardTitle>
                         </div>
-                        <CardDescription>Productos que se agotarán en menos de 7 días según ritmo de venta.</CardDescription>
+                        <CardDescription>Artículos que se agotarán pronto según ritmo de venta.</CardDescription>
                     </CardHeader>
                     <CardContent className="p-0">
                         <Table>
                             <TableHeader>
                                 <TableRow>
                                     <TableHead className="text-[10px] uppercase">Producto</TableHead>
-                                    <TableHead className="text-center text-[10px] uppercase">Vendido</TableHead>
+                                    <TableHead className="text-center text-[10px] uppercase">Vendido ({periodLabel})</TableHead>
                                     <TableHead className="text-center text-[10px] uppercase">Quedan</TableHead>
                                     <TableHead className="text-right text-[10px] uppercase">Acción</TableHead>
                                 </TableRow>
@@ -224,7 +236,14 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
                                             <Badge variant="destructive" className="animate-pulse">{p.daysRemaining} días</Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            <Button size="sm" variant="outline" className="h-7 text-[10px] font-black uppercase">Reabastecer</Button>
+                                            <Button 
+                                                size="sm" 
+                                                variant="outline" 
+                                                className="h-7 text-[10px] font-black uppercase"
+                                                onClick={() => setReplenishProduct(p as Product)}
+                                            >
+                                                Reabastecer
+                                            </Button>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -240,9 +259,9 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
                     <CardHeader className="bg-slate-50 border-b">
                         <div className="flex items-center gap-2 text-slate-600">
                             <Ghost className="w-5 h-5" />
-                            <CardTitle className="text-sm font-black uppercase">Stock Muerto (Baja Rotación)</CardTitle>
+                            <CardTitle className="text-sm font-black uppercase">Stock Estancado (Baja Rotación)</CardTitle>
                         </div>
-                        <CardDescription>Items en estante hace +30 días sin una sola venta.</CardDescription>
+                        <CardDescription>Artículos sin una sola venta en los últimos 30 días.</CardDescription>
                     </CardHeader>
                     <CardContent className="p-0">
                         <Table>
@@ -274,58 +293,86 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
                 </Card>
             </div>
 
-            <Card className="shadow-lg border-2 border-blue-100">
-                <CardHeader className="bg-blue-50/50 border-b">
-                    <div className="flex items-center gap-2 text-blue-700">
-                        <ArrowRightLeft className="w-5 h-5" />
-                        <CardTitle className="text-sm font-black uppercase">Correlación: Modelos vs Insumos</CardTitle>
-                    </div>
-                    <CardDescription>Piezas más demandadas por cada modelo de equipo que entra al taller.</CardDescription>
-                </CardHeader>
-                <CardContent className="pt-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {Object.entries(stats.modelCorrelation).slice(0, 6).map(([model, parts]) => (
-                            <div key={model} className="p-4 rounded-xl border bg-white shadow-sm space-y-3">
-                                <div className="flex items-center justify-between border-b pb-2">
-                                    <span className="text-xs font-black text-slate-700 truncate max-w-[150px]">{model}</span>
-                                    <Badge variant="secondary" className="text-[9px] uppercase font-bold">{Object.values(parts).reduce((a,b)=>a+b, 0)} Usos</Badge>
+            {showRepairs && Object.keys(stats.modelCorrelation).length > 0 && (
+                <Card className="shadow-lg border-2 border-blue-100">
+                    <CardHeader className="bg-blue-50/50 border-b">
+                        <div className="flex items-center gap-2 text-blue-700">
+                            <ArrowRightLeft className="w-5 h-5" />
+                            <CardTitle className="text-sm font-black uppercase">Correlación: Equipos vs Artículos</CardTitle>
+                        </div>
+                        <CardDescription>Artículos más demandados según el modelo de equipo que ingresa al servicio técnico.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {Object.entries(stats.modelCorrelation).slice(0, 6).map(([model, parts]) => (
+                                <div key={model} className="p-4 rounded-xl border bg-white shadow-sm space-y-3">
+                                    <div className="flex items-center justify-between border-b pb-2">
+                                        <span className="text-xs font-black text-slate-700 truncate max-w-[150px]">{model}</span>
+                                        <Badge variant="secondary" className="text-[9px] uppercase font-bold">{Object.values(parts).reduce((a,b)=>a+b, 0)} Usos</Badge>
+                                    </div>
+                                    <div className="space-y-1">
+                                        {Object.entries(parts).sort((a,b)=>b[1]-a[1]).slice(0, 3).map(([part, count]) => (
+                                            <div key={part} className="flex justify-between text-[10px] items-center">
+                                                <span className="text-muted-foreground">{part}</span>
+                                                <span className="font-black text-primary">x{count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                                <div className="space-y-1">
-                                    {Object.entries(parts).sort((a,b)=>b[1]-a[1]).slice(0, 3).map(([part, count]) => (
-                                        <div key={part} className="flex justify-between text-[10px] items-center">
-                                            <span className="text-muted-foreground">{part}</span>
-                                            <span className="font-black text-primary">x{count}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </CardContent>
-            </Card>
+                            ))}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             <Card className="shadow-xl">
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><Layers className="w-5 h-5 text-primary"/> Inteligencia de Productos</CardTitle>
-                    <CardDescription>Análisis profundo de márgenes porcentuales y días de inventario restante.</CardDescription>
+                    <div className="flex items-center gap-2">
+                        <Layers className="w-5 h-5 text-primary"/>
+                        <div>
+                            <CardTitle className="text-sm font-black uppercase">Rendimiento por Producto</CardTitle>
+                            <CardDescription>Análisis profundo de márgenes porcentuales y días de inventario restante.</CardDescription>
+                        </div>
+                    </div>
                 </CardHeader>
                 <CardContent className="p-0">
                     <Table>
                         <TableHeader>
-                            <TableRow>
-                                <TableHead className="text-[10px] uppercase">Producto</TableHead>
+                            <TableRow className="bg-muted/30">
+                                <TableHead className="text-[10px] uppercase">Artículo</TableHead>
+                                <TableHead className="text-right text-[10px] uppercase">Vendido ({periodLabel})</TableHead>
                                 <TableHead className="text-right text-[10px] uppercase">Margen %</TableHead>
-                                <TableHead className="text-right text-[10px] uppercase">Velocidad (Venta/Día)</TableHead>
+                                <TableHead className="text-right text-[10px] uppercase">
+                                    <div className="flex items-center justify-end gap-1">
+                                        Ritmo de Venta Diaria
+                                        <TooltipProvider>
+                                            <Tooltip>
+                                                <TooltipTrigger><Info className="w-3.5 h-3.5 text-muted-foreground" /></TooltipTrigger>
+                                                <TooltipContent>
+                                                    <p className="text-[10px] font-bold">Promedio de unidades vendidas por día en el periodo seleccionado ({stats.daysInPeriod} días).</p>
+                                                </TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                    </div>
+                                </TableHead>
                                 <TableHead className="text-right text-[10px] uppercase">Días de Stock</TableHead>
                                 <TableHead className="text-center text-[10px] uppercase">Estatus Estratégico</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {stats.inventoryHealth.sort((a,b) => b.soldInPeriod - a.soldInPeriod).slice(0, 15).map(p => (
+                            {stats.inventoryHealth.sort((a, b) => b.soldInPeriod - a.soldInPeriod).slice(0, 15).map(p => (
                                 <TableRow key={p.id}>
                                     <TableCell>
-                                        <p className="font-bold text-xs">{p.name}</p>
-                                        <p className="text-[9px] text-muted-foreground font-mono">{p.sku}</p>
+                                        <div className="flex items-center gap-2">
+                                            <Package className="w-3 h-3 text-muted-foreground" />
+                                            <div>
+                                                <p className="font-bold text-xs">{p.name}</p>
+                                                <p className="text-[9px] text-muted-foreground font-mono">{p.sku}</p>
+                                            </div>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-right font-black text-xs">
+                                        {p.soldInPeriod} {p.unit === 'unit' ? 'u.' : p.unit}
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <Badge variant="outline" className={cn("text-xs font-black", p.margin > 100 ? "text-green-600 border-green-200 bg-green-50" : "text-blue-600")}>
@@ -333,7 +380,7 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right font-mono text-xs font-bold">
-                                        {p.velocity.toFixed(2)}
+                                        {p.velocity.toFixed(2)} <span className="text-[9px] font-normal text-muted-foreground">u/día</span>
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex flex-col items-end">
@@ -347,9 +394,9 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
                                     </TableCell>
                                     <TableCell className="text-center">
                                         {p.velocity > 0.5 ? (
-                                            <Badge className="bg-orange-500 text-white text-[9px] uppercase"><Flame className="w-2 h-2 mr-1"/> Super Venta</Badge>
+                                            <Badge className="bg-orange-500 text-white text-[9px] uppercase"><Flame className="w-2 h-2 mr-1" /> Top Ventas</Badge>
                                         ) : p.margin > 150 ? (
-                                            <Badge className="bg-purple-600 text-white text-[9px] uppercase"><DollarSign className="w-2 h-2 mr-1"/> Alta Utilidad</Badge>
+                                            <Badge className="bg-purple-600 text-white text-[9px] uppercase"><DollarSign className="w-2 h-2 mr-1" /> Alta Utilidad</Badge>
                                         ) : (
                                             <Badge variant="secondary" className="text-[9px] uppercase">Estable</Badge>
                                         )}
@@ -360,6 +407,14 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
                     </Table>
                 </CardContent>
             </Card>
+
+            {replenishProduct && (
+                <ReplenishStockDialog
+                    product={replenishProduct}
+                    isOpen={!!replenishProduct}
+                    onOpenChange={(open) => !open && setReplenishProduct(null)}
+                />
+            )}
         </div>
     );
 }
