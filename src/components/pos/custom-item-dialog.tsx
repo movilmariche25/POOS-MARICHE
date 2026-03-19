@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -30,7 +29,7 @@ export function CustomItemDialog({ onAddCustomItem }: CustomItemDialogProps) {
     const priceNum = parseFloat(price);
     const costNum = parseFloat(costPrice) || 0;
     if (name.trim() && !isNaN(priceNum)) {
-      onAddCustomItem(name.trim(), priceNum, costNum);
+      onAddCustomItem(name.trim().toUpperCase(), priceNum, costNum);
       setName("");
       setPrice("");
       setCostPrice("");
@@ -47,24 +46,25 @@ export function CustomItemDialog({ onAddCustomItem }: CustomItemDialogProps) {
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Venta Rápida (Sin Inventario)</DialogTitle>
+          <DialogTitle className="uppercase font-bold">Venta Rápida</DialogTitle>
           <DialogDescription>
-            Añade un artículo al carrito de forma manual ingresando su nombre, costo y precio de venta en dólares.
+            Añade un artículo al carrito de forma manual ingresando su nombre, costo y precio en dólares.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="custom-name">Nombre del Producto / Servicio</Label>
+            <Label htmlFor="custom-name" className="text-[10px] font-bold uppercase">Nombre del Producto / Servicio</Label>
             <Input
               id="custom-name"
-              placeholder="Ej: Cable Genérico, Limpieza..."
+              placeholder="EJ: CABLE GENÉRICO, LIMPIEZA..."
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value.toUpperCase())}
+              className="uppercase"
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="custom-cost">Costo en $ (Opcional)</Label>
+              <Label htmlFor="custom-cost" className="text-[10px] font-bold uppercase">Costo en $</Label>
               <Input
                 id="custom-cost"
                 type="number"
@@ -72,10 +72,11 @@ export function CustomItemDialog({ onAddCustomItem }: CustomItemDialogProps) {
                 placeholder="0.00"
                 value={costPrice}
                 onChange={(e) => setCostPrice(e.target.value)}
+                className=""
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="custom-price">Precio Venta en $</Label>
+              <Label htmlFor="custom-price" className="text-[10px] font-bold uppercase">Venta en $</Label>
               <Input
                 id="custom-price"
                 type="number"
@@ -84,15 +85,16 @@ export function CustomItemDialog({ onAddCustomItem }: CustomItemDialogProps) {
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                className=""
               />
             </div>
           </div>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+          <Button type="button" variant="outline" onClick={() => setOpen(false)} className="uppercase font-bold">
             Cancelar
           </Button>
-          <Button type="button" onClick={handleAdd} disabled={!name.trim() || !price}>
+          <Button type="button" onClick={handleAdd} disabled={!name.trim() || !price} className="uppercase font-bold">
             Añadir al Carrito
           </Button>
         </DialogFooter>

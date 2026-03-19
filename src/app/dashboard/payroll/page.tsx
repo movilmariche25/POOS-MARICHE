@@ -240,7 +240,7 @@ function AddWorkerDialog({ children, onAdded, isOpen, setIsOpen }: { children: R
             const newDoc = doc(workersRef);
             await setDocumentNonBlocking(newDoc, {
                 id: newDoc.id,
-                name: name.trim(),
+                name: name.trim().toUpperCase(),
                 phone: phone.trim(),
                 active: true,
                 createdAt: new Date().toISOString()
@@ -267,7 +267,7 @@ function AddWorkerDialog({ children, onAdded, isOpen, setIsOpen }: { children: R
                 <form onSubmit={handleSubmit} className="space-y-4 py-4">
                     <div className="space-y-2">
                         <Label className="text-[10px] font-black uppercase tracking-tighter">Nombre Completo</Label>
-                        <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="EJ: CARLOS RODRIGUEZ" className="uppercase font-bold" required />
+                        <Input value={name} onChange={(e) => setName(e.target.value.toUpperCase())} placeholder="EJ: CARLOS RODRIGUEZ" className="uppercase" required />
                     </div>
                     <div className="space-y-2">
                         <Label className="text-[10px] font-black uppercase tracking-tighter">Teléfono</Label>
@@ -321,7 +321,7 @@ function AddPaymentDialog({ children, onAdded, isOpen, setIsOpen, workers }: { c
                 methodBs: methodBs,
                 dateFrom,
                 dateTo,
-                notes,
+                notes: notes.trim().toUpperCase(),
                 createdAt: new Date().toISOString()
             };
 
@@ -356,11 +356,11 @@ function AddPaymentDialog({ children, onAdded, isOpen, setIsOpen, workers }: { c
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
                                     <Label className="text-[10px] font-bold">Desde</Label>
-                                    <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-xs font-bold" />
+                                    <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-9 text-xs" />
                                 </div>
                                 <div className="space-y-1">
                                     <Label className="text-[10px] font-bold">Hasta</Label>
-                                    <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-xs font-bold" />
+                                    <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-9 text-xs" />
                                 </div>
                             </div>
                         </div>
@@ -368,12 +368,12 @@ function AddPaymentDialog({ children, onAdded, isOpen, setIsOpen, workers }: { c
                         <div className="space-y-3">
                             <Label className="flex items-center gap-2 font-black text-xs uppercase tracking-tighter"><User className="w-4 h-4 text-primary"/> Beneficiario del Pago</Label>
                             <Select value={selectedWorkerId} onValueChange={setSelectedWorkerId}>
-                                <SelectTrigger className="h-12 text-sm font-black border-2 uppercase">
+                                <SelectTrigger className="h-12 text-sm border-2 uppercase">
                                     <SelectValue placeholder="Seleccionar personal..." />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {workers.map(w => (
-                                        <SelectItem key={w.id} value={w.id!} className="font-bold uppercase text-xs">{w.name}</SelectItem>
+                                        <SelectItem key={w.id} value={w.id!} className="uppercase text-xs">{w.name}</SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
@@ -388,14 +388,14 @@ function AddPaymentDialog({ children, onAdded, isOpen, setIsOpen, workers }: { c
                                     <Label className="text-xs font-bold text-slate-600">En Dólares ($)</Label>
                                     <div className="relative">
                                         <DollarSign className="absolute left-3 top-3 h-4 w-4 text-primary" />
-                                        <Input type="number" step="0.01" value={amountUSD} onChange={(e) => setAmountUSD(e.target.value)} className="pl-9 h-12 text-lg font-black" placeholder="0.00" />
+                                        <Input type="number" step="0.01" value={amountUSD} onChange={(e) => setAmountUSD(e.target.value)} className="pl-9 h-12 text-lg" placeholder="0.00" />
                                     </div>
                                 </div>
                                 <div className="space-y-2">
                                     <Label className="text-xs font-bold text-slate-600">En Bolívares (Bs)</Label>
                                     <div className="relative">
                                         <Landmark className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                                        <Input type="number" step="0.01" value={amountBs} onChange={(e) => setAmountBs(e.target.value)} className="pl-9 h-12 text-lg font-black" placeholder="0.00" />
+                                        <Input type="number" step="0.01" value={amountBs} onChange={(e) => setAmountBs(e.target.value)} className="pl-9 h-12 text-lg" placeholder="0.00" />
                                     </div>
                                     <div className="flex justify-between items-center mt-1">
                                         <Select value={methodBs} onValueChange={(v: any) => setMethodBs(v)}>
@@ -414,7 +414,7 @@ function AddPaymentDialog({ children, onAdded, isOpen, setIsOpen, workers }: { c
 
                         <div className="space-y-2">
                             <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Notas / Referencia</Label>
-                            <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="EJ: PAGO SEMANA 15, EFECTIVO CAJA..." className="uppercase font-bold text-xs" />
+                            <Input value={notes} onChange={(e) => setNotes(e.target.value.toUpperCase())} placeholder="EJ: PAGO SEMANA 15, EFECTIVO CAJA..." className="uppercase text-xs" />
                         </div>
 
                         <Button type="submit" className="w-full h-14 text-lg font-black shadow-xl" disabled={loading || !selectedWorkerId}>

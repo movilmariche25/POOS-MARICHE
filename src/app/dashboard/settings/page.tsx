@@ -1,4 +1,3 @@
-
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -181,13 +180,13 @@ function SettingsContent() {
     useEffect(() => {
         if (profile && !profileForm.formState.isDirty) {
             profileForm.reset({ 
-                businessName: profile.businessName || "",
-                businessAddress: profile.businessAddress || "",
-                businessRIF: profile.businessRIF || "",
+                businessName: (profile.businessName || "").toUpperCase(),
+                businessAddress: (profile.businessAddress || "").toUpperCase(),
+                businessRIF: (profile.businessRIF || "").toUpperCase(),
                 showInfoOnReceipt: profile.showInfoOnReceipt || false,
-                repairWarrantyPolicy: profile.repairWarrantyPolicy || "4 DÍAS POR EL SERVICIO REALIZADO.",
-                repairPickupPolicy: profile.repairPickupPolicy || "7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL NEGOCIO NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.",
-                repairDisclaimer: profile.repairDisclaimer || "NO NOS HACEMOS RESPONSABLES POR TELÉFONOS MOJADOS O QUE SUFRIERON CAÍDAS."
+                repairWarrantyPolicy: (profile.repairWarrantyPolicy || "4 DÍAS POR EL SERVICIO REALIZADO.").toUpperCase(),
+                repairPickupPolicy: (profile.repairPickupPolicy || "7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL NEGOCIO NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.").toUpperCase(),
+                repairDisclaimer: (profile.repairDisclaimer || "NO NOS HACEMOS RESPONSABLES POR TELÉFONOS MOJADOS O QUE SUFRIERON CAÍDAS.").toUpperCase()
             });
             if (!initialEmailSet) {
                 setNewEmail(profile.email || "");
@@ -234,9 +233,18 @@ function SettingsContent() {
 
     const handleSaveProfile = (values: z.infer<typeof profileSchema>) => {
         if (!userProfileRef) return;
-        setDocumentNonBlocking(userProfileRef, values, { merge: true });
+        const finalValues = {
+            ...values,
+            businessName: values.businessName.toUpperCase(),
+            businessAddress: values.businessAddress?.toUpperCase(),
+            businessRIF: values.businessRIF?.toUpperCase(),
+            repairWarrantyPolicy: values.repairWarrantyPolicy?.toUpperCase(),
+            repairPickupPolicy: values.repairPickupPolicy?.toUpperCase(),
+            repairDisclaimer: values.repairDisclaimer?.toUpperCase(),
+        };
+        setDocumentNonBlocking(userProfileRef, finalValues, { merge: true });
         toast({ title: "Perfil Actualizado" });
-        profileForm.reset(values);
+        profileForm.reset(finalValues);
     }
 
     const toggleModuleLock = (moduleId: UserModule) => {
@@ -283,7 +291,6 @@ function SettingsContent() {
             await updateDocumentNonBlocking(userProfileRef, updateData);
             toast({ title: "Seguridad Actualizada" });
             
-            // IMPORTANTE: Limpiar el permiso de sesión para que el usuario deba re-autenticarse
             sessionStorage.removeItem('mm_security_unlocked');
             
             setNewPin("");
@@ -375,7 +382,7 @@ function SettingsContent() {
                     sheet.forEach((row: any) => {
                         const ref = doc(firestore, 'users', user.uid, 'products', row.ID || doc(collection(firestore, 'temp')).id);
                         
-                        let sku = row.SKU ? String(row.SKU).trim() : "";
+                        let sku = row.SKU ? String(row.SKU).trim().toUpperCase() : "";
                         if (!sku) {
                             sku = generateAutoSku();
                         }
@@ -383,8 +390,8 @@ function SettingsContent() {
                         batch.set(ref, { 
                             id: ref.id, 
                             sku: sku, 
-                            name: row.Nombre || 'Producto sin nombre', 
-                            category: row.Categoria || 'General', 
+                            name: (row.Nombre || 'Producto sin nombre').toUpperCase(), 
+                            category: (row.Categoria || 'General').toUpperCase(), 
                             costPrice: Number(row.Costo) || 0, 
                             fixedPrice: Number(row.Venta_Fija) || 0, 
                             stockLevel: Number(row.Stock_Fisico) || 0, 
@@ -403,10 +410,10 @@ function SettingsContent() {
                     });
                 }
                 await batch.commit();
-                toast({ title: "Carga Masiva Exitosa", description: `Se han procesado ${total} registros en tu inventario.` });
+                toast({ title: "Carga Masiva Exitosa", description: `Se han procesado ${total} registros.` });
             } catch (error) {
                 console.error("Import Error:", error);
-                toast({ variant: "destructive", title: "Error al Importar", description: "Asegúrate de que el archivo tenga el formato correcto de la plantilla." });
+                toast({ variant: "destructive", title: "Error al Importar", description: "Verifica el formato del archivo." });
             } finally {
                 setIsImporting(false);
                 if (fileInputRef.current) fileInputRef.current.value = "";
@@ -437,7 +444,7 @@ function SettingsContent() {
                 
                 <Card className="shadow-md border-primary/20 bg-primary/5">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-primary"><ShieldCheck className="w-5 h-5"/> Centro de Seguridad y PIN</CardTitle>
+                        <CardTitle className="flex items-center gap-2 text-primary uppercase font-bold text-sm"><ShieldCheck className="w-5 h-5"/> Centro de Seguridad y PIN</CardTitle>
                         <CardDescription>Controla qué partes del sistema requieren clave de gerente.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
@@ -455,12 +462,12 @@ function SettingsContent() {
                                 <div className="grid grid-cols-1 gap-2">
                                     {availableProtectableModules.map(m => (
                                         <div key={m.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded border border-transparent hover:border-slate-100 transition-all">
-                                            <Label className="text-xs cursor-pointer" htmlFor={`lock-${m.id}`}>{m.label}</Label>
+                                            <Label className="text-xs cursor-pointer uppercase font-bold" htmlFor={`lock-${m.id}`}>{m.label}</Label>
                                             <Switch id={`lock-${m.id}`} checked={lockedModules.includes(m.id)} onCheckedChange={() => toggleModuleLock(m.id)} />
                                         </div>
                                     ))}
                                     <div className="flex items-center justify-between p-2 opacity-50 bg-slate-50 rounded italic border border-slate-200">
-                                        <Label className="text-xs">Configuración (Siempre Bloqueado)</Label>
+                                        <Label className="text-xs uppercase font-bold">Configuración (Siempre Bloqueado)</Label>
                                         <Switch checked disabled />
                                     </div>
                                 </div>
@@ -470,33 +477,27 @@ function SettingsContent() {
                                     {profile?.securityPin && (
                                         <div className="space-y-2">
                                             <Label className="text-xs font-black uppercase">PIN Actual para autorizar *</Label>
-                                            <Input type="password" value={currentPinVerify} onChange={(e) => setCurrentPinVerify(e.target.value)} placeholder="PIN guardado" className="h-12 text-xl tracking-[0.5em] text-center" />
+                                            <Input type="password" value={currentPinVerify} onChange={(e) => setCurrentPinVerify(e.target.value)} placeholder="PIN GUARDADO" className="h-12 text-xl tracking-[0.5em] text-center" />
                                         </div>
                                     )}
                                     <div className="space-y-2">
-                                        <Label className="text-xs font-black uppercase">{profile?.securityPin ? "Cambiar por Nuevo PIN (Opcional)" : "Crear mi PIN de Gerente *"}</Label>
-                                        <Input type="password" value={newPin} onChange={(e) => setNewPin(e.target.value)} placeholder="4-8 dígitos" className="h-12 text-xl tracking-[0.5em] text-center" />
+                                        <Label className="text-xs font-black uppercase">{profile?.securityPin ? "Cambiar por Nuevo PIN" : "Crear mi PIN de Gerente *"}</Label>
+                                        <Input type="password" value={newPin} onChange={(e) => setNewPin(e.target.value)} placeholder="4-8 DÍGITOS" className="h-12 text-xl tracking-[0.5em] text-center" />
                                     </div>
                                 </div>
                                 
                                 <div className="space-y-2">
-                                    <Button className="w-full h-12" onClick={handleUpdatePinSettings} disabled={isUpdatingPin}>
+                                    <Button className="w-full h-12 uppercase font-bold" onClick={handleUpdatePinSettings} disabled={isUpdatingPin}>
                                         {isUpdatingPin ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                                        {profile?.securityPin ? "Guardar Ajustes de Seguridad" : "Establecer PIN y Activar"}
+                                        {profile?.securityPin ? "Guardar Ajustes" : "Establecer PIN"}
                                     </Button>
                                     
                                     {isManagerModeActive && (
-                                        <Button variant="outline" className="w-full border-destructive text-destructive hover:bg-destructive/5" onClick={handleLockManually}>
-                                            <Lock className="w-4 h-4 mr-2" /> Bloquear Acceso Ahora
+                                        <Button variant="outline" className="w-full border-destructive text-destructive hover:bg-destructive/5 uppercase font-bold" onClick={handleLockManually}>
+                                            <Lock className="w-4 h-4 mr-2" /> Bloquear Ahora
                                         </Button>
                                     )}
                                 </div>
-
-                                {!profile?.securityPin && (
-                                    <p className="text-[10px] text-amber-600 font-bold text-center italic">
-                                        ⚠️ No has configurado un PIN. Crea uno para poder activar la seguridad global.
-                                    </p>
-                                )}
                             </div>
                         </div>
                     </CardContent>
@@ -504,8 +505,8 @@ function SettingsContent() {
 
                 <Card className="shadow-md border-amber-100 bg-amber-50/30">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-amber-700"><Wallet className="w-5 h-5" /> Arqueo de Caja (Fondos Base)</CardTitle>
-                        <CardDescription>Indica cuánto dinero tienes FÍSICAMENTE en este momento. El sistema contará desde aquí en adelante.</CardDescription>
+                        <CardTitle className="flex items-center gap-2 text-amber-700 uppercase font-bold text-sm"><Wallet className="w-5 h-5" /> Arqueo de Caja</CardTitle>
+                        <CardDescription>Indica cuánto dinero tienes físicamente. El sistema contará desde este momento.</CardDescription>
                     </CardHeader>
                     <Form {...settingsForm}>
                         <form onSubmit={settingsForm.handleSubmit(handleSaveBalances)}>
@@ -513,45 +514,38 @@ function SettingsContent() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <FormField control={settingsForm.control} name="initialBalances.Efectivo USD" render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="flex items-center gap-2 font-bold"><DollarSign className="w-3.5 h-3.5" /> Fondo Efectivo USD</FormLabel>
+                                            <FormLabel className="flex items-center gap-2 font-bold uppercase text-[10px] text-muted-foreground"><DollarSign className="w-3.5 h-3.5" /> Fondo Efectivo USD</FormLabel>
                                             <FormControl><Input type="number" step="0.01" {...field} className="bg-white border-amber-200" /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )} />
                                     <FormField control={settingsForm.control} name="initialBalances.Efectivo Bs" render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="flex items-center gap-2 font-bold"><Landmark className="w-3.5 h-3.5" /> Fondo Efectivo Bs</FormLabel>
+                                            <FormLabel className="flex items-center gap-2 font-bold uppercase text-[10px] text-muted-foreground"><Landmark className="w-3.5 h-3.5" /> Fondo Efectivo Bs</FormLabel>
                                             <FormControl><Input type="number" step="0.01" {...field} className="bg-white border-amber-200" /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )} />
                                     <FormField control={settingsForm.control} name="initialBalances.Tarjeta / Pago Móvil" render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="flex items-center gap-2 font-bold"><Smartphone className="w-3.5 h-3.5" /> Saldo Digital (Tarjeta / P. Móvil)</FormLabel>
+                                            <FormLabel className="flex items-center gap-2 font-bold uppercase text-[10px] text-muted-foreground"><Smartphone className="w-3.5 h-3.5" /> Saldo Digital</FormLabel>
                                             <FormControl><Input type="number" step="0.01" {...field} className="bg-white border-amber-200" /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )} />
                                     <FormField control={settingsForm.control} name="initialBalances.Transferencia" render={({ field }) => (
                                         <FormItem>
-                                            <FormLabel className="flex items-center gap-2 font-bold"><Banknote className="w-3.5 h-3.5" /> Saldo Bancos (Transferencias)</FormLabel>
+                                            <FormLabel className="flex items-center gap-2 font-bold uppercase text-[10px] text-muted-foreground"><Banknote className="w-3.5 h-3.5" /> Saldo Bancos</FormLabel>
                                             <FormControl><Input type="number" step="0.01" {...field} className="bg-white border-amber-200" /></FormControl>
                                             <FormMessage />
                                         </FormItem>
                                     )} />
                                 </div>
-                                <div className="p-3 bg-amber-600 text-white rounded-lg flex items-start gap-2 shadow-sm">
-                                    <AlertCircle className="w-5 h-5 mt-0.5" />
-                                    <div className="text-[11px] leading-tight font-medium">
-                                        <p className="font-bold uppercase mb-1">¡IMPORTANTE: PUNTO DE CONTROL!</p>
-                                        <p>Al guardar estos montos, el sistema registrará este momento exacto. Todas las ventas y gastos anteriores serán ignorados para el cálculo del Saldo Real. El sistema volverá a contar desde cero a partir de estas cifras.</p>
-                                    </div>
-                                </div>
                             </CardContent>
                             <CardFooter className="border-t border-amber-100 pt-4">
-                                <Button type="submit" disabled={isSavingBalances} className="bg-amber-600 hover:bg-amber-700 w-full sm:w-auto">
+                                <Button type="submit" disabled={isSavingBalances} className="bg-amber-600 hover:bg-amber-700 w-full sm:w-auto uppercase font-bold">
                                     {isSavingBalances ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RefreshCcw className="w-4 h-4 mr-2" />}
-                                    Sincronizar con mi Efectivo Actual
+                                    Sincronizar con Efectivo Actual
                                 </Button>
                             </CardFooter>
                         </form>
@@ -560,33 +554,33 @@ function SettingsContent() {
 
                 <Card className="shadow-md">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2"><UserCog className="w-5 h-5"/> Perfil del Negocio</CardTitle>
+                        <CardTitle className="flex items-center gap-2 uppercase font-bold text-sm"><UserCog className="w-5 h-5"/> Perfil del Negocio</CardTitle>
                         <CardDescription>Datos comerciales para facturación y reportes.</CardDescription>
                     </CardHeader>
                     <Form {...profileForm}>
                         <form onSubmit={profileForm.handleSubmit(handleSaveProfile)}>
                             <CardContent className="space-y-6">
                                 <FormField control={profileForm.control} name="businessName" render={({ field }) => (
-                                    <FormItem><FormLabel>Nombre Comercial</FormLabel><FormControl><Input {...field} placeholder="Ej: Poos Mariche Central" /></FormControl><FormMessage /></FormItem>
+                                    <FormItem><FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Nombre Comercial</FormLabel><FormControl><Input {...field} onChange={(e) => field.onChange(e.target.value.toUpperCase())} placeholder="EJ: POOS MARICHE CENTRAL" className="uppercase" /></FormControl><FormMessage /></FormItem>
                                 )} />
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <FormField control={profileForm.control} name="businessRIF" render={({ field }) => (
-                                        <FormItem><FormLabel className="flex items-center gap-2"><Hash className="w-3 h-3" /> RIF / Identificación Fiscal</FormLabel><FormControl><Input {...field} placeholder="Ej: J-12345678-9" /></FormControl><FormMessage /></FormItem>
+                                        <FormItem><FormLabel className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground"><Hash className="w-3 h-3" /> RIF / Identificación Fiscal</FormLabel><FormControl><Input {...field} onChange={(e) => field.onChange(e.target.value.toUpperCase())} placeholder="EJ: J-12345678-9" className="uppercase" /></FormControl><FormMessage /></FormItem>
                                     )} />
                                     <FormField control={profileForm.control} name="businessAddress" render={({ field }) => (
-                                        <FormItem><FormLabel className="flex items-center gap-2"><MapPin className="w-3 h-3" /> Dirección Física</FormLabel><FormControl><Input {...field} placeholder="Ej: Av. Principal, Local 5" /></FormControl><FormMessage /></FormItem>
+                                        <FormItem><FormLabel className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground"><MapPin className="w-3 h-3" /> Dirección Física</FormLabel><FormControl><Input {...field} onChange={(e) => field.onChange(e.target.value.toUpperCase())} placeholder="EJ: AV. PRINCIPAL, LOCAL 5" className="uppercase" /></FormControl><FormMessage /></FormItem>
                                     )} />
                                 </div>
                                 <Separator />
                                 <FormField control={profileForm.control} name="showInfoOnReceipt" render={({ field }) => (
                                     <FormItem className="flex items-center justify-between rounded-lg border p-4 bg-muted/20">
-                                        <div className="space-y-0.5"><FormLabel className="flex items-center gap-2"><ReceiptText className="w-4 h-4 text-primary" /> Datos en Recibos</FormLabel><FormDescription>Mostrar RIF y Dirección en los tickets impresos.</FormDescription></div>
+                                        <div className="space-y-0.5"><FormLabel className="flex items-center gap-2 text-xs font-bold uppercase"><ReceiptText className="w-4 h-4 text-primary" /> Datos en Recibos</FormLabel><FormDescription>Mostrar RIF y Dirección en los tickets impresos.</FormDescription></div>
                                         <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
                                     </FormItem>
                                 )} />
                             </CardContent>
                             <CardFooter className="border-t pt-4">
-                                <Button type="submit">Actualizar Perfil</Button>
+                                <Button type="submit" className="uppercase font-bold">Actualizar Perfil</Button>
                             </CardFooter>
                         </form>
                     </Form>
@@ -594,7 +588,7 @@ function SettingsContent() {
 
                 <Card className="shadow-md">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-primary"><PiggyBank className="w-5 h-5" /> Parámetros Financieros</CardTitle>
+                        <CardTitle className="flex items-center gap-2 text-primary uppercase font-bold text-sm"><PiggyBank className="w-5 h-5" /> Parámetros Financieros</CardTitle>
                         <CardDescription>Configuración de márgenes y distribución de ganancias.</CardDescription>
                     </CardHeader>
                     <Form {...settingsForm}>
@@ -602,79 +596,27 @@ function SettingsContent() {
                             <CardContent className="space-y-6">
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                     <FormField control={settingsForm.control} name="bcvRate" render={({ field }) => (
-                                        <FormItem><FormLabel>Tasa Oficial (BCV)</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
+                                        <FormItem><FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Tasa Oficial (BCV)</FormLabel><FormControl><Input type="number" step="0.01" {...field} className="" /></FormControl><FormMessage /></FormItem>
                                     )} />
                                     <FormField control={settingsForm.control} name="parallelRate" render={({ field }) => (
-                                        <FormItem><FormLabel>Tasa de Reposición</FormLabel><FormControl><Input type="number" step="0.01" {...field} /></FormControl><FormMessage /></FormItem>
+                                        <FormItem><FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Tasa de Reposición</FormLabel><FormControl><Input type="number" step="0.01" {...field} className="" /></FormControl><FormMessage /></FormItem>
                                     )} />
                                     <FormField control={settingsForm.control} name="profitMargin" render={({ field }) => (
-                                        <FormItem><FormLabel>Margen Global (%)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
-                                    )} />
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t pt-6">
-                                    <FormField control={settingsForm.control} name="weeklyRent" render={({ field }) => (
-                                        <FormItem><FormLabel className="flex items-center gap-2"><Home className="w-3.5 h-3.5" /> Alquiler Semanal ($)</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
-                                    )} />
-                                    <FormField control={settingsForm.control} name="investmentPercentage" render={({ field }) => (
-                                        <FormItem><FormLabel className="flex items-center gap-2"><Percent className="w-3.5 h-3.5" /> % Inversión Nueva</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
-                                    )} />
-                                    <FormField control={settingsForm.control} name="partnersCount" render={({ field }) => (
-                                        <FormItem><FormLabel className="flex items-center gap-2"><Users className="w-3.5 h-3.5" /> Cantidad de Socios</FormLabel><FormControl><Input type="number" {...field} /></FormControl><FormMessage /></FormItem>
+                                        <FormItem><FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Margen Global (%)</FormLabel><FormControl><Input type="number" {...field} className="" /></FormControl><FormMessage /></FormItem>
                                     )} />
                                 </div>
                             </CardContent>
                             <CardFooter className="border-t pt-4">
-                                <Button type="submit" disabled={isSavingSettings}>
+                                <Button type="submit" disabled={isSavingSettings} className="uppercase font-bold">
                                     {isSavingSettings ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                                    Guardar Ajustes Financieros
+                                    Guardar Ajustes
                                 </Button>
                             </CardFooter>
                         </form>
                     </Form>
                 </Card>
 
-                <Card className="shadow-md border-slate-200">
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-primary"><Database className="w-5 h-5" /> Centro de Datos y Carga Masiva</CardTitle>
-                        <CardDescription>Usa el formato Excel para descargar tus datos o cargar nueva mercancía rápidamente.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Button variant="outline" className="h-20 justify-start gap-4 border-primary/30 bg-white hover:bg-primary/5" onClick={handleExportSystemBackup}>
-                                <div className="p-3 bg-primary/10 rounded-full"><DownloadCloud className="w-6 h-6 text-primary" /></div>
-                                <div className="text-left">
-                                    <p className="font-bold text-sm">Exportar Plantilla (Excel)</p>
-                                    <p className="text-[10px] text-muted-foreground italic">Úsalo para llenar tus datos.</p>
-                                </div>
-                            </Button>
-                            <AdminAuthDialog onAuthorized={() => fileInputRef.current?.click()}>
-                                <Button variant="outline" className="h-20 justify-start gap-4 border-amber-300 bg-white hover:bg-amber-50" disabled={isImporting}>
-                                    <div className="p-3 bg-amber-100 rounded-full">{isImporting ? <RefreshCcw className="w-6 h-6 text-amber-600 animate-spin" /> : <UploadCloud className="w-6 h-6 text-amber-600" />}</div>
-                                    <div className="text-left">
-                                        <p className="font-bold text-sm text-amber-700">Carga Masiva / Importar</p>
-                                        <p className="text-[10px] text-amber-600/70 italic">Sube el archivo para procesar.</p>
-                                    </div>
-                                </Button>
-                            </AdminAuthDialog>
-                            <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={handleImportBackup} />
-                        </div>
-
-                        <div className="p-4 bg-muted/30 border rounded-lg space-y-2">
-                            <p className="text-xs font-black uppercase text-slate-500 flex items-center gap-2"><Info className="w-3 h-3"/> ¿Cómo cargar mercancía rápido?</p>
-                            <ol className="text-[11px] text-slate-600 space-y-1 list-decimal ml-4">
-                                <li>Haz clic en <strong>"Exportar Plantilla"</strong> para descargar tu inventario actual.</li>
-                                <li>Abre el archivo y ve a la pestaña <strong>"Inventario"</strong>.</li>
-                                <li>Para <strong>añadir productos nuevos</strong>: Agrega filas al final dejando la columna <strong>"ID" vacía</strong>.</li>
-                                <li><strong>Sobre el SKU:</strong> Puedes dejar la columna SKU vacía y el sistema generará uno automático para ti.</li>
-                                <li><strong>IVA y Ofertas:</strong> Escribe "SI" en la columna Aplica_IVA para habilitar el impuesto. Pon un monto en Precio_Oferta para fijar un descuento especial.</li>
-                                <li>Para <strong>actualizar stock o precios</strong>: Modifica los valores de las filas existentes sin tocar el "ID".</li>
-                                <li>Guarda el archivo y súbelo usando el botón de <strong>"Carga Masiva"</strong>.</li>
-                            </ol>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <div className="flex justify-center pt-4"><Button variant="destructive" onClick={handleSignOut} size="lg"><LogOut className="mr-2 h-5 w-5" /> Cerrar Sesión del Sistema</Button></div>
+                <div className="flex justify-center pt-4"><Button variant="destructive" onClick={handleSignOut} size="lg" className="uppercase font-bold"><LogOut className="mr-2 h-5 w-5" /> Cerrar Sesión</Button></div>
             </main>
         </>
     );

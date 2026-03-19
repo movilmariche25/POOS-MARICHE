@@ -1,4 +1,3 @@
-
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -72,12 +71,11 @@ const formSchema = z.object({
   hasIVA: z.boolean().default(false),
   createdAt: z.string(),
 }).superRefine((data, ctx) => {
-  // Validación de Precio: No permitir registrar sin precio
   if (data.isFixedPrice) {
     if (data.fixedPrice <= 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "El precio de venta fijo es obligatorio.",
+        message: "El precio es obligatorio.",
         path: ["fixedPrice"],
       });
     }
@@ -85,7 +83,7 @@ const formSchema = z.object({
     if (data.costPrice <= 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "El precio de costo es obligatorio para calcular la venta.",
+        message: "El precio es obligatorio.",
         path: ["costPrice"],
       });
     }
@@ -135,7 +133,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
-      category: "General",
+      category: "GENERAL",
       sku: "",
       barcode: "",
       unit: "unit",
@@ -174,12 +172,11 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
   
   const showRepairsFeature = profile?.enabledModules?.includes('repairs') ?? true;
 
-  // Validación de Duplicados en Tiempo Real
   useEffect(() => {
     if (!allProducts || !watchedName) return;
     
     const nameExists = allProducts.some(p => 
-        p.name.toLowerCase().trim() === watchedName.toLowerCase().trim() && 
+        p.name.toUpperCase().trim() === watchedName.toUpperCase().trim() && 
         p.id !== product?.id
     );
     if (nameExists) {
@@ -190,7 +187,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
 
     if (watchedSku) {
         const skuExists = allProducts.some(p => 
-            p.sku.toLowerCase().trim() === watchedSku.toLowerCase().trim() && 
+            p.sku.toUpperCase().trim() === watchedSku.toUpperCase().trim() && 
             p.id !== product?.id
         );
         if (skuExists) {
@@ -239,7 +236,10 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
         if (product) {
             form.reset({
               ...product,
-              compatibleModels: product.compatibleModels ? product.compatibleModels.join(", ") : "",
+              name: product.name.toUpperCase(),
+              category: product.category.toUpperCase(),
+              compatibleModels: product.compatibleModels ? product.compatibleModels.join(", ").toUpperCase() : "",
+              sku: product.sku.toUpperCase(),
               barcode: product.barcode || "",
               hasPromoPrice: !!(product.promoPrice && product.promoPrice > 0),
               promoPrice: product.promoPrice || 0,
@@ -265,7 +265,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
 
             form.reset({
                 name: "",
-                category: "General",
+                category: "GENERAL",
                 sku: autoSKU,
                 barcode: "",
                 unit: "unit",
@@ -295,9 +295,9 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
     if (!firestore || !user) return;
 
     const finalValues: any = {
-        name: values.name,
-        category: values.category,
-        sku: values.sku.trim(),
+        name: values.name.toUpperCase().trim(),
+        category: values.category.toUpperCase().trim(),
+        sku: values.sku.toUpperCase().trim(),
         barcode: values.barcode || "",
         unit: values.unit,
         costPrice: Number(values.costPrice) || 0,
@@ -306,7 +306,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
         reservedStock: Number(values.reservedStock) || 0,
         damagedStock: Number(values.damagedStock) || 0,
         lowStockThreshold: Number(values.lowStockThreshold) || 1,
-        compatibleModels: values.compatibleModels ? values.compatibleModels.split(',').map(s => s.trim()).filter(Boolean) : [],
+        compatibleModels: values.compatibleModels ? values.compatibleModels.split(',').map(s => s.trim().toUpperCase()).filter(Boolean) : [],
         isCombo: !!values.isCombo,
         comboItems: values.isCombo ? (values.comboItems || []) : [],
         isGiftable: !!values.isGiftable,
@@ -346,7 +346,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
       <DialogContent className="sm:max-w-[550px] max-h-[90vh] overflow-hidden flex flex-col p-0">
         <div className="p-6 pb-2">
             <DialogHeader>
-                <DialogTitle>{isEditing ? 'Gestionar Producto' : 'Añadir Nuevo Producto'}</DialogTitle>
+                <DialogTitle className="uppercase font-bold">{isEditing ? 'Gestionar Producto' : 'Añadir Nuevo Producto'}</DialogTitle>
                 <DialogDescription>Configura los precios y asegúrate de que el stock coincida con tu inventario real.</DialogDescription>
             </DialogHeader>
         </div>
@@ -356,12 +356,13 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
             <div className="flex-1 overflow-y-auto px-6 space-y-6">
                 <FormField control={form.control} name="name" render={({ field, fieldState }) => (
                     <FormItem className="pt-2">
-                        <FormLabel>Nombre del Artículo</FormLabel>
+                        <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Nombre del Artículo</FormLabel>
                         <FormControl>
                             <Input 
                                 {...field} 
-                                placeholder="Ej: Pantalla Samsung A51 Original" 
-                                className={cn(fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
+                                onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                                placeholder="EJ: PANTALLA SAMSUNG A51 ORIGINAL" 
+                                className={cn("uppercase", fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
                             />
                         </FormControl>
                         <FormMessage />
@@ -371,10 +372,15 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField control={form.control} name="category" render={({ field }) => (
                         <FormItem>
-                            <FormLabel className="flex items-center gap-2"><Tag className="w-3 h-3" /> Categoría</FormLabel>
+                            <FormLabel className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground"><Tag className="w-3 h-3" /> Categoría</FormLabel>
                             <div className="flex gap-2">
                                 <FormControl>
-                                    <Input {...field} placeholder="Escribe o selecciona..." className="flex-1" />
+                                    <Input 
+                                        {...field} 
+                                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                                        placeholder="EJ: PANTALLAS, BATERÍAS" 
+                                        className="flex-1 uppercase" 
+                                    />
                                 </FormControl>
                                 <Popover open={categoryPopoverOpen} onOpenChange={setCategoryPopoverOpen}>
                                     <PopoverTrigger asChild>
@@ -393,17 +399,17 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                                             key={cat}
                                                             value={cat}
                                                             onSelect={() => {
-                                                                form.setValue("category", cat, { shouldValidate: true });
+                                                                form.setValue("category", cat.toUpperCase(), { shouldValidate: true });
                                                                 setCategoryPopoverOpen(false);
                                                             }}
                                                         >
                                                             <Check
                                                                 className={cn(
                                                                     "mr-2 h-4 w-4",
-                                                                    cat === field.value ? "opacity-100" : "opacity-0"
+                                                                    cat.toUpperCase() === field.value.toUpperCase() ? "opacity-100" : "opacity-0"
                                                                 )}
                                                             />
-                                                            {cat}
+                                                            {cat.toUpperCase()}
                                                         </CommandItem>
                                                     ))}
                                                 </CommandGroup>
@@ -417,9 +423,9 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                     )} />
                     <FormField control={form.control} name="unit" render={({ field }) => (
                         <FormItem>
-                            <FormLabel className="flex items-center gap-2"><Scale className="w-3 h-3" /> Unidad</FormLabel>
+                            <FormLabel className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground"><Scale className="w-3 h-3" /> Unidad</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
-                                <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                                <FormControl><SelectTrigger className="font-medium"><SelectValue /></SelectTrigger></FormControl>
                                 <SelectContent>
                                     <SelectItem value="unit">Unidad (pza)</SelectItem>
                                     <SelectItem value="kg">Kilogramos (kg)</SelectItem>
@@ -434,12 +440,13 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField control={form.control} name="sku" render={({ field, fieldState }) => (
                         <FormItem>
-                            <FormLabel>SKU / Código Propio</FormLabel>
+                            <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">SKU / Código Propio</FormLabel>
                             <FormControl>
                                 <Input 
                                     {...field} 
-                                    placeholder="Ej: SKU-260225-1351" 
-                                    className={cn(fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
+                                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                                    placeholder="EJ: SKU-260225-1351" 
+                                    className={cn("uppercase font-mono", fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
                                 />
                             </FormControl>
                             <FormMessage />
@@ -447,12 +454,12 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                     )} />
                     <FormField control={form.control} name="barcode" render={({ field, fieldState }) => (
                         <FormItem>
-                            <FormLabel className="flex items-center gap-2"><Barcode className="w-3 h-3" /> Código de Barras</FormLabel>
+                            <FormLabel className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground"><Barcode className="w-3 h-3" /> Código de Barras</FormLabel>
                             <FormControl>
                                 <Input 
                                     {...field} 
                                     placeholder="Escanea o escribe..." 
-                                    className={cn(fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
+                                    className={cn("", fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
                                 />
                             </FormControl>
                             <FormMessage />
@@ -463,9 +470,16 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                 {showRepairsFeature && (
                     <FormField control={form.control} name="compatibleModels" render={({ field }) => (
                         <FormItem className="bg-muted/10 p-3 rounded-lg border border-dashed animate-in fade-in">
-                            <FormLabel className="flex items-center gap-2 text-primary font-bold"><Smartphone className="w-3.5 h-3.5" /> Modelos Compatibles</FormLabel>
-                            <FormControl><Input {...field} placeholder="Ej: S23 Ultra, A51, Redmi Note 12..." /></FormControl>
-                            <FormDescription className="text-[10px]">Escribe los modelos separados por coma para que aparezcan en el buscador de reparaciones.</FormDescription>
+                            <FormLabel className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase"><Smartphone className="w-3.5 h-3.5" /> Modelos Compatibles</FormLabel>
+                            <FormControl>
+                                <Input 
+                                    {...field} 
+                                    onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                                    placeholder="EJ: S23 ULTRA, A51, REDMI NOTE 12..." 
+                                    className="uppercase"
+                                />
+                            </FormControl>
+                            <FormDescription className="text-[10px]">Escribe los modelos separados por coma.</FormDescription>
                         </FormItem>
                     )} />
                 )}
@@ -479,25 +493,25 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                         <FormField control={form.control} name="isFixedPrice" render={({ field }) => (
                             <FormItem className="flex items-center space-x-2 space-y-0">
                                 <FormControl><Checkbox checked={field.value} onCheckedChange={(v) => { field.onChange(v); if(v) form.setValue('hasCustomMargin', false); }} /></FormControl>
-                                <FormLabel className="font-normal cursor-pointer flex items-center gap-1 text-xs"><Lock className="w-3 h-3 text-amber-500" /> Precio Fijo</FormLabel>
+                                <FormLabel className="font-bold cursor-pointer flex items-center gap-1 text-[10px] uppercase"><Lock className="w-3 h-3 text-amber-500" /> Precio Fijo</FormLabel>
                             </FormItem>
                         )} />
                         <FormField control={form.control} name="hasCustomMargin" render={({ field }) => (
                             <FormItem className="flex items-center space-x-2 space-y-0">
                                 <FormControl><Checkbox checked={field.value} onCheckedChange={(v) => { field.onChange(v); if(v) form.setValue('isFixedPrice', false); }} /></FormControl>
-                                <FormLabel className="font-normal cursor-pointer flex items-center gap-1 text-xs"><Percent className="w-3 h-3 text-blue-500" /> % Individual</FormLabel>
+                                <FormLabel className="font-bold cursor-pointer flex items-center gap-1 text-[10px] uppercase"><Percent className="w-3 h-3 text-blue-500" /> % Indiv.</FormLabel>
                             </FormItem>
                         )} />
                         <FormField control={form.control} name="hasIVA" render={({ field }) => (
                             <FormItem className="flex items-center space-x-2 space-y-0">
                                 <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                <FormLabel className="font-normal cursor-pointer flex items-center gap-1 text-xs"><Landmark className="w-3 h-3 text-green-600" /> IVA (16%)</FormLabel>
+                                <FormLabel className="font-bold cursor-pointer flex items-center gap-1 text-[10px] uppercase"><Landmark className="w-3 h-3 text-green-600" /> IVA (16%)</FormLabel>
                             </FormItem>
                         )} />
                         <FormField control={form.control} name="hasPromoPrice" render={({ field }) => (
                             <FormItem className="flex items-center space-x-2 space-y-0">
                                 <FormControl><Checkbox checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                <FormLabel className="font-normal cursor-pointer flex items-center gap-1 text-xs"><Gift className="w-3 h-3 text-pink-500" /> Oferta</FormLabel>
+                                <FormLabel className="font-bold cursor-pointer flex items-center gap-1 text-[10px] uppercase"><Gift className="w-3 h-3 text-pink-500" /> Oferta</FormLabel>
                             </FormItem>
                         )} />
                     </div>
@@ -505,13 +519,13 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                     <div className="grid grid-cols-2 gap-4">
                         <FormField control={form.control} name="costPrice" render={({ field, fieldState }) => (
                             <FormItem>
-                                <FormLabel className="text-xs font-bold">Costo Unitario ($)</FormLabel>
+                                <FormLabel className="text-[10px] font-bold uppercase">Costo Unitario ($)</FormLabel>
                                 <FormControl>
                                     <Input 
                                         type="number" 
                                         step="0.01" 
                                         {...field} 
-                                        className={cn("h-10 font-bold", fieldState.error && "border-destructive ring-destructive")} 
+                                        className={cn("h-10", fieldState.error && "border-destructive ring-destructive")} 
                                     />
                                 </FormControl>
                                 <FormMessage />
@@ -520,13 +534,13 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                         {isFixedPrice ? (
                             <FormField control={form.control} name="fixedPrice" render={({ field, fieldState }) => (
                                 <FormItem>
-                                    <FormLabel className="text-xs font-bold text-amber-600">Precio Venta Fijo ($)</FormLabel>
+                                    <FormLabel className="text-[10px] font-bold text-amber-600 uppercase">Precio Venta Fijo ($)</FormLabel>
                                     <FormControl>
                                         <Input 
                                             type="number" 
                                             step="0.01" 
                                             {...field} 
-                                            className={cn("h-10 border-amber-200 font-bold", fieldState.error && "border-destructive ring-destructive")} 
+                                            className={cn("h-10 border-amber-200", fieldState.error && "border-destructive ring-destructive")} 
                                         />
                                     </FormControl>
                                     <FormMessage />
@@ -535,13 +549,13 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                         ) : hasCustomMargin ? (
                             <FormField control={form.control} name="customMargin" render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel className="text-xs font-bold text-blue-600">Margen Indiv. (%)</FormLabel>
-                                    <FormControl><Input type="number" {...field} className="h-10 border-blue-200 font-bold" /></FormControl>
+                                    <FormLabel className="text-[10px] font-bold text-blue-600 uppercase">Margen Indiv. (%)</FormLabel>
+                                    <FormControl><Input type="number" {...field} className="h-10 border-blue-200" /></FormControl>
                                 </FormItem>
                             )} />
                         ) : (
                             <div className="space-y-2 opacity-50">
-                                <Label className="text-xs font-bold">Margen Global</Label>
+                                <Label className="text-[10px] font-bold uppercase">Margen Global</Label>
                                 <Input value={`${profitMargin}%`} disabled className="h-10 bg-slate-100" />
                             </div>
                         )}
@@ -550,11 +564,10 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                     {hasPromoPrice && (
                         <FormField control={form.control} name="promoPrice" render={({ field }) => (
                             <FormItem className="bg-pink-50/50 p-3 rounded-lg border border-pink-100 animate-in slide-in-from-top-2">
-                                <FormLabel className="text-xs font-bold text-pink-600 flex items-center gap-2">
+                                <FormLabel className="text-[10px] font-bold text-pink-600 flex items-center gap-2 uppercase">
                                     <Gift className="w-3.5 h-3.5" /> Precio Especial de Oferta ($)
                                 </FormLabel>
-                                <FormControl><Input type="number" step="0.01" {...field} className="h-10 border-pink-200 font-bold text-pink-700 bg-white" /></FormControl>
-                                <FormDescription className="text-[10px]">Este precio ignorará los márgenes y se usará cuando actives "OFERTA" en el POS.</FormDescription>
+                                <FormControl><Input type="number" step="0.01" {...field} className="h-10 border-pink-200 text-pink-700 bg-white" /></FormControl>
                             </FormItem>
                         )} />
                     )}
@@ -562,33 +575,26 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                     <div className="p-4 rounded-xl bg-slate-900 text-white space-y-3 shadow-lg">
                         <div className="flex items-center justify-between border-b border-white/10 pb-2">
                             <span className="text-[10px] font-bold uppercase tracking-tighter text-slate-400 flex items-center gap-2">
-                                <TrendingUp className="w-3.5 h-3.5" /> Análisis Sugerido (Reactivo)
+                                <TrendingUp className="w-3.5 h-3.5" /> Análisis Sugerido
                             </span>
-                            {hasIVA && <Badge variant="outline" className="text-[8px] h-4 border-green-500 text-green-500 font-bold">CON IVA INCL.</Badge>}
+                            {hasIVA && <Badge variant="outline" className="text-[8px] h-4 border-green-500 text-green-500 font-bold uppercase">CON IVA INCL.</Badge>}
                         </div>
                         
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
                                 <p className="text-[9px] font-bold text-slate-500 uppercase">P. Venta (Reposición)</p>
-                                <p className="text-xl font-bold text-blue-400">
+                                <p className="text-xl font-black text-blue-400">
                                     ${formatCurrency(suggestedRetailPrice)}
                                 </p>
                                 <p className="text-[10px] text-slate-400 font-bold">Bs {formatCurrency(suggestedRetailPrice * bcvRate)}</p>
                             </div>
                             <div className="space-y-1 text-right">
                                 <p className="text-[9px] font-bold text-slate-500 uppercase">P. Oferta (Margen Base)</p>
-                                <p className="text-xl font-bold text-green-400">
+                                <p className="text-xl font-black text-green-400">
                                     ${formatCurrency(suggestedPromoPrice)}
                                 </p>
                                 <p className="text-[10px] text-slate-400 font-bold">Bs {formatCurrency(suggestedPromoPrice * bcvRate)}</p>
                             </div>
-                        </div>
-                        
-                        <div className="pt-2 border-t border-white/5">
-                            <p className="text-[8px] text-slate-500 italic leading-tight">
-                                * El P. Venta se ajusta solo cuando cambias las tasas (Ref: {parallelRate.toFixed(2)} Bs). 
-                                Protege tu capacidad de recompra ante devaluaciones.
-                            </p>
                         </div>
                     </div>
                 </div>
@@ -604,26 +610,21 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                         <FormField control={form.control} name="stockLevel" render={({ field }) => (
                             <FormItem>
                                 <FormLabel className="text-[10px] font-bold uppercase">Stock Físico</FormLabel>
-                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 font-bold" /></FormControl>
-                                <FormDescription className="text-[8px]">Total en estante.</FormDescription>
+                                <FormControl><Input type="number" step="0.001" {...field} className="h-10" /></FormControl>
                             </FormItem>
                         )} />
                         <FormField control={form.control} name="reservedStock" render={({ field }) => (
                             <FormItem>
                                 <FormLabel className="text-[10px] font-bold uppercase text-amber-600">
-                                    {showRepairsFeature ? "En Taller" : "Apartado / Reservado"}
+                                    {showRepairsFeature ? "En Taller" : "Reservado"}
                                 </FormLabel>
-                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 border-amber-200 text-amber-700 font-bold" /></FormControl>
-                                <FormDescription className="text-[8px]">
-                                    {showRepairsFeature ? "Apartado p/rep." : "Stock comprometido."}
-                                </FormDescription>
+                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 border-amber-200 text-amber-700" /></FormControl>
                             </FormItem>
                         )} />
                         <FormField control={form.control} name="damagedStock" render={({ field }) => (
                             <FormItem>
                                 <FormLabel className="text-[10px] font-bold uppercase text-destructive">Dañado</FormLabel>
-                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 border-destructive/20 text-destructive font-bold" /></FormControl>
-                                <FormDescription className="text-[8px]">No apto p/venta.</FormDescription>
+                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 border-destructive/20 text-destructive" /></FormControl>
                             </FormItem>
                         )} />
                     </div>
@@ -634,11 +635,10 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                     )}>
                         <div className="flex flex-col">
                             <span className="text-[10px] font-bold uppercase text-slate-500">Resultado para Venta:</span>
-                            <span className="text-[8px] text-muted-foreground italic">(Físico - Reservas - Dañados)</span>
                         </div>
                         <div className="text-right">
-                            <span className={cn("text-2xl font-bold", availableReal <= 0 ? "text-destructive" : "text-green-700")}>
-                                {availableReal} {selectedUnit === 'unit' ? 'pzas' : selectedUnit}
+                            <span className={cn("text-2xl font-black", availableReal <= 0 ? "text-destructive" : "text-green-700")}>
+                                {availableReal} {selectedUnit === 'unit' ? 'PZAS' : selectedUnit.toUpperCase()}
                             </span>
                         </div>
                     </div>
@@ -646,7 +646,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
 
                 <FormField control={form.control} name="lowStockThreshold" render={({ field }) => (
                     <FormItem className="pb-6">
-                        <FormLabel className="text-xs">Alerta de Stock Bajo ({selectedUnit})</FormLabel>
+                        <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Alerta de Stock Bajo ({selectedUnit.toUpperCase()})</FormLabel>
                         <FormControl><Input type="number" step="0.001" {...field} className="h-10" /></FormControl>
                     </FormItem>
                 )} />
@@ -656,7 +656,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                 <DialogFooter>
                     <Button 
                         type="submit" 
-                        className="w-full h-12 text-base font-bold shadow-lg" 
+                        className="w-full h-12 text-base font-bold shadow-lg uppercase" 
                         disabled={form.formState.isSubmitting || !form.formState.isValid}
                     >
                         {form.formState.isSubmitting ? "GUARDANDO..." : "Sincronizar Producto"}
