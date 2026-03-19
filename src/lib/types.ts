@@ -1,4 +1,3 @@
-
 import type { Timestamp } from "firebase/firestore";
 
 export type ComboItem = {
@@ -39,6 +38,7 @@ export type ReservedPart = {
   productName: string;
   quantity: number;
   costPrice: number;
+  isPromo?: boolean;
 }
 
 export type RepairStatus = 'Pendiente' | 'Pagado' | 'Completado';
@@ -237,6 +237,7 @@ export type DailyReconciliation = {
   totalDifference: number;
   totalPaymentsReceived?: number;
   totalChangeGiven?: number;
+  notes?: string;
 };
 
 export type Currency = 'USD' | 'Bs';

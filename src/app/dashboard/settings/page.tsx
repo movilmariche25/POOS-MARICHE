@@ -284,7 +284,6 @@ function SettingsContent() {
             toast({ title: "Seguridad Actualizada" });
             
             // IMPORTANTE: Limpiar el permiso de sesión para que el usuario deba re-autenticarse
-            // Esto permite que el usuario pruebe los nuevos bloqueos inmediatamente.
             sessionStorage.removeItem('mm_security_unlocked');
             
             setNewPin("");
@@ -323,14 +322,31 @@ function SettingsContent() {
 
     const handleExportSystemBackup = () => {
         const wb = XLSX.utils.book_new();
-        const inventoryData = (products || []).map(p => ({ 'ID': p.id, 'SKU': p.sku, 'Nombre': p.name, 'Categoria': p.category, 'Costo': p.costPrice, 'Venta_Fija': p.fixedPrice || 0, 'Stock_Fisico': p.stockLevel, 'Reservado': p.reservedStock || 0, 'Dañado': p.damagedStock || 0, 'Margen_Indiv': p.customMargin || 0 }));
+        const inventoryData = (products || []).map(p => ({ 
+            'ID': p.id, 
+            'SKU': p.sku, 
+            'Nombre': p.name, 
+            'Categoria': p.category, 
+            'Costo': p.costPrice, 
+            'Venta_Fija': p.fixedPrice || 0, 
+            'Margen_Indiv': p.customMargin || 0,
+            'Precio_Oferta': p.promoPrice || 0,
+            'Aplica_IVA': p.hasIVA ? 'SI' : 'NO',
+            'Stock_Fisico': p.stockLevel, 
+            'Reservado': p.reservedStock || 0, 
+            'Dañado': p.damagedStock || 0
+        }));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(inventoryData), "Inventario");
+        
         const repairsData = (repairs || []).map(r => ({ 'ID': r.id, 'Cliente': r.customerName, 'Cedula': r.customerID, 'Telefono': r.customerPhone, 'Equipo': `${r.deviceMake} ${r.deviceModel}`, 'Falla': r.reportedIssue, 'Total': r.estimatedCost, 'Pagado': r.amountPaid, 'Estado': r.status, 'Fecha': r.createdAt }));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(repairsData), "Reparaciones");
+        
         const salesData = (sales || []).map(s => ({ 'ID': s.id, 'Fecha': s.transactionDate, 'Total': s.totalAmount, 'Metodo': s.paymentMethod, 'Detalle': s.items.map(i => `${i.quantity}x ${i.name}`).join(', '), 'Estado': s.status }));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(salesData), "Ventas");
+        
         const fiadosData = (fiados || []).map(f => ({ 'ID': f.id, 'Cliente': f.customerName, 'Cedula': f.customerID, 'Concepto': f.concept, 'Total': f.totalAmount, 'Abonado': f.amountPaid, 'Estado': f.status, 'Fecha': f.createdAt, 'Vencimiento': f.dueDate || '' }));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fiadosData), "Fiados");
+        
         XLSX.writeFile(wb, `Respaldo_PoosMariche_${format(new Date(), 'dd-MM-yyyy')}.xlsx`);
         toast({ title: "Respaldo Generado" });
     };
@@ -346,18 +362,51 @@ function SettingsContent() {
                 const workbook = XLSX.read(data, { type: 'binary' });
                 const batch = writeBatch(firestore);
                 let total = 0;
+
+                const generateAutoSku = () => {
+                    const now = new Date();
+                    const datePart = format(now, "ddMMyy");
+                    const randomPart = Math.random().toString(36).substring(2, 7).toUpperCase();
+                    return `AUTO-${datePart}-${randomPart}`;
+                };
+
                 if (workbook.SheetNames.includes("Inventario")) {
                     const sheet = XLSX.utils.sheet_to_json(workbook.Sheets["Inventario"]);
                     sheet.forEach((row: any) => {
                         const ref = doc(firestore, 'users', user.uid, 'products', row.ID || doc(collection(firestore, 'temp')).id);
-                        batch.set(ref, { id: ref.id, sku: row.SKU || '', name: row.Nombre || '', category: row.Categoria || 'General', costPrice: Number(row.Costo) || 0, fixedPrice: Number(row.Venta_Fija) || 0, stockLevel: Number(row.Stock_Fisico) || 0, reservedStock: Number(row.Reservado) || 0, damagedStock: Number(row.Dañado) || 0, customMargin: Number(row.Margen_Indiv) || 0, isFixedPrice: (row.Venta_Fija > 0), hasCustomMargin: (row.Margen_Indiv > 0), lowStockThreshold: 1 }, { merge: true });
+                        
+                        let sku = row.SKU ? String(row.SKU).trim() : "";
+                        if (!sku) {
+                            sku = generateAutoSku();
+                        }
+
+                        batch.set(ref, { 
+                            id: ref.id, 
+                            sku: sku, 
+                            name: row.Nombre || 'Producto sin nombre', 
+                            category: row.Categoria || 'General', 
+                            costPrice: Number(row.Costo) || 0, 
+                            fixedPrice: Number(row.Venta_Fija) || 0, 
+                            stockLevel: Number(row.Stock_Fisico) || 0, 
+                            reservedStock: Number(row.Reservado) || 0, 
+                            damagedStock: Number(row.Dañado) || 0, 
+                            customMargin: Number(row.Margen_Indiv) || 0, 
+                            promoPrice: Number(row.Precio_Oferta) || 0,
+                            hasIVA: String(row.Aplica_IVA || "").toUpperCase() === 'SI',
+                            isFixedPrice: (Number(row.Venta_Fija) > 0), 
+                            hasCustomMargin: (Number(row.Margen_Indiv) > 0), 
+                            lowStockThreshold: 1,
+                            unit: 'unit',
+                            createdAt: row.Fecha_Ingreso || new Date().toISOString()
+                        }, { merge: true });
                         total++;
                     });
                 }
                 await batch.commit();
-                toast({ title: "Importación Exitosa", description: `Se han restaurado ${total} registros.` });
+                toast({ title: "Carga Masiva Exitosa", description: `Se han procesado ${total} registros en tu inventario.` });
             } catch (error) {
-                toast({ variant: "destructive", title: "Error al Importar" });
+                console.error("Import Error:", error);
+                toast({ variant: "destructive", title: "Error al Importar", description: "Asegúrate de que el archivo tenga el formato correcto de la plantilla." });
             } finally {
                 setIsImporting(false);
                 if (fileInputRef.current) fileInputRef.current.value = "";
@@ -586,22 +635,41 @@ function SettingsContent() {
 
                 <Card className="shadow-md border-slate-200">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-primary"><Database className="w-5 h-5" /> Centro de Datos y Respaldo</CardTitle>
-                        <CardDescription>Descarga o restaura toda tu información.</CardDescription>
+                        <CardTitle className="flex items-center gap-2 text-primary"><Database className="w-5 h-5" /> Centro de Datos y Carga Masiva</CardTitle>
+                        <CardDescription>Usa el formato Excel para descargar tus datos o cargar nueva mercancía rápidamente.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Button variant="outline" className="h-20 justify-start gap-4 border-primary/30 bg-white hover:bg-primary/5" onClick={handleExportSystemBackup}>
                                 <div className="p-3 bg-primary/10 rounded-full"><DownloadCloud className="w-6 h-6 text-primary" /></div>
-                                <div className="text-left"><p className="font-bold text-sm">Descargar Todo (Excel)</p></div>
+                                <div className="text-left">
+                                    <p className="font-bold text-sm">Exportar Plantilla (Excel)</p>
+                                    <p className="text-[10px] text-muted-foreground italic">Úsalo para llenar tus datos.</p>
+                                </div>
                             </Button>
                             <AdminAuthDialog onAuthorized={() => fileInputRef.current?.click()}>
                                 <Button variant="outline" className="h-20 justify-start gap-4 border-amber-300 bg-white hover:bg-amber-50" disabled={isImporting}>
                                     <div className="p-3 bg-amber-100 rounded-full">{isImporting ? <RefreshCcw className="w-6 h-6 text-amber-600 animate-spin" /> : <UploadCloud className="w-6 h-6 text-amber-600" />}</div>
-                                    <div className="text-left"><p className="font-bold text-sm text-amber-700">Importar Respaldo</p></div>
+                                    <div className="text-left">
+                                        <p className="font-bold text-sm text-amber-700">Carga Masiva / Importar</p>
+                                        <p className="text-[10px] text-amber-600/70 italic">Sube el archivo para procesar.</p>
+                                    </div>
                                 </Button>
                             </AdminAuthDialog>
                             <input type="file" ref={fileInputRef} className="hidden" accept=".xlsx, .xls" onChange={handleImportBackup} />
+                        </div>
+
+                        <div className="p-4 bg-muted/30 border rounded-lg space-y-2">
+                            <p className="text-xs font-black uppercase text-slate-500 flex items-center gap-2"><Info className="w-3 h-3"/> ¿Cómo cargar mercancía rápido?</p>
+                            <ol className="text-[11px] text-slate-600 space-y-1 list-decimal ml-4">
+                                <li>Haz clic en <strong>"Exportar Plantilla"</strong> para descargar tu inventario actual.</li>
+                                <li>Abre el archivo y ve a la pestaña <strong>"Inventario"</strong>.</li>
+                                <li>Para <strong>añadir productos nuevos</strong>: Agrega filas al final dejando la columna <strong>"ID" vacía</strong>.</li>
+                                <li><strong>Sobre el SKU:</strong> Puedes dejar la columna SKU vacía y el sistema generará uno automático para ti.</li>
+                                <li><strong>IVA y Ofertas:</strong> Escribe "SI" en la columna Aplica_IVA para habilitar el impuesto. Pon un monto en Precio_Oferta para fijar un descuento especial.</li>
+                                <li>Para <strong>actualizar stock o precios</strong>: Modifica los valores de las filas existentes sin tocar el "ID".</li>
+                                <li>Guarda el archivo y súbelo usando el botón de <strong>"Carga Masiva"</strong>.</li>
+                            </ol>
                         </div>
                     </CardContent>
                 </Card>

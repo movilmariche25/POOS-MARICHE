@@ -1,3 +1,4 @@
+
 "use client";
 
 import { ProductGrid } from "@/components/pos/product-grid";
@@ -11,8 +12,7 @@ import { useRouter } from "next/navigation";
 import { useCollection, useFirebase, useMemoFirebase, deleteDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase";
 import { collection, doc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
-import { ParkingSquare, Calculator } from "lucide-react";
-import { HoldSaleDialog } from "@/components/pos/hold-sale-dialog";
+import { Calculator } from "lucide-react";
 import { HeldSalesSheet } from "@/components/pos/held-sales-sheet";
 import { PriceCalculatorDialog } from "@/components/tools/price-calculator-dialog";
 import { CustomItemDialog } from "@/components/pos/custom-item-dialog";
@@ -74,12 +74,65 @@ function POSContent() {
         }
     }, [searchParams, user, isUserLoading, products, firestore]);
 
+    // Función auxiliar para calcular el stock disponible real
+    const getAvailableStock = (product: Product) => {
+        if (!products) return 0;
+        if (product.isCombo) {
+             if (!product.comboItems || product.comboItems.length === 0) return 0;
+             const stockCounts = product.comboItems.map(item => {
+                 const component = products.find(p => p.id === item.productId);
+                 if (!component) return 0;
+                 const available = (Number(component.stockLevel) || 0) - (Number(component.reservedStock) || 0) - (Number(component.damagedStock) || 0);
+                 return Math.floor(available / (item.quantity || 1));
+             });
+             return Math.min(...stockCounts);
+        }
+        return (Number(product.stockLevel) || 0) - (Number(product.reservedStock) || 0) - (Number(product.damagedStock) || 0);
+    };
+
     const handleProductSelect = (product: Product) => {
+        const available = getAvailableStock(product);
+        
         setCart(prev => {
             const existing = prev.find(i => i.productId === product.id && !i.isRepair && !i.isCustom);
+            const currentQty = existing ? existing.quantity : 0;
+
+            if (currentQty + 1 > available) {
+                toast({
+                    variant: "destructive",
+                    title: "Stock Insuficiente",
+                    description: `Solo quedan ${available} unidades disponibles de "${product.name}".`
+                });
+                return prev;
+            }
+
             if (existing) return prev.map(i => i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i);
             return [...prev, { productId: product.id!, name: product.name, quantity: 1 }];
         });
+    };
+
+    const handleUpdateQuantity = (id: string, q: number) => {
+        const product = products?.find(p => p.id === id);
+        
+        // Si no es un producto de inventario (es manual o reparación), permitimos el cambio sin validar stock
+        if (!product) {
+            setCart(prev => prev.map(i => i.productId === id ? { ...i, quantity: q } : i));
+            return;
+        }
+
+        const available = getAvailableStock(product);
+        let finalQty = q;
+
+        if (q > available) {
+            toast({
+                variant: "destructive",
+                title: "Límite de Inventario",
+                description: `No puedes vender más de ${available} unidades de este producto.`
+            });
+            finalQty = available;
+        }
+
+        setCart(prev => prev.map(i => i.productId === id ? { ...i, quantity: Math.max(0.001, finalQty) } : i));
     };
 
     const handleAddCustomItem = (name: string, price: number, costPrice: number) => {
@@ -111,9 +164,6 @@ function POSContent() {
                     <PriceCalculatorDialog><Button variant="outline" size="icon"><Calculator className="h-4 w-4" /></Button></PriceCalculatorDialog>
                     <CustomItemDialog onAddCustomItem={handleAddCustomItem} />
                     <HeldSalesSheet heldSales={heldSales || []} />
-                    <HoldSaleDialog onHoldSale={handleHoldSale} disabled={cart.length === 0 || cart.some(c => c.isRepair)}>
-                        <Button variant="outline"><ParkingSquare className="mr-2 h-4 w-4" /> Aparcar</Button>
-                    </HoldSaleDialog>
                 </div>
             </header>
             <main className="flex-1 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 overflow-hidden">
@@ -121,11 +171,12 @@ function POSContent() {
                     <CartDisplay 
                         cart={cart}
                         allProducts={products || []}
-                        onUpdateQuantity={(id, q) => setCart(prev => prev.map(i => i.productId === id ? { ...i, quantity: q } : i))}
+                        onUpdateQuantity={handleUpdateQuantity}
                         onRemoveItem={handleRemoveItem}
                         onClearCart={() => setCart([])}
                         onTogglePromo={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isPromo: !i.isPromo } : i))}
                         onToggleGift={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isGift: !i.isGift } : i))}
+                        onHoldSale={handleHoldSale}
                         repairJobId={activeRepairJob?.id}
                     />
                 </div>

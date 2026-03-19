@@ -8,7 +8,7 @@ import { DateRange } from "react-day-picker";
 import { format, startOfDay, endOfDay, isWithinInterval } from "date-fns";
 import { es } from "date-fns/locale";
 import { Button } from "../ui/button";
-import { CalendarIcon, Landmark, DollarSign, Info, Sigma, TrendingUp, ShoppingBag, Package } from "lucide-react";
+import { CalendarIcon, Landmark, DollarSign, Info, Sigma, TrendingUp, ShoppingBag, Package, CreditCard, Smartphone, Banknote } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Calendar } from "../ui/calendar";
 import { cn } from "@/lib/utils";
@@ -17,7 +17,7 @@ import { Skeleton } from "../ui/skeleton";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { Badge } from "../ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "../ui/table";
 
 type DateRangeReportProps = {
     sales: Sale[];
@@ -26,6 +26,20 @@ type DateRangeReportProps = {
     repairJobs: RepairJob[];
     exchanges: CurrencyExchange[];
     isLoading?: boolean;
+};
+
+const methodIcons: Record<string, any> = {
+    'Efectivo Bs': Landmark,
+    'Tarjeta': CreditCard,
+    'Pago Móvil': Smartphone,
+    'Transferencia': Banknote,
+};
+
+const methodStyles: Record<string, { color: string, bg: string, border: string }> = {
+    'Efectivo Bs': { color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
+    'Tarjeta': { color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
+    'Pago Móvil': { color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' },
+    'Transferencia': { color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
 };
 
 export function DateRangeReport({ sales, products, reconciliations, repairJobs, exchanges, isLoading }: DateRangeReportProps) {
@@ -45,7 +59,8 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                 transactionCount: 0, 
                 bsBreakdown: {}, 
                 usdNet: 0,
-                itemsBreakdown: [] 
+                itemsBreakdown: [],
+                totalProductCosts: 0
             };
         }
 
@@ -54,7 +69,8 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
 
         const bsBreakdown: Record<string, number> = { 
             'Efectivo Bs': 0, 
-            'Tarjeta / Pago Móvil': 0, 
+            'Tarjeta': 0,
+            'Pago Móvil': 0,
             'Transferencia': 0 
         };
         let usdNet = 0;
@@ -78,18 +94,24 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
             s.payments.forEach(p => {
                 if (p.method === 'Efectivo USD') usdNet += p.amount;
                 else if (p.method === 'Efectivo Bs') bsBreakdown['Efectivo Bs'] += p.amount;
-                else if (p.method === 'Tarjeta' || p.method === 'Pago Móvil' || p.method === 'Tarjeta / Pago Móvil') {
-                    bsBreakdown['Tarjeta / Pago Móvil'] += p.amount;
-                } else if (p.method === 'Transferencia') {
+                else if (p.method === 'Tarjeta') bsBreakdown['Tarjeta'] += p.amount;
+                else if (p.method === 'Pago Móvil') bsBreakdown['Pago Móvil'] += p.amount;
+                else if (p.method === 'Tarjeta / Pago Móvil') {
+                    bsBreakdown['Pago Móvil'] += p.amount;
+                }
+                else if (p.method === 'Transferencia') {
                     bsBreakdown['Transferencia'] += p.amount;
                 }
             });
             s.changeGiven?.forEach(c => {
                 if (c.method === 'Efectivo USD') usdNet -= c.amount;
                 else if (c.method === 'Efectivo Bs') bsBreakdown['Efectivo Bs'] -= c.amount;
-                else if (c.method === 'Tarjeta' || c.method === 'Pago Móvil' || c.method === 'Tarjeta / Pago Móvil') {
-                    bsBreakdown['Tarjeta / Pago Móvil'] -= c.amount;
-                } else if (c.method === 'Transferencia') {
+                else if (c.method === 'Tarjeta') bsBreakdown['Tarjeta'] -= c.amount;
+                else if (c.method === 'Pago Móvil') bsBreakdown['Pago Móvil'] -= c.amount;
+                else if (c.method === 'Tarjeta / Pago Móvil') {
+                    bsBreakdown['Pago Móvil'] -= c.amount;
+                }
+                else if (c.method === 'Transferencia') {
                     bsBreakdown['Transferencia'] -= c.amount;
                 }
             });
@@ -146,9 +168,10 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
 
         filteredExchanges.forEach(e => {
             usdNet += e.usdAmount;
-            if (e.sourceMethod === 'Tarjeta' || e.sourceMethod === 'Pago Móvil' || e.sourceMethod === 'Tarjeta / Pago Móvil') {
-                bsBreakdown['Tarjeta / Pago Móvil'] -= e.bsAmount;
-            } else if (bsBreakdown[e.sourceMethod] !== undefined) {
+            if (e.sourceMethod === 'Tarjeta') bsBreakdown['Tarjeta'] -= e.bsAmount;
+            else if (e.sourceMethod === 'Pago Móvil') bsBreakdown['Pago Móvil'] -= e.bsAmount;
+            else if (e.sourceMethod === 'Tarjeta / Pago Móvil') bsBreakdown['Pago Móvil'] -= e.bsAmount;
+            else if (bsBreakdown[e.sourceMethod] !== undefined) {
                 bsBreakdown[e.sourceMethod] -= e.bsAmount;
             }
         });
@@ -179,6 +202,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
             bsBreakdown,
             usdNet,
             itemsBreakdown,
+            totalProductCosts,
             dateRangeLabel: date.to ? `${format(from, "dd/MM/yy")} al ${format(to, "dd/MM/yy")}` : format(from, "dd/MM/yy")
         };
 
@@ -242,13 +266,24 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                                 </CardHeader>
                                 <CardContent className="space-y-3">
                                     <div className="text-3xl font-black text-primary">Bs {formatCurrency(Object.values(stats.bsBreakdown).reduce((a,b)=>a+b, 0))}</div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {Object.entries(stats.bsBreakdown).map(([method, amount]) => (
-                                            <div key={method} className="flex justify-between items-center bg-muted/30 p-1.5 rounded text-[9px]">
-                                                <span className="font-bold uppercase">{method}:</span>
-                                                <span className={cn("font-black", (amount as number) < 0 ? "text-destructive" : "text-slate-700")}>Bs {formatCurrency(amount as number)}</span>
-                                            </div>
-                                        ))}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        {Object.entries(stats.bsBreakdown).map(([method, amount]) => {
+                                            const Icon = methodIcons[method] || Landmark;
+                                            const style = methodStyles[method] || { color: 'text-slate-600', bg: 'bg-muted/30', border: 'border-transparent' };
+                                            return (
+                                                <div key={method} className={cn(
+                                                    "flex justify-between items-center p-2 rounded-lg border transition-all hover:shadow-sm",
+                                                    style.bg,
+                                                    style.border
+                                                )}>
+                                                    <div className="flex items-center gap-2">
+                                                        <Icon className={cn("w-3.5 h-3.5", style.color)} />
+                                                        <span className={cn("font-black uppercase text-[9px]", style.color)}>{method}:</span>
+                                                    </div>
+                                                    <span className={cn("font-black text-[11px] tabular-nums", (amount as number) < 0 ? "text-destructive" : "text-slate-900")}>Bs {formatCurrency(amount as number)}</span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </CardContent>
                             </Card>
@@ -263,11 +298,16 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                             <Badge variant="outline" className="text-[9px] border-primary/20 text-primary">SÓLO MOVIMIENTOS SELECCIONADOS</Badge>
                         </div>
                         
-                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                             <div className="p-4 rounded-xl bg-muted border-l-4 border-l-primary">
                                 <p className="text-[10px] font-bold uppercase text-muted-foreground">Ventas Brutas ($)</p>
                                 <p className="text-2xl font-black">{getSymbol()}{formatCurrency(stats.totalSales)}</p>
                                 <p className="text-[9px] text-muted-foreground mt-1">{stats.transactionCount} transacciones</p>
+                            </div>
+                            <div className="p-4 rounded-xl bg-muted border-l-4 border-l-blue-500">
+                                <p className="text-[10px] font-bold uppercase text-muted-foreground">Monto Invertido ($)</p>
+                                <p className="text-2xl font-black text-blue-600">{getSymbol()}{formatCurrency(stats.totalProductCosts)}</p>
+                                <p className="text-[9px] text-muted-foreground mt-1">Costo de mercancía</p>
                             </div>
                             <div className="p-4 rounded-xl bg-muted border-l-4 border-l-green-500">
                                 <p className="text-[10px] font-bold uppercase text-muted-foreground">Utilidad Est. ($)</p>
@@ -345,6 +385,20 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                                 ))
                             )}
                         </TableBody>
+                        {stats.itemsBreakdown.length > 0 && (
+                            <TableFooter className="bg-primary/5 font-black">
+                                <TableRow>
+                                    <TableCell colSpan={2} className="text-[10px] uppercase text-primary">Totales del Periodo:</TableCell>
+                                    <TableCell className="text-right text-xs">${formatCurrency(stats.totalProductCosts)}</TableCell>
+                                    <TableCell className="text-right text-xs">${formatCurrency(stats.totalSales)}</TableCell>
+                                    <TableCell className="text-right">
+                                        <Badge className={cn("font-mono text-xs shadow-sm", stats.totalProfit >= 0 ? "bg-green-600" : "bg-destructive")}>
+                                            ${formatCurrency(stats.totalProfit)}
+                                        </Badge>
+                                    </TableCell>
+                                </TableRow>
+                            </TableFooter>
+                        )}
                     </Table>
                 </CardContent>
             </Card>

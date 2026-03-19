@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -53,7 +54,7 @@ const formSchema = z.object({
   sku: z.string().min(1, { message: "El SKU o Código es obligatorio." }),
   barcode: z.string().optional().default(""),
   unit: z.enum(['unit', 'kg', 'g', 'lb', 'liter']),
-  costPrice: z.coerce.number().min(0, { message: "El precio de costo debe ser positivo." }),
+  costPrice: z.coerce.number().min(0),
   isFixedPrice: z.boolean().default(false),
   fixedPrice: z.coerce.number().min(0).default(0),
   hasCustomMargin: z.boolean().default(false),
@@ -70,6 +71,25 @@ const formSchema = z.object({
   isGiftable: z.boolean().default(false),
   hasIVA: z.boolean().default(false),
   createdAt: z.string(),
+}).superRefine((data, ctx) => {
+  // Validación de Precio: No permitir registrar sin precio
+  if (data.isFixedPrice) {
+    if (data.fixedPrice <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El precio de venta fijo es obligatorio.",
+        path: ["fixedPrice"],
+      });
+    }
+  } else {
+    if (data.costPrice <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "El precio de costo es obligatorio para calcular la venta.",
+        path: ["costPrice"],
+      });
+    }
+  }
 });
 
 type ProductFormData = z.infer<typeof formSchema>;
@@ -80,9 +100,10 @@ interface ProductFormDialogProps {
     productCount?: number;
     isOpen?: boolean;
     onOpenChange?: (open: boolean) => void;
+    onSaved?: (product: Product) => void;
 }
 
-export function ProductFormDialog({ product, children, productCount = 0, isOpen, onOpenChange }: ProductFormDialogProps) {
+export function ProductFormDialog({ product, children, productCount = 0, isOpen, onOpenChange, onSaved }: ProductFormDialogProps) {
   const { firestore, user } = useFirebase();
   const [internalOpen, setInternalOpen] = useState(false);
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
@@ -146,9 +167,51 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
   const hasIVA = form.watch("hasIVA");
   const hasPromoPrice = form.watch("hasPromoPrice");
   const selectedUnit = form.watch("unit");
+  const watchedName = form.watch("name");
+  const watchedSku = form.watch("sku");
+  const watchedBarcode = form.watch("barcode");
   const isEditing = !!product;
   
   const showRepairsFeature = profile?.enabledModules?.includes('repairs') ?? true;
+
+  // Validación de Duplicados en Tiempo Real
+  useEffect(() => {
+    if (!allProducts || !watchedName) return;
+    
+    const nameExists = allProducts.some(p => 
+        p.name.toLowerCase().trim() === watchedName.toLowerCase().trim() && 
+        p.id !== product?.id
+    );
+    if (nameExists) {
+        form.setError("name", { type: "manual", message: "¡Este producto ya existe!" });
+    } else {
+        form.clearErrors("name");
+    }
+
+    if (watchedSku) {
+        const skuExists = allProducts.some(p => 
+            p.sku.toLowerCase().trim() === watchedSku.toLowerCase().trim() && 
+            p.id !== product?.id
+        );
+        if (skuExists) {
+            form.setError("sku", { type: "manual", message: "¡Código SKU ya en uso!" });
+        } else {
+            form.clearErrors("sku");
+        }
+    }
+
+    if (watchedBarcode && watchedBarcode.trim() !== "") {
+        const barcodeExists = allProducts.some(p => 
+            p.barcode === watchedBarcode.trim() && 
+            p.id !== product?.id
+        );
+        if (barcodeExists) {
+            form.setError("barcode", { type: "manual", message: "¡Barras ya registrado!" });
+        } else {
+            form.clearErrors("barcode");
+        }
+    }
+  }, [watchedName, watchedSku, watchedBarcode, allProducts, product?.id, form]);
 
   const { suggestedRetailPrice, suggestedPromoPrice } = useMemo(() => {
     const suggestedPromo = costPrice > 0 ? costPrice * (1 + profitMargin / 100) : 0;
@@ -231,34 +294,6 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
   async function onSubmit(values: ProductFormData) {
     if (!firestore || !user) return;
 
-    const isDuplicateName = allProducts?.some(p => 
-        p.name.toLowerCase().trim() === values.name.toLowerCase().trim() && 
-        p.id !== product?.id
-    );
-
-    if (isDuplicateName) {
-        toast({
-            variant: "destructive",
-            title: "Producto ya existe",
-            description: `Ya tienes un artículo llamado "${values.name}" en tu inventario.`
-        });
-        return;
-    }
-
-    const isDuplicateSKU = allProducts?.some(p => 
-        p.sku.toLowerCase().trim() === values.sku.toLowerCase().trim() && 
-        p.id !== product?.id
-    );
-
-    if (isDuplicateSKU) {
-        toast({
-            variant: "destructive",
-            title: "SKU Duplicado",
-            description: `El código "${values.sku}" ya está siendo usado por otro producto.`
-        });
-        return;
-    }
-
     const finalValues: any = {
         name: values.name,
         category: values.category,
@@ -285,13 +320,17 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
 
     if (product && product.id) {
       const productRef = doc(firestore, 'users', user.uid, 'products', product.id);
-      setDocumentNonBlocking(productRef, { ...finalValues, id: product.id }, { merge: true });
+      const updatedProduct = { ...finalValues, id: product.id };
+      setDocumentNonBlocking(productRef, updatedProduct, { merge: true });
       toast({ title: "Producto Actualizado" });
+      onSaved?.(updatedProduct as Product);
     } else {
       const productsCollectionRef = collection(firestore, 'users', user.uid, 'products');
       const newDocRef = doc(productsCollectionRef);
-      setDocumentNonBlocking(newDocRef, { ...finalValues, id: newDocRef.id }, { merge: true });
+      const newProduct = { ...finalValues, id: newDocRef.id };
+      setDocumentNonBlocking(newDocRef, newProduct, { merge: true });
       toast({ title: "Producto Añadido" });
+      onSaved?.(newProduct as Product);
     }
     setOpen(false);
   }
@@ -315,8 +354,18 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
             <div className="flex-1 overflow-y-auto px-6 space-y-6">
-                <FormField control={form.control} name="name" render={({ field }) => (
-                    <FormItem className="pt-2"><FormLabel>Nombre del Artículo</FormLabel><FormControl><Input {...field} placeholder="Ej: Pantalla Samsung A51 Original" /></FormControl><FormMessage /></FormItem>
+                <FormField control={form.control} name="name" render={({ field, fieldState }) => (
+                    <FormItem className="pt-2">
+                        <FormLabel>Nombre del Artículo</FormLabel>
+                        <FormControl>
+                            <Input 
+                                {...field} 
+                                placeholder="Ej: Pantalla Samsung A51 Original" 
+                                className={cn(fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
+                            />
+                        </FormControl>
+                        <FormMessage />
+                    </FormItem>
                 )} />
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -383,19 +432,29 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField control={form.control} name="sku" render={({ field }) => (
+                    <FormField control={form.control} name="sku" render={({ field, fieldState }) => (
                         <FormItem>
                             <FormLabel>SKU / Código Propio</FormLabel>
                             <FormControl>
-                                <Input {...field} placeholder="Ej: SKU-260225-1351" />
+                                <Input 
+                                    {...field} 
+                                    placeholder="Ej: SKU-260225-1351" 
+                                    className={cn(fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
+                                />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
                     )} />
-                    <FormField control={form.control} name="barcode" render={({ field }) => (
+                    <FormField control={form.control} name="barcode" render={({ field, fieldState }) => (
                         <FormItem>
                             <FormLabel className="flex items-center gap-2"><Barcode className="w-3 h-3" /> Código de Barras</FormLabel>
-                            <FormControl><Input {...field} placeholder="Escanea o escribe..." /></FormControl>
+                            <FormControl>
+                                <Input 
+                                    {...field} 
+                                    placeholder="Escanea o escribe..." 
+                                    className={cn(fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
+                                />
+                            </FormControl>
                             <FormMessage />
                         </FormItem>
                     )} />
@@ -412,7 +471,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                 )}
 
                 <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-primary font-black text-[10px] uppercase tracking-widest border-b pb-1">
+                    <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase tracking-widest border-b pb-1">
                         <Calculator className="w-3.5 h-3.5" /> Estrategia de Precios
                     </div>
                     
@@ -444,17 +503,33 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                        <FormField control={form.control} name="costPrice" render={({ field }) => (
+                        <FormField control={form.control} name="costPrice" render={({ field, fieldState }) => (
                             <FormItem>
                                 <FormLabel className="text-xs font-bold">Costo Unitario ($)</FormLabel>
-                                <FormControl><Input type="number" step="0.01" {...field} className="h-10 font-bold" /></FormControl>
+                                <FormControl>
+                                    <Input 
+                                        type="number" 
+                                        step="0.01" 
+                                        {...field} 
+                                        className={cn("h-10 font-bold", fieldState.error && "border-destructive ring-destructive")} 
+                                    />
+                                </FormControl>
+                                <FormMessage />
                             </FormItem>
                         )} />
                         {isFixedPrice ? (
-                            <FormField control={form.control} name="fixedPrice" render={({ field }) => (
+                            <FormField control={form.control} name="fixedPrice" render={({ field, fieldState }) => (
                                 <FormItem>
                                     <FormLabel className="text-xs font-bold text-amber-600">Precio Venta Fijo ($)</FormLabel>
-                                    <FormControl><Input type="number" step="0.01" {...field} className="h-10 border-amber-200 font-bold" /></FormControl>
+                                    <FormControl>
+                                        <Input 
+                                            type="number" 
+                                            step="0.01" 
+                                            {...field} 
+                                            className={cn("h-10 border-amber-200 font-bold", fieldState.error && "border-destructive ring-destructive")} 
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
                                 </FormItem>
                             )} />
                         ) : hasCustomMargin ? (
@@ -478,7 +553,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                 <FormLabel className="text-xs font-bold text-pink-600 flex items-center gap-2">
                                     <Gift className="w-3.5 h-3.5" /> Precio Especial de Oferta ($)
                                 </FormLabel>
-                                <FormControl><Input type="number" step="0.01" {...field} className="h-10 border-pink-200 font-black text-pink-700 bg-white" /></FormControl>
+                                <FormControl><Input type="number" step="0.01" {...field} className="h-10 border-pink-200 font-bold text-pink-700 bg-white" /></FormControl>
                                 <FormDescription className="text-[10px]">Este precio ignorará los márgenes y se usará cuando actives "OFERTA" en el POS.</FormDescription>
                             </FormItem>
                         )} />
@@ -486,7 +561,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
 
                     <div className="p-4 rounded-xl bg-slate-900 text-white space-y-3 shadow-lg">
                         <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                            <span className="text-[10px] font-black uppercase tracking-tighter text-slate-400 flex items-center gap-2">
+                            <span className="text-[10px] font-bold uppercase tracking-tighter text-slate-400 flex items-center gap-2">
                                 <TrendingUp className="w-3.5 h-3.5" /> Análisis Sugerido (Reactivo)
                             </span>
                             {hasIVA && <Badge variant="outline" className="text-[8px] h-4 border-green-500 text-green-500 font-bold">CON IVA INCL.</Badge>}
@@ -495,14 +570,14 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
                                 <p className="text-[9px] font-bold text-slate-500 uppercase">P. Venta (Reposición)</p>
-                                <p className="text-xl font-black text-blue-400">
+                                <p className="text-xl font-bold text-blue-400">
                                     ${formatCurrency(suggestedRetailPrice)}
                                 </p>
                                 <p className="text-[10px] text-slate-400 font-bold">Bs {formatCurrency(suggestedRetailPrice * bcvRate)}</p>
                             </div>
                             <div className="space-y-1 text-right">
                                 <p className="text-[9px] font-bold text-slate-500 uppercase">P. Oferta (Margen Base)</p>
-                                <p className="text-xl font-black text-green-400">
+                                <p className="text-xl font-bold text-green-400">
                                     ${formatCurrency(suggestedPromoPrice)}
                                 </p>
                                 <p className="text-[10px] text-slate-400 font-bold">Bs {formatCurrency(suggestedPromoPrice * bcvRate)}</p>
@@ -521,7 +596,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                 <Separator />
 
                 <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-primary font-black text-[10px] uppercase tracking-widest border-b pb-1">
+                    <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase tracking-widest border-b pb-1">
                         <AlertTriangle className="w-3.5 h-3.5" /> Auditoría de Stock
                     </div>
                     
@@ -529,7 +604,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                         <FormField control={form.control} name="stockLevel" render={({ field }) => (
                             <FormItem>
                                 <FormLabel className="text-[10px] font-bold uppercase">Stock Físico</FormLabel>
-                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 font-black" /></FormControl>
+                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 font-bold" /></FormControl>
                                 <FormDescription className="text-[8px]">Total en estante.</FormDescription>
                             </FormItem>
                         )} />
@@ -558,11 +633,11 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                         availableReal <= 0 ? "bg-destructive/10 border-destructive/20" : "bg-green-600/10 border-green-600/20"
                     )}>
                         <div className="flex flex-col">
-                            <span className="text-[10px] font-black uppercase text-slate-500">Resultado para Venta:</span>
+                            <span className="text-[10px] font-bold uppercase text-slate-500">Resultado para Venta:</span>
                             <span className="text-[8px] text-muted-foreground italic">(Físico - Reservas - Dañados)</span>
                         </div>
                         <div className="text-right">
-                            <span className={cn("text-2xl font-black", availableReal <= 0 ? "text-destructive" : "text-green-700")}>
+                            <span className={cn("text-2xl font-bold", availableReal <= 0 ? "text-destructive" : "text-green-700")}>
                                 {availableReal} {selectedUnit === 'unit' ? 'pzas' : selectedUnit}
                             </span>
                         </div>
@@ -579,7 +654,11 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
 
             <div className="px-6 py-4 border-t bg-white">
                 <DialogFooter>
-                    <Button type="submit" className="w-full h-12 text-base font-bold shadow-lg" disabled={form.formState.isSubmitting}>
+                    <Button 
+                        type="submit" 
+                        className="w-full h-12 text-base font-bold shadow-lg" 
+                        disabled={form.formState.isSubmitting || !form.formState.isValid}
+                    >
                         {form.formState.isSubmitting ? "GUARDANDO..." : "Sincronizar Producto"}
                     </Button>
                 </DialogFooter>

@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { DailyReconciliation, PaymentMethod, UserProfile } from "@/lib/types";
@@ -9,7 +10,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { Skeleton } from "../ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { ArrowDown, ArrowUp, Minus, Printer, CalendarIcon, X as ClearIcon } from "lucide-react";
+import { Minus, Printer, CalendarIcon, X as ClearIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { handlePrintReconciliation } from "./reconciliation-ticket";
 import { useToast } from "@/hooks/use-toast";
@@ -26,13 +27,6 @@ type ReconciliationHistoryProps = {
 };
 
 const paymentMethodsOrder: PaymentMethod[] = ['Efectivo USD', 'Efectivo Bs', 'Tarjeta', 'Pago Móvil', 'Transferencia'];
-
-const DifferenceIndicator = ({ difference }: { difference: number }) => {
-    if (Math.abs(difference) < 0.01) return <Minus className="h-4 w-4 text-muted-foreground" />;
-    if (difference > 0) return <ArrowUp className="h-4 w-4 text-green-600" />;
-    return <ArrowDown className="h-4 w-4 text-destructive" />;
-};
-
 
 export function ReconciliationHistory({ reconciliations, isLoading }: ReconciliationHistoryProps) {
   const currency = useCurrency();
@@ -147,11 +141,16 @@ export function ReconciliationHistory({ reconciliations, isLoading }: Reconcilia
                                         <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-widest">ID: {recon.id}</p>
                                     </div>
                                     <div className="flex items-center gap-4">
-                                        <div className={cn("flex items-center gap-1 font-bold text-sm", recon.totalDifference < 0 ? 'text-destructive' : 'text-green-600')}>
-                                        <DifferenceIndicator difference={recon.totalDifference} />
-                                        {getSymbol('USD')}{formatCurrency(recon.totalDifference, 'USD')}
+                                        <div className="flex flex-col items-end">
+                                            <span className="text-[10px] font-black uppercase text-muted-foreground">Dif. Total ($)</span>
+                                            <p className="font-black text-lg">
+                                                {recon.totalDifference >= 0 ? '+' : ''}{getSymbol('USD')}{formatCurrency(recon.totalDifference, 'USD')}
+                                            </p>
                                         </div>
-                                        <p className="font-black text-lg">{getSymbol()}{formatCurrency(recon.totalSales)}</p>
+                                        <div className="text-right">
+                                            <span className="text-[10px] font-black uppercase text-primary">Ventas Totales</span>
+                                            <p className="font-black text-lg">{getSymbol()}{formatCurrency(recon.totalSales)}</p>
+                                        </div>
                                     </div>
                                 </div>
                             </AccordionTrigger>
@@ -169,11 +168,11 @@ export function ReconciliationHistory({ reconciliations, isLoading }: Reconcilia
                                             <p className="text-[10px] font-bold text-muted-foreground uppercase">Flujo de Caja Real</p>
                                             <div className="flex justify-between text-sm">
                                                 <span>Pagos Recibidos:</span>
-                                                <span className="font-medium text-green-600">+{getSymbol('USD')}{formatCurrency(recon.totalPaymentsReceived ?? 0, 'USD')}</span>
+                                                <span className="font-medium">+{getSymbol('USD')}{formatCurrency(recon.totalPaymentsReceived ?? 0, 'USD')}</span>
                                             </div>
                                             <div className="flex justify-between text-sm">
                                                 <span>Vueltos Entregados:</span>
-                                                <span className="font-medium text-destructive">-{getSymbol('USD')}{formatCurrency(recon.totalChangeGiven ?? 0, 'USD')}</span>
+                                                <span className="font-medium">-{getSymbol('USD')}{formatCurrency(recon.totalChangeGiven ?? 0, 'USD')}</span>
                                             </div>
                                             <div className="flex justify-between font-black border-t pt-1.5 mt-1.5 text-primary">
                                                 <span>Neto en Caja ($):</span>
@@ -201,9 +200,17 @@ export function ReconciliationHistory({ reconciliations, isLoading }: Reconcilia
                                                     if (!recon.paymentMethods || !recon.paymentMethods[method]) return null;
                                                     const details = recon.paymentMethods[method]!;
                                                     const symbol = getSymbol(method === 'Efectivo USD' ? 'USD' : 'Bs');
+                                                    
+                                                    let statusTag = "";
+                                                    if (details.difference > 0.01) statusTag = " (SOBRANTE)";
+                                                    else if (details.difference < -0.01) statusTag = " (FALTANTE)";
+
                                                     return (
                                                         <TableRow key={method} className="h-8">
-                                                            <TableCell className="py-2 text-xs font-medium">{method}</TableCell>
+                                                            <TableCell className="py-2 text-xs font-medium">
+                                                                {method}
+                                                                <span className="text-[8px] font-black">{statusTag}</span>
+                                                            </TableCell>
                                                             <TableCell className="py-2 text-right text-xs">{symbol}{formatCurrency(details.expected)}</TableCell>
                                                             <TableCell className="py-2 text-right text-xs">{symbol}{formatCurrency(details.counted)}</TableCell>
                                                             <TableCell className={cn("py-2 text-right text-xs font-bold")}>

@@ -7,7 +7,6 @@ import { PageHeader } from "@/components/page-header";
 import { PlusCircle, Trash2, Calculator, Clock } from "lucide-react";
 import { DataTable } from "@/components/data-table";
 import { columns } from "@/components/inventory/columns";
-import { ProductFormDialog } from "@/components/inventory/product-form-dialog";
 import type { Product, UserProfile } from '@/lib/types';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCollection, useFirebase, useMemoFirebase, useDoc } from '@/firebase';
@@ -27,6 +26,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { PrintLabelsButton } from '@/components/inventory/print-labels-button';
 import { PriceCalculatorDialog } from '@/components/tools/price-calculator-dialog';
+import { ProductFormDialog } from '@/components/inventory/product-form-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { differenceInDays, parseISO } from 'date-fns';
 import { cn } from "@/lib/utils";
@@ -119,6 +119,14 @@ function InventoryContent() {
     const showAging = profile?.enabledModules?.includes('inventory_aging') ?? false;
     const showRepairs = profile?.enabledModules?.includes('repairs') ?? true;
 
+    // Filtramos las columnas dinámicamente para que la cabecera desaparezca por completo si el módulo no está activo
+    const tableColumns = useMemo(() => {
+        return columns.filter(column => {
+            if (column.id === 'age') return showAging;
+            return true;
+        });
+    }, [showAging]);
+
     const categories = useMemo(() => {
         if (!products) return [];
         const uniqueCategories = [...new Set(products.map(p => p.category).filter(Boolean))] as string[];
@@ -174,7 +182,7 @@ function InventoryContent() {
                     </TabsList>
                 </Tabs>
                 <DataTable 
-                    columns={columns} 
+                    columns={tableColumns} 
                     data={filteredProducts}
                     isLoading={isLoading}
                     filterPlaceholder="Buscar productos o descripción..."

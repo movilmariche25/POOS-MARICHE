@@ -1,9 +1,8 @@
-
 "use client";
 
 import type { CartItem, Payment, Product, Sale, RepairJob } from "@/lib/types";
 import { Button } from "../ui/button";
-import { Trash2, TicketPercent, Gift } from "lucide-react";
+import { Trash2, TicketPercent, Gift, ParkingSquare } from "lucide-react";
 import { useState } from "react";
 import { CheckoutDialog } from "./checkout-dialog";
 import { useCurrency } from "@/hooks/use-currency";
@@ -16,6 +15,7 @@ import { format } from 'date-fns';
 import { cn } from "@/lib/utils";
 import { Badge } from "../ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { HoldSaleDialog } from "./hold-sale-dialog";
 
 type CartDisplayProps = {
   cart: CartItem[];
@@ -25,6 +25,7 @@ type CartDisplayProps = {
   onClearCart: () => void;
   onTogglePromo: (productId: string) => void;
   onToggleGift: (productId: string) => void;
+  onHoldSale?: (name: string) => void;
   repairJobId?: string;
 };
 
@@ -33,7 +34,7 @@ function generateSaleId() {
     return `S-${format(date, "yyMMdd")}-${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
-export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem, onClearCart, repairJobId, onTogglePromo, onToggleGift }: CartDisplayProps) {
+export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem, onClearCart, repairJobId, onTogglePromo, onToggleGift, onHoldSale }: CartDisplayProps) {
   const { firestore, user } = useFirebase();
   const { toast } = useToast();
   const { format: formatCurrency, getFinalPrice, getSymbol, convert, bcvRate, parallelRate } = useCurrency();
@@ -50,16 +51,25 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
     
     if (item.isRepair) {
         if (!activeRepairJob) return 0;
+        
+        // Calculamos el saldo pendiente base guardado
         const basePending = Math.max(0, activeRepairJob.estimatedCost - (activeRepairJob.amountPaid || 0));
         
-        if (item.isPromo && activeRepairJob.reservedParts?.[0]) {
-            const partId = activeRepairJob.reservedParts[0].productId;
-            const product = allProducts.find(p => p.id === partId);
-            if (product && product.promoPrice && product.promoPrice > 0) {
-                const retailPriceOfPart = getFinalPrice(product);
-                const discountAmount = Math.max(0, retailPriceOfPart - product.promoPrice);
-                return Math.max(0, basePending - discountAmount);
-            }
+        // Si el usuario activa "OFERTA" en el POS para el ticket de reparación completo
+        if (item.isPromo && activeRepairJob.reservedParts && activeRepairJob.reservedParts.length > 0) {
+            let totalAdditionalDiscount = 0;
+            activeRepairJob.reservedParts.forEach(part => {
+                // Si la pieza NO tenía promo ya aplicada en el registro
+                if (!part.isPromo) {
+                    const product = allProducts.find(p => p.id === part.productId);
+                    if (product && product.promoPrice && product.promoPrice > 0) {
+                        const retailPriceOfPart = getFinalPrice(product);
+                        const diff = Math.max(0, retailPriceOfPart - product.promoPrice);
+                        totalAdditionalDiscount += diff * part.quantity;
+                    }
+                }
+            });
+            return Math.max(0, basePending - totalAdditionalDiscount);
         }
         return basePending;
     }
@@ -95,20 +105,17 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
             const currentRepairJobSnap = (repairJobId && hasRepairInCart) ? await transaction.get(repairJobRef!) : null;
             const currentRepairJob = currentRepairJobSnap?.exists() ? currentRepairJobSnap.data() as RepairJob : null;
 
-            // 1. Identificar todos los productos que afectarán el inventario
             if (currentRepairJob?.reservedParts && !currentRepairJob.partsConsumed && hasRepairInCart) {
                 currentRepairJob.reservedParts.forEach(p => productIdsToGet.add(p.productId));
             }
             cartWithPrices.filter(i => !i.isRepair && !i.isCustom).forEach(i => productIdsToGet.add(i.productId));
 
-            // 2. Obtener snapshots de productos de forma segura
             const productSnapshots = new Map<string, DocumentSnapshot>();
             for (const id of Array.from(productIdsToGet)) {
                 const snap = await transaction.get(doc(firestore, 'users', user.uid, 'products', id));
                 productSnapshots.set(id, snap);
             }
 
-            // 3. Calcular deducciones de stock
             const stockDeductions = new Map<string, { stock: number, reserved: number }>();
 
             if (currentRepairJob?.reservedParts && !currentRepairJob.partsConsumed && hasRepairInCart) {
@@ -130,7 +137,6 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 });
             }
 
-            // 4. Aplicar actualizaciones de stock con validación de suficiencia
             for (const [pid, ded] of Array.from(stockDeductions.entries())) {
                 const pSnap = productSnapshots.get(pid);
                 if (pSnap?.exists()) {
@@ -146,28 +152,28 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 }
             }
 
-            // 5. Si hay reparación, actualizar su estado y abonos
             if (repairJobId && currentRepairJob && hasRepairInCart) {
                 const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJobId);
                 const otherItemsTotal = cartWithPrices
                     .filter(i => !i.isRepair)
                     .reduce((sum, i) => sum + (i.price * i.quantity), 0);
                 
-                // El dinero se aplica primero a los productos y el sobrante a la reparación
                 const paidToRepair = Math.max(0, actualNetPaidInUSD - otherItemsTotal);
                 
-                let discountToApply = 0;
+                let additionalDiscountToApply = 0;
                 const repairItem = cartWithPrices.find(i => i.isRepair);
-                if (repairItem?.isPromo && currentRepairJob.reservedParts?.[0]) {
-                    const partId = currentRepairJob.reservedParts[0].productId;
-                    const product = allProducts.find(p => p.id === partId);
-                    if (product && product.promoPrice && product.promoPrice > 0) {
-                        const retailPriceOfPart = getFinalPrice(product);
-                        discountToApply = Math.max(0, retailPriceOfPart - product.promoPrice);
-                    }
+                if (repairItem?.isPromo && currentRepairJob.reservedParts) {
+                    currentRepairJob.reservedParts.forEach(part => {
+                        if (!part.isPromo) {
+                            const product = allProducts.find(p => p.id === part.productId);
+                            if (product && product.promoPrice && product.promoPrice > 0) {
+                                additionalDiscountToApply += (getFinalPrice(product) - product.promoPrice) * part.quantity;
+                            }
+                        }
+                    });
                 }
 
-                const newEstimatedCost = currentRepairJob.estimatedCost - discountToApply;
+                const newEstimatedCost = currentRepairJob.estimatedCost - additionalDiscountToApply;
                 const newPaidTotal = (currentRepairJob.amountPaid || 0) + paidToRepair;
                 const isFullyPaid = newPaidTotal >= (newEstimatedCost - 0.01);
 
@@ -180,7 +186,6 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 });
             }
 
-            // 6. Crear el registro de la transacción de venta
             const saleRef = doc(firestore, 'users', user.uid, 'sale_transactions', saleId);
             transaction.set(saleRef, {
                 id: saleId,
@@ -246,11 +251,11 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                     
                     let hasPromoAvailable = false;
                     if (item.isRepair) {
-                        const partId = activeRepairJob?.reservedParts?.[0]?.productId;
-                        if (partId) {
-                            const partProduct = allProducts.find(p => p.id === partId);
-                            hasPromoAvailable = !!(partProduct?.promoPrice && partProduct.promoPrice > 0);
-                        }
+                        // Para reparaciones, hay promo disponible si ALGUNA de sus piezas tiene precio de promo y no está aplicado
+                        hasPromoAvailable = !!activeRepairJob?.reservedParts?.some(part => {
+                            const p = allProducts.find(prod => prod.id === part.productId);
+                            return p && p.promoPrice && p.promoPrice > 0 && !part.isPromo;
+                        });
                     } else {
                         hasPromoAvailable = !!(productData?.promoPrice && productData.promoPrice > 0);
                     }
@@ -370,9 +375,19 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 PAGAR COMPRA
             </Button>
         </CheckoutDialog>
-        <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground h-7" onClick={onClearCart} disabled={cart.length === 0}>
-            Vaciar Carrito
-        </Button>
+        
+        <div className="grid grid-cols-2 gap-2">
+            {onHoldSale && (
+                <HoldSaleDialog onHoldSale={onHoldSale} disabled={cart.length === 0 || cart.some(c => c.isRepair)}>
+                    <Button variant="outline" size="sm" className="w-full text-xs h-8">
+                        <ParkingSquare className="mr-2 h-3.5 w-3.5" /> Aparcar Venta
+                    </Button>
+                </HoldSaleDialog>
+            )}
+            <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground h-8" onClick={onClearCart} disabled={cart.length === 0}>
+                Vaciar Carrito
+            </Button>
+        </div>
       </div>
     </div>
   );

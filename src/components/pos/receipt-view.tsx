@@ -38,33 +38,33 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
 
     return (
          <div className="receipt-content">
-            <div className="text-center mb-4">
+            <div className="text-center mb-2">
                 <h3 className="business-name bold-header">{businessName || 'POS MARICHE'}</h3>
                 {showInfo && profile?.businessRIF && (
                     <p className="meta-info font-bold">RIF: {profile.businessRIF.toUpperCase()}</p>
                 )}
                 {showInfo && profile?.businessAddress && (
-                    <p className="meta-info text-[8pt] italic leading-tight">{profile.businessAddress}</p>
+                    <p className="meta-info text-[7pt] italic leading-tight">{profile.businessAddress}</p>
                 )}
-                <p className="meta-info mt-2">{format(parseISO(sale.transactionDate), "dd/MM/yy hh:mm a", { locale: es })}</p>
+                <p className="meta-info mt-1">{format(parseISO(sale.transactionDate), "dd/MM/yy hh:mm a", { locale: es })}</p>
                 <p className="meta-info">ID: {sale.id}</p>
             </div>
             
             {isRepairReceipt && (
-                <div className="repair-info-section mb-4 border-y py-2">
-                    <p className="bold-header text-center text-[9pt]">SERVICIO TÉCNICO</p>
+                <div className="repair-info-section mb-2 border-y py-1">
+                    <p className="bold-header text-center text-[8pt]">SERVICIO TÉCNICO</p>
                     <p className="meta-info font-bold">TRABAJO: {sale.repairJobId}</p>
                     <p className="meta-info">CLIENTE: {repairData.customerName.toUpperCase()}</p>
                     <p className="meta-info">EQUIPO: {repairData.deviceMake.toUpperCase()} {repairData.deviceModel.toUpperCase()}</p>
                 </div>
             )}
 
-            <div className="flex-header bold-header mt-4 border-b">
+            <div className="flex-header bold-header mt-2 border-b">
                 <div className="flex-1 text-left">DETALLE</div>
                 <div className="w-1/3 text-right">TOTAL</div>
             </div>
             
-            <div className="items-list mt-2">
+            <div className="items-list mt-1">
                 {sale.items.map((item, idx) => (
                     <div key={idx} className="item-row">
                         <div className="item-name">{item.name}</div>
@@ -76,7 +76,7 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
                 ))}
             </div>
 
-            <div className="totals-section mt-4">
+            <div className="totals-section mt-2">
                  <div className="flex-row">
                     <span>SUB-TOTAL:</span>
                     <span>${formatCurrency(sale.subtotal, 'USD')}</span>
@@ -94,7 +94,7 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
                 
                 {/* Mostramos el monto en BS si NO es una promoción */}
                 {!isAnyPromo && (
-                    <div className="flex-row text-[10pt] font-black mt-1">
+                    <div className="flex-row text-[8pt] font-black mt-1">
                         <span>TOTAL EN BS:</span>
                         <span>Bs {formatCurrency(totalBs, 'Bs')}</span>
                     </div>
@@ -102,27 +102,27 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
             </div>
 
             {isRepairReceipt && (
-                <div className="repair-consolidation mt-6 border p-2 bg-slate-50">
-                    <p className="section-title bold-header border-b mb-2">RESUMEN DE CUENTA</p>
-                    <div className="flex-row text-[9pt]">
-                        <span>COSTO TOTAL TRABAJO:</span>
+                <div className="repair-consolidation mt-3 border p-1 bg-slate-50">
+                    <p className="section-title bold-header border-b mb-1">RESUMEN DE CUENTA</p>
+                    <div className="flex-row text-[7pt]">
+                        <span>COSTO TOTAL:</span>
                         <span>${formatCurrency(repairData.estimatedCost, 'USD')}</span>
                     </div>
-                    <div className="flex-row text-[9pt]">
-                        <span>TOTAL ABONADO (HIST.):</span>
+                    <div className="flex-row text-[7pt]">
+                        <span>ABONADO (HIST.):</span>
                         <span>-${formatCurrency(repairData.amountPaid, 'USD')}</span>
                     </div>
-                    <div className="flex-row total-row bold-header border-t pt-1 mt-1">
-                        <span>SALDO PENDIENTE:</span>
+                    <div className="flex-row total-row bold-header border-t pt-1">
+                        <span>PENDIENTE:</span>
                         <span>${formatCurrency(Math.max(0, repairData.estimatedCost - repairData.amountPaid), 'USD')}</span>
                     </div>
                 </div>
             )}
             
-            <div className="payments-section mt-6">
-                <p className="section-title bold-header">PAGOS RECIBIDOS HOY</p>
+            <div className="payments-section mt-3">
+                <p className="section-title bold-header">PAGOS RECIBIDOS</p>
                 {sale.payments.map((p, index) => (
-                    <div key={index} className="flex-row text-[9pt]">
+                    <div key={index} className="flex-row text-[7pt]">
                         <span className="method-name">{p.method}{p.reference ? ` (${p.reference})` : ''}:</span>
                         <span className="method-amount">{getPaymentAmountInCorrectCurrency(p)}</span>
                     </div>
@@ -130,13 +130,13 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
             </div>
 
             {sale.changeGiven && sale.changeGiven.length > 0 && (
-                 <div className="change-section mt-4 border-t pt-2">
+                 <div className="change-section mt-2 border-t pt-1">
                     <p className="section-title bold-header">VUELTO ENTREGADO</p>
                     {sale.changeGiven.map((change, index) => {
                         const isUSD = change.method === 'Efectivo USD';
                         const symbol = isUSD ? getSymbol('USD') : getSymbol('Bs');
                         return (
-                            <div key={index} className="flex-row text-[9pt]">
+                            <div key={index} className="flex-row text-[7pt]">
                                 <span className="method-name">{change.method}:</span>
                                 <span>{symbol}{formatCurrency(change.amount, isUSD ? 'USD' : 'Bs')}</span>
                             </div>
@@ -145,10 +145,10 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
                 </div>
             )}
 
-             <div className="footer-section mt-8 border-t pt-4">
-                <p className="bold-header">¡GRACIAS POR SU CONFIANZA!</p>
+             <div className="footer-section mt-4 border-t pt-2">
+                <p className="bold-header">¡GRACIAS POR SU COMPRA!</p>
                 <p className="guarantee-note">CONSERVE ESTE TICKET PARA SU GARANTÍA</p>
-                <p className="meta-info text-[7pt] mt-2 italic">TASA DE REF: {bcvRate.toFixed(2)} Bs/$</p>
+                <p className="meta-info text-[6pt] mt-1 italic">TASA REF: {bcvRate.toFixed(2)} Bs/$</p>
              </div>
         </div>
     )
@@ -175,46 +175,46 @@ export const handlePrintReceipt = (props: ReceiptViewProps, onError: (message: s
                         }
                         body { 
                             font-family: Arial, Helvetica, sans-serif; 
-                            font-size: 10pt;
-                            line-height: 1.2;
+                            font-size: 8pt;
+                            line-height: 1.1;
                             background-color: #fff; 
                             color: #000 !important;
                         }
                         .receipt-container { 
                             width: 52mm; 
                             margin: 0 auto; 
-                            padding: 10px 2mm;
+                            padding: 5px 1mm;
                         }
                         .text-center { text-align: center; }
                         .bold-header { 
                             font-weight: 900; 
-                            font-size: 11pt; 
+                            font-size: 9pt; 
                         }
                         .business-name { text-transform: uppercase; }
-                        .meta-info { font-size: 9pt; margin: 2px 0; }
+                        .meta-info { font-size: 7pt; margin: 1px 0; }
                         .flex-header { display: flex; text-transform: uppercase; }
                         .flex-1 { flex: 1; }
                         .w-1\\/3 { width: 33.33%; }
                         .text-right { text-align: right; }
                         .text-left { text-align: left; }
-                        .item-row { margin-bottom: 6px; }
-                        .item-name { font-size: 9pt; text-transform: uppercase; line-height: 1.1; }
-                        .item-details { display: flex; justify-content: space-between; font-size: 9pt; font-variant-numeric: tabular-nums; }
+                        .item-row { margin-bottom: 3px; }
+                        .item-name { font-size: 7pt; text-transform: uppercase; line-height: 1.1; }
+                        .item-details { display: flex; justify-content: space-between; font-size: 7pt; font-variant-numeric: tabular-nums; }
                         .totals-section { text-align: right; }
-                        .flex-row { display: flex; justify-content: space-between; margin-bottom: 2px; font-variant-numeric: tabular-nums; }
-                        .total-row { margin-top: 4px; padding-top: 4px; }
-                        .section-title { text-align: center; margin-bottom: 4px; text-transform: uppercase; }
-                        .method-name { font-size: 9pt; text-transform: uppercase; flex: 1; }
-                        .method-amount { margin-left: 8px; font-size: 9pt; }
-                        .footer-section { text-align: center; margin-top: 10px; text-transform: uppercase; }
-                        .guarantee-note { font-size: 8pt; margin-top: 4px; font-style: italic; }
+                        .flex-row { display: flex; justify-content: space-between; margin-bottom: 1px; font-variant-numeric: tabular-nums; }
+                        .total-row { margin-top: 2px; padding-top: 2px; }
+                        .section-title { text-align: center; margin-bottom: 2px; text-transform: uppercase; }
+                        .method-name { font-size: 7pt; text-transform: uppercase; flex: 1; }
+                        .method-amount { margin-left: 8px; font-size: 7pt; }
+                        .footer-section { text-align: center; margin-top: 5px; text-transform: uppercase; }
+                        .guarantee-note { font-size: 7pt; margin-top: 2px; font-style: italic; }
                         .repair-consolidation { background-color: #f9fafb; border: 1px solid #e5e7eb; }
+                        .mt-1 { margin-top: 0.25rem; }
                         .mt-2 { margin-top: 0.5rem; }
+                        .mt-3 { margin-top: 0.75rem; }
                         .mt-4 { margin-top: 1rem; }
-                        .mt-6 { margin-top: 1.5rem; }
-                        .mt-8 { margin-top: 2rem; }
+                        .mb-1 { margin-bottom: 0.25rem; }
                         .mb-2 { margin-bottom: 0.5rem; }
-                        .mb-4 { margin-bottom: 1rem; }
                         .border-t { border-top: 1px solid #000; }
                         .border-b { border-bottom: 1px solid #000; }
                         .border-y { border-top: 1px solid #000; border-bottom: 1px solid #000; }

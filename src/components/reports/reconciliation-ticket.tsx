@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { DailyReconciliation, PaymentMethod } from "@/lib/types";
@@ -17,19 +18,35 @@ const paymentMethodsOrder: PaymentMethod[] = ['Efectivo USD', 'Efectivo Bs', 'Ta
 export function ReconciliationTicket({ reconciliation, currency, businessName }: ReconciliationTicketProps) {
     const { format, getSymbol } = currency;
     
+    // Determinamos el estado global del cuadre para el ticket (Sin emojis para evitar errores de impresión)
+    let globalStatus = "CAJA CUADRADA";
+    if (reconciliation.totalDifference > 0.01) globalStatus = "SOBRANTE DETECTADO";
+    else if (reconciliation.totalDifference < -0.01) globalStatus = "FALTANTE DETECTADO";
+
     return (
         <div className="recon-ticket">
             <div className="text-center mb-4">
                 <h3 className="recon-header bold-header">CIERRE DE CAJA</h3>
-                <p className="business-name bold-header">{businessName || 'POS MARICHE'}</p>
-                <p className="meta-info mt-2">FECHA: {formatDate(parseISO(reconciliation.closedAt), "dd/MM/yy hh:mm a", { locale: es })}</p>
-                <p className="meta-info">ID: {reconciliation.id}</p>
+                <h2 className="business-name bold-header" style={{ fontSize: '12pt', marginTop: '4px' }}>{businessName || 'SISTEMA POS'}</h2>
+                <p className="meta-info mt-2 font-bold">FECHA: {formatDate(parseISO(reconciliation.closedAt), "dd/MM/yy hh:mm a", { locale: es })}</p>
+                <p className="meta-info">ID CIERRE: {reconciliation.id}</p>
             </div>
+
+            <div className="status-banner mt-4 mb-4 border-y py-2 text-center" style={{ borderTopStyle: 'solid', borderBottomStyle: 'solid', borderWidth: '1px' }}>
+                <p className="bold-header" style={{ fontSize: '10pt' }}>{globalStatus}</p>
+            </div>
+
+            {reconciliation.notes && (
+                <div className="notes-section mb-4 border p-2" style={{ borderStyle: 'solid', borderWidth: '1px' }}>
+                    <p className="bold-header text-[9pt] text-center mb-1">OBSERVACIONES:</p>
+                    <p className="meta-info text-center italic uppercase">{reconciliation.notes}</p>
+                </div>
+            )}
 
             <div className="summary-section uppercase mt-6">
                 <div className="flex-row">
                     <span>VENTAS TOTALES:</span>
-                    <span className="bold-header">{getSymbol('USD')}{format(reconciliation.totalSales, 'USD')}</span>
+                    <span className="bold-header">${format(reconciliation.totalSales, 'USD')}</span>
                 </div>
                  <div className="flex-row">
                     <span>TRANSACCIONES:</span>
@@ -40,24 +57,30 @@ export function ReconciliationTicket({ reconciliation, currency, businessName }:
             <div className="cash-flow-section uppercase mt-4">
                  <div className="flex-row">
                     <span>PAGOS RECIBIDOS:</span>
-                    <span className="bold-header">+{getSymbol('USD')}{format(reconciliation.totalPaymentsReceived ?? 0, 'USD')}</span>
+                    <span className="bold-header">+${format(reconciliation.totalPaymentsReceived ?? 0, 'USD')}</span>
                 </div>
                 <div className="flex-row">
                     <span>VUELTOS ENTREGADOS:</span>
-                    <span className="bold-header">-{getSymbol('USD')}{format(reconciliation.totalChangeGiven ?? 0, 'USD')}</span>
+                    <span className="bold-header">-${format(reconciliation.totalChangeGiven ?? 0, 'USD')}</span>
                 </div>
-                <div className="flex-row net-expected mt-2 bold-header border-t pt-1">
-                    <span>NETO ESPERADO:</span>
-                    <span>{getSymbol('USD')}{format(reconciliation.totalExpected, 'USD')}</span>
+                <div className="flex-row net-expected mt-2 bold-header border-t pt-1" style={{ borderTopStyle: 'dotted', borderTopWidth: '1px' }}>
+                    <span>NETO ESPERADO ($):</span>
+                    <span>${format(reconciliation.totalExpected, 'USD')}</span>
                 </div>
             </div>
 
             <div className="methods-breakdown mt-6">
-                <p className="section-title bold-header">DESGLOSE POR MÉTODO:</p>
+                <p className="section-title bold-header border-b pb-1 mb-2" style={{ borderBottomStyle: 'solid', borderBottomWidth: '1px' }}>DESGLOSE POR MÉTODO:</p>
                 {paymentMethodsOrder.map(method => {
                     if (!reconciliation.paymentMethods || !reconciliation.paymentMethods[method]) return null;
                     const details = reconciliation.paymentMethods[method]!;
-                    const symbol = getSymbol(method === 'Efectivo USD' ? 'USD' : 'Bs');
+                    const isUSD = method === 'Efectivo USD';
+                    const symbol = isUSD ? '$' : 'Bs';
+                    
+                    let methodStatus = "CUADRADO";
+                    if (details.difference > 0.01) methodStatus = "SOBRANTE";
+                    else if (details.difference < -0.01) methodStatus = "FALTANTE";
+
                     return (
                         <div key={method} className="method-box mt-4">
                             <p className="method-name-header bold-header">{method}</p>
@@ -67,20 +90,21 @@ export function ReconciliationTicket({ reconciliation, currency, businessName }:
                                 <span className="bold-header">DIFERENCIA:</span>
                                 <span className="bold-header">{details.difference >= 0 ? '+' : ''}{symbol}{format(details.difference)}</span>
                             </div>
+                            <p className="text-center text-[8pt] font-bold mt-1">[{methodStatus}]</p>
                         </div>
                     );
                 })}
             </div>
 
-             <div className="flex-row grand-total mt-6 bold-header">
-                <p>DIF. TOTAL ($):</p>
-                 <p>
-                    {reconciliation.totalDifference >= 0 ? '+' : ''}{getSymbol('USD')}{format(reconciliation.totalDifference, 'USD')}
-                </p>
+             <div className="grand-total-container mt-8 pt-4" style={{ borderTop: '2px solid #000' }}>
+                <div className="flex-row bold-header" style={{ fontSize: '12pt' }}>
+                    <span>DIFERENCIA TOTAL:</span>
+                    <span>{reconciliation.totalDifference >= 0 ? '+' : ''}${format(reconciliation.totalDifference, 'USD')}</span>
+                </div>
              </div>
              
              <div className="text-center mt-10 footer-note">
-                <p>REPORTE GENERADO POR SISTEMA</p>
+                <p className="bold-header">REPORTE GENERADO POR SISTEMA</p>
              </div>
         </div>
     );
@@ -125,7 +149,7 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                         font-size: 11pt; 
                     }
                     .recon-header { text-transform: uppercase; }
-                    .business-name { margin: 2px 0; }
+                    .business-name { margin: 2px 0; text-transform: uppercase; }
                     .meta-info { font-size: 9pt; margin: 1px 0; }
                     .net-expected { padding-top: 4px; }
                     .section-title { text-align: center; margin-bottom: 6px; text-transform: uppercase; }
@@ -133,7 +157,7 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                     .method-name-header { text-align: center; border: 1px solid #000 !important; padding: 2px; margin-bottom: 4px; text-transform: uppercase; }
                     .diff-row { padding-top: 2px; }
                     .grand-total { text-transform: uppercase; border-top: 2px solid #000 !important; margin-top: 8px; padding-top: 8px; }
-                    .footer-note { font-size: 8pt; text-transform: uppercase; font-weight: 900; font-style: italic; }
+                    .footer-note { font-size: 8pt; text-transform: uppercase; font-weight: 900; }
                     .uppercase { text-transform: uppercase; }
                     .mt-2 { margin-top: 0.5rem; }
                     .mt-4 { margin-top: 1rem; }
@@ -141,6 +165,9 @@ export const handlePrintReconciliation = (props: ReconciliationTicketProps, onEr
                     .mt-10 { margin-top: 2.5rem; }
                     .mb-4 { margin-bottom: 1rem; }
                     .border-t { border-top: 1px solid #000; }
+                    .border-b { border-bottom: 1px solid #000; }
+                    .border-y { border-top: 1px solid #000; border-bottom: 1px solid #000; }
+                    .italic { font-style: italic; }
                 </style>
             </head>
             <body>
