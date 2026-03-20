@@ -1,4 +1,3 @@
-
 import type { RepairJob, UserProfile } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -17,12 +16,11 @@ export function CustomerTicket({ repairJob, businessName, profile, bcvRate = 1 }
     const abono = repairJob.amountPaid || 0;
     const saldo = Math.max(0, total - abono);
     const date = repairJob.createdAt ? parseISO(repairJob.createdAt) : new Date();
-    const fecha = format(date, "dd/MM/yy hh:mm a", { locale: es });
+    const fecha = format(date, "dd/MM/yyyy HH:mm:ss", { locale: es });
 
     const totalBs = total * bcvRate;
     const saldoBs = saldo * bcvRate;
 
-    // Fallbacks para políticas si no están configuradas
     const warranty = profile?.repairWarrantyPolicy || "4 DÍAS POR EL SERVICIO REALIZADO.";
     const pickup = profile?.repairPickupPolicy || "7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL NEGOCIO NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.";
     const disclaimer = profile?.repairDisclaimer || "NO NOS HACEMOS RESPONSABLES POR TELÉFONOS MOJADOS O QUE SUFRIERON CAÍDAS.";
@@ -30,62 +28,59 @@ export function CustomerTicket({ repairJob, businessName, profile, bcvRate = 1 }
     return (
         <div className="ticket-body">
             <div className="text-center mb-2">
-                <h3 className="business-title bold-header">{businessName || 'POOS MARICHE'}</h3>
-                <p className="ticket-type mt-1 bold-header">NOTA DE ENTREGA (CLIENTE)</p>
+                <h3 className="business-title bold-header" style={{ fontSize: '12pt' }}>{businessName || 'POOS MARICHE'}</h3>
+                <p className="ticket-type mt-1 bold-header" style={{ fontSize: '10pt' }}>ORDEN DE REPARACIÓN</p>
+                <p className="meta-info">{repairJob.id}</p>
+                <p className="meta-info">Fecha: {fecha}</p>
             </div>
             
-            <div className="flex-row-between text-[7pt] mb-2">
-                <span>{fecha}</span>
-                <span>ID: {repairJob.id}</span>
-            </div>
-
-            <div className="details-section text-[8pt]">
-                <p><span className="bold-header">CLIENTE:</span> {repairJob.customerName.toUpperCase()}</p>
-                <p><span className="bold-header">CÉDULA:</span> {repairJob.customerID || 'N/A'}</p>
-                <p><span className="bold-header">TÉLF:</span> {repairJob.customerPhone}</p>
-                {repairJob.customerAddress && <p><span className="bold-header">DIR:</span> {repairJob.customerAddress.toUpperCase()}</p>}
+            <div className="section-divider mt-2 mb-1"></div>
+            
+            <div className="details-section">
+                <p className="section-subtitle text-center">DATOS DEL CLIENTE</p>
+                <p className="meta-info"><span className="bold-header">Cliente:</span> {repairJob.customerName.toUpperCase()}</p>
+                <p className="meta-info"><span className="bold-header">Documento:</span> {repairJob.customerID || 'N/A'}</p>
+                <p className="meta-info"><span className="bold-header">Teléfono:</span> {repairJob.customerPhone}</p>
+                {repairJob.customerAddress && <p className="meta-info"><span className="bold-header">Dirección:</span> {repairJob.customerAddress.toUpperCase()}</p>}
                 
                 <div className="mt-2">
-                    <p><span className="bold-header">EQUIPO:</span> {repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
-                    <p><span className="bold-header">FALLA:</span> {repairJob.reportedIssue.toUpperCase()}</p>
+                    <p className="section-subtitle text-center">DETALLES DEL EQUIPO</p>
+                    <p className="meta-info"><span className="bold-header">Marca/Modelo:</span> {repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
+                    <p className="meta-info"><span className="bold-header">Falla:</span> {repairJob.reportedIssue.toUpperCase()}</p>
                 </div>
             </div>
 
-            <div className="billing-section mt-3 text-[8pt]">
-                <div className="flex-row-between">
-                    <span>COSTO TOTAL:</span>
+            <div className="billing-section mt-3 pt-1 border-t" style={{ borderTopStyle: 'dashed' }}>
+                <div className="flex-row-between text-[8pt]">
+                    <span>Costo estimado:</span>
                     <span>${total.toFixed(2)}</span>
                 </div>
-                <div className="flex-row-between">
-                    <span>ABONO:</span>
+                <div className="flex-row-between text-[8pt]">
+                    <span>Abono recibido:</span>
                     <span>${abono.toFixed(2)}</span>
                 </div>
-                <div className="flex-row-between total-row mt-1 bold-header">
-                    <span>PENDIENTE:</span>
+                <div className="flex-row-between total-row mt-1 bold-header" style={{ fontSize: '10pt' }}>
+                    <span>SALDO PENDIENTE:</span>
                     <span>${saldo.toFixed(2)}</span>
                 </div>
                 
                 {!repairJob.isPromo && (
-                    <div className="mt-2 pt-1 border-t" style={{ borderTopStyle: 'dotted', borderTopWidth: '1px' }}>
-                        <div className="flex-row-between text-[9pt] font-black">
-                            <span>TOTAL EN BS:</span>
-                            <span>Bs {totalBs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="flex-row-between text-[9pt] font-black mt-0.5">
-                            <span>SALDO EN BS:</span>
-                            <span>Bs {saldoBs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
-                        </div>
+                    <div className="mt-1 flex-row-between text-[8pt] font-black">
+                        <span>EQUIVALENTE EN BS:</span>
+                        <span>Bs {saldoBs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
                     </div>
                 )}
             </div>
 
-            <div className="disclaimer-section mt-3 italic text-[7pt]">
-                <p><span className="bold-header">GARANTÍA:</span> {warranty.toUpperCase()}</p>
-                <p><span className="bold-header">RETIRO:</span> {pickup.toUpperCase()}</p>
-                <p className="mt-1"><span className="bold-header">AVISO:</span> {disclaimer.toUpperCase()}</p>
-                <p className="text-center uppercase mt-2 bold-header">INDISPENSABLE PRESENTAR TICKET</p>
+            <div className="disclaimer-section mt-3 text-[6.5pt]">
+                <p className="text-center font-bold mb-1" style={{ fontSize: '8pt' }}>TÉRMINOS Y CONDICIONES</p>
+                <p className="policy-text"><span className="bold-header">GARANTÍA:</span> {warranty.toUpperCase()}</p>
+                <p className="policy-text"><span className="bold-header">RETIRO:</span> {pickup.toUpperCase()}</p>
+                <p className="mt-1 font-bold policy-text">{disclaimer.toUpperCase()}</p>
+                <p className="text-center uppercase mt-3 bold-header" style={{ fontSize: '8pt' }}>INDISPENSABLE PRESENTAR TICKET</p>
             </div>
-            <div className="text-center mt-3 footer-thanks">
+
+            <div className="text-center mt-4 footer-thanks">
                 <p className="bold-header text-[8pt]">¡GRACIAS POR SU CONFIANZA!</p>
                 <p className="meta-info text-[6pt] mt-1 italic">TASA REF: {bcvRate.toFixed(2)} Bs/$</p>
             </div>
@@ -99,42 +94,32 @@ export function InternalTicket({ repairJob, bcvRate = 1 }: RepairTicketProps) {
     const abono = repairJob.amountPaid || 0;
     const saldo = Math.max(0, total - abono);
     const date = repairJob.createdAt ? parseISO(repairJob.createdAt) : new Date();
-    const fecha = format(date, "dd/MM/yy", { locale: es });
-    const hora = format(date, "hh:mm a", { locale: es });
-
-    const saldoBs = saldo * bcvRate;
+    const fecha = format(date, "dd/MM/yyyy HH:mm:ss", { locale: es });
 
     return (
         <div className="ticket-body internal">
             <div className="text-center mb-2">
-                <h3 className="section-header bold-header text-[9pt]">CONTROL INTERNO</h3>
-                <p className="meta-info mt-0.5 text-[7pt]">ID: {repairJob.id} | {fecha} | {hora}</p>
+                <h3 className="section-header bold-header" style={{ fontSize: '10pt' }}>CONTROL INTERNO</h3>
+                <p className="meta-info">{repairJob.id}</p>
+                <p className="meta-info">{fecha}</p>
             </div>
 
-            <div className="service-info mt-2 text-[8pt]">
-                <p className="bold-header mb-1">DATOS DEL SERVICIO:</p>
-                <p><span className="bold-header">CLIENTE:</span> {repairJob.customerName.toUpperCase()}</p>
-                <p><span className="bold-header">EQUIPO:</span> {repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
-                <p><span className="bold-header">FALLA:</span> {repairJob.reportedIssue.toUpperCase()}</p>
+            <div className="service-info mt-2">
+                <p className="section-subtitle text-center border-b">DATOS DE SERVICIO</p>
+                <p className="meta-info"><span className="bold-header">CLIENTE:</span> {repairJob.customerName.toUpperCase()}</p>
+                <p className="meta-info"><span className="bold-header">EQUIPO:</span> {repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
+                <p className="meta-info"><span className="bold-header">FALLA:</span> {repairJob.reportedIssue.toUpperCase()}</p>
                 
-                <div className="mt-2 p-1 border" style={{ borderStyle: 'solid', borderWeight: '1px' }}>
-                    <div className="flex-row-between bold-header">
-                        <span>SALDO ($):</span>
-                        <span>${saldo.toFixed(2)}</span>
-                    </div>
-                    {!repairJob.isPromo && (
-                        <div className="flex-row-between text-[9pt] font-black mt-0.5">
-                            <span>SALDO (BS):</span>
-                            <span>Bs {saldoBs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                    )}
+                <div className="mt-3 p-2 border text-center" style={{ borderStyle: 'solid' }}>
+                    <p className="bold-header" style={{ fontSize: '11pt' }}>SALDO: ${saldo.toFixed(2)}</p>
+                    <p className="text-[8pt] font-bold">Bs { (saldo * bcvRate).toLocaleString('de-DE', { minimumFractionDigits: 2 }) }</p>
                 </div>
             </div>
 
-            <div className="signatures-container mt-8">
+            <div className="signatures-container mt-10">
                 <div className="signature-box" style={{ borderTop: '1px solid #000', paddingTop: '4px' }}>
-                    <p className="bold-header text-[8pt]">FIRMA CLIENTE</p>
-                    <p className="text-[6pt] mt-0.5">ACEPTO TÉRMINOS Y GARANTÍA</p>
+                    <p className="bold-header text-[8pt]">FIRMA DEL CLIENTE</p>
+                    <p className="text-[6pt] mt-1">ACEPTO TÉRMINOS Y RECIBO CONFORME</p>
                 </div>
             </div>
         </div>
@@ -149,18 +134,17 @@ export function StickerTicket({ repairJob }: RepairTicketProps) {
 
     return (
         <div className="sticker-body">
-            <div className="sticker-border">
-                <p className="sticker-id bold-header text-[10pt]">ID: {repairJob.id}</p>
-                <p className="sticker-text uppercase bold-header text-[8pt]">{repairJob.customerName}</p>
-                <p className="sticker-text uppercase text-[8pt]">{repairJob.deviceMake} {repairJob.deviceModel}</p>
+            <div className="sticker-border" style={{ border: '1.5px solid #000', padding: '4px' }}>
+                <p className="sticker-id bold-header" style={{ fontSize: '12pt' }}>ID: {repairJob.id}</p>
+                <p className="sticker-text bold-header" style={{ fontSize: '9pt' }}>{repairJob.customerName.toUpperCase()}</p>
+                <p className="sticker-text" style={{ fontSize: '8pt' }}>{repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
                 
-                <div className="sticker-issue-box mt-1">
-                    <p className="sticker-issue-label bold-header text-[6pt]">FALLA:</p>
-                    <p className="sticker-issue-text uppercase text-[7pt]">{repairJob.reportedIssue}</p>
+                <div className="sticker-issue-box mt-1 border py-1" style={{ borderStyle: 'solid' }}>
+                    <p className="sticker-issue-text font-bold" style={{ fontSize: '7pt' }}>FALLA: {repairJob.reportedIssue.toUpperCase()}</p>
                 </div>
 
                 <div className="sticker-balance-row mt-1">
-                    <p className="sticker-balance bold-header text-[11pt]">SALDO: ${saldo.toFixed(2)}</p>
+                    <p className="sticker-balance bold-header" style={{ fontSize: '11pt' }}>SALDO: ${saldo.toFixed(2)}</p>
                 </div>
             </div>
         </div>
@@ -181,12 +165,11 @@ const printStyles = `
         padding: 0;
     }
     body { 
-        font-family: Arial, Helvetica, sans-serif; 
+        font-family: 'Helvetica', 'Arial', sans-serif; 
         font-size: 8pt;
-        line-height: 1.1;
+        line-height: 1.6;
         background-color: #fff; 
         color: #000 !important;
-        text-rendering: optimizeLegibility;
     }
     .ticket-container { 
         width: 52mm; 
@@ -194,49 +177,29 @@ const printStyles = `
         padding: 5px 1mm;
     }
     .text-center { text-align: center; }
-    .flex-row-between { display: flex; justify-content: space-between; align-items: center; font-variant-numeric: tabular-nums; }
-    .bold-header { 
-        font-weight: 900; 
-        font-size: 9pt; 
-    }
-    .business-title { text-transform: uppercase; }
-    .ticket-type { text-transform: uppercase; }
-    .details-section p, .service-info p { margin: 2px 0; line-height: 1.1; }
-    .total-row { padding-top: 2px; }
-    .disclaimer-section { font-size: 7pt; line-height: 1.1; }
-    .footer-thanks { padding-top: 5px; }
-    
-    .section-header { margin: 0; }
-    .meta-info { font-size: 7pt; }
-    .balance-box { border: 1px solid #000 !important; padding: 4px; text-align: center; font-variant-numeric: tabular-nums; }
-    
-    .signature-box { text-align: center; margin-top: 20px; }
-    .signature-box p { font-size: 7pt; margin: 0; }
-    
-    .sticker-border { border: 1.5px solid #000 !important; padding: 4px; text-align: center; }
-    .sticker-id { font-size: 10pt; margin: 0; }
-    .sticker-text { font-size: 8pt; margin: 1px 0; line-height: 1.1; }
-    
-    .sticker-issue-box { border: 1px solid #000 !important; margin: 2px 0; padding: 2px; text-align: left; }
-    .sticker-issue-label { font-size: 6pt; margin-bottom: 1px; }
-    .sticker-issue-text { font-size: 7pt; line-height: 1.1; }
-
-    .sticker-balance-row { padding-top: 2px; }
-    .sticker-balance { font-size: 11pt; margin: 0; font-variant-numeric: tabular-nums; }
-    
+    .bold-header { font-weight: bold; }
+    .flex-row-between { display: flex; justify-content: space-between; align-items: baseline; }
+    .meta-info { font-size: 7pt; margin: 1px 0; }
+    .section-subtitle { font-size: 7pt; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; margin-top: 4px; }
+    .details-section p { margin: 1px 0; }
+    .signature-box { text-align: center; }
     .cut-line { 
         border-top: 1px dashed #000 !important; 
         margin: 15px 0; 
-        position: relative;
         height: 1px;
         width: 100%;
     }
-    .mt-1 { margin-top: 0.25rem; }
-    .mt-2 { margin-top: 0.5rem; }
-    .mt-3 { margin-top: 0.75rem; }
-    .mt-8 { margin-top: 2rem; }
-    .mb-1 { margin-bottom: 0.25rem; }
-    .mb-2 { margin-bottom: 0.5rem; }
+    .policy-text {
+        line-height: 1.4;
+        margin-bottom: 3px;
+    }
+    .mt-1 { margin-top: 2px; }
+    .mt-2 { margin-top: 4px; }
+    .mt-3 { margin-top: 6px; }
+    .mt-4 { margin-top: 8px; }
+    .mt-10 { margin-top: 25px; }
+    .mb-1 { margin-bottom: 2px; }
+    .mb-2 { margin-bottom: 4px; }
     .font-black { font-weight: 900; }
 `;
 

@@ -321,14 +321,14 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
     if (product && product.id) {
       const productRef = doc(firestore, 'users', user.uid, 'products', product.id);
       const updatedProduct = { ...finalValues, id: product.id };
-      setDocumentNonBlocking(productRef, updatedProduct, { merge: true });
+      await setDocumentNonBlocking(productRef, updatedProduct, { merge: true });
       toast({ title: "Producto Actualizado" });
       onSaved?.(updatedProduct as Product);
     } else {
       const productsCollectionRef = collection(firestore, 'users', user.uid, 'products');
       const newDocRef = doc(productsCollectionRef);
       const newProduct = { ...finalValues, id: newDocRef.id };
-      setDocumentNonBlocking(newDocRef, newProduct, { merge: true });
+      await setDocumentNonBlocking(newDocRef, newProduct, { merge: true });
       toast({ title: "Producto Añadido" });
       onSaved?.(newProduct as Product);
     }
@@ -362,7 +362,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                 {...field} 
                                 onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                                 placeholder="EJ: PANTALLA SAMSUNG A51 ORIGINAL" 
-                                className={cn("uppercase", fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
+                                className={cn("uppercase font-normal", fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
                             />
                         </FormControl>
                         <FormMessage />
@@ -379,7 +379,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                         {...field} 
                                         onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                                         placeholder="EJ: PANTALLAS, BATERÍAS" 
-                                        className="flex-1 uppercase" 
+                                        className="flex-1 uppercase font-normal" 
                                     />
                                 </FormControl>
                                 <Popover open={categoryPopoverOpen} onOpenChange={setCategoryPopoverOpen}>
@@ -390,7 +390,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                     </PopoverTrigger>
                                     <PopoverContent className="w-[250px] p-0" align="end">
                                         <Command>
-                                            <CommandInput placeholder="Buscar categoría..." />
+                                            <CommandInput placeholder="Buscar categoría..." className="font-normal" />
                                             <CommandList>
                                                 <CommandEmpty>No hay resultados.</CommandEmpty>
                                                 <CommandGroup>
@@ -446,7 +446,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                     {...field} 
                                     onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                                     placeholder="EJ: SKU-260225-1351" 
-                                    className={cn("uppercase font-mono", fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
+                                    className={cn("uppercase font-mono font-normal", fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
                                 />
                             </FormControl>
                             <FormMessage />
@@ -459,7 +459,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                 <Input 
                                     {...field} 
                                     placeholder="Escanea o escribe..." 
-                                    className={cn("", fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
+                                    className={cn("font-normal", fieldState.error && "border-destructive ring-destructive focus-visible:ring-destructive")}
                                 />
                             </FormControl>
                             <FormMessage />
@@ -476,7 +476,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                     {...field} 
                                     onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                                     placeholder="EJ: S23 ULTRA, A51, REDMI NOTE 12..." 
-                                    className="uppercase"
+                                    className="uppercase font-normal"
                                 />
                             </FormControl>
                             <FormDescription className="text-[10px]">Escribe los modelos separados por coma.</FormDescription>
@@ -525,7 +525,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                         type="number" 
                                         step="0.01" 
                                         {...field} 
-                                        className={cn("h-10", fieldState.error && "border-destructive ring-destructive")} 
+                                        className={cn("h-10 font-normal", fieldState.error && "border-destructive ring-destructive")} 
                                     />
                                 </FormControl>
                                 <FormMessage />
@@ -540,7 +540,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                             type="number" 
                                             step="0.01" 
                                             {...field} 
-                                            className={cn("h-10 border-amber-200", fieldState.error && "border-destructive ring-destructive")} 
+                                            className={cn("h-10 border-amber-200 font-normal", fieldState.error && "border-destructive ring-destructive")} 
                                         />
                                     </FormControl>
                                     <FormMessage />
@@ -550,13 +550,13 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                             <FormField control={form.control} name="customMargin" render={({ field }) => (
                                 <FormItem>
                                     <FormLabel className="text-[10px] font-bold text-blue-600 uppercase">Margen Indiv. (%)</FormLabel>
-                                    <FormControl><Input type="number" {...field} className="h-10 border-blue-200" /></FormControl>
+                                    <FormControl><Input type="number" {...field} className="h-10 border-blue-200 font-normal" /></FormControl>
                                 </FormItem>
                             )} />
                         ) : (
                             <div className="space-y-2 opacity-50">
                                 <Label className="text-[10px] font-bold uppercase">Margen Global</Label>
-                                <Input value={`${profitMargin}%`} disabled className="h-10 bg-slate-100" />
+                                <Input value={`${profitMargin}%`} disabled className="h-10 bg-slate-100 font-normal" />
                             </div>
                         )}
                     </div>
@@ -567,7 +567,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                 <FormLabel className="text-[10px] font-bold text-pink-600 flex items-center gap-2 uppercase">
                                     <Gift className="w-3.5 h-3.5" /> Precio Especial de Oferta ($)
                                 </FormLabel>
-                                <FormControl><Input type="number" step="0.01" {...field} className="h-10 border-pink-200 text-pink-700 bg-white" /></FormControl>
+                                <FormControl><Input type="number" step="0.01" {...field} className="h-10 border-pink-200 text-pink-700 bg-white font-normal" /></FormControl>
                             </FormItem>
                         )} />
                     )}
@@ -610,7 +610,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                         <FormField control={form.control} name="stockLevel" render={({ field }) => (
                             <FormItem>
                                 <FormLabel className="text-[10px] font-bold uppercase">Stock Físico</FormLabel>
-                                <FormControl><Input type="number" step="0.001" {...field} className="h-10" /></FormControl>
+                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 font-normal" /></FormControl>
                             </FormItem>
                         )} />
                         <FormField control={form.control} name="reservedStock" render={({ field }) => (
@@ -618,13 +618,13 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                                 <FormLabel className="text-[10px] font-bold uppercase text-amber-600">
                                     {showRepairsFeature ? "En Taller" : "Reservado"}
                                 </FormLabel>
-                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 border-amber-200 text-amber-700" /></FormControl>
+                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 border-amber-200 text-amber-700 font-normal" /></FormControl>
                             </FormItem>
                         )} />
                         <FormField control={form.control} name="damagedStock" render={({ field }) => (
                             <FormItem>
                                 <FormLabel className="text-[10px] font-bold uppercase text-destructive">Dañado</FormLabel>
-                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 border-destructive/20 text-destructive" /></FormControl>
+                                <FormControl><Input type="number" step="0.001" {...field} className="h-10 border-destructive/20 text-destructive font-normal" /></FormControl>
                             </FormItem>
                         )} />
                     </div>
@@ -647,7 +647,7 @@ export function ProductFormDialog({ product, children, productCount = 0, isOpen,
                 <FormField control={form.control} name="lowStockThreshold" render={({ field }) => (
                     <FormItem className="pb-6">
                         <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Alerta de Stock Bajo ({selectedUnit.toUpperCase()})</FormLabel>
-                        <FormControl><Input type="number" step="0.001" {...field} className="h-10" /></FormControl>
+                        <FormControl><Input type="number" step="0.001" {...field} className="h-10 font-normal" /></FormControl>
                     </FormItem>
                 )} />
             </div>
