@@ -39,9 +39,11 @@ export type ReservedPart = {
   quantity: number;
   costPrice: number;
   isPromo?: boolean;
+  isWarranty?: boolean;
+  isManual?: boolean;
 }
 
-export type RepairStatus = 'Pendiente' | 'Pagado' | 'Completado';
+export type RepairStatus = 'Pendiente' | 'Pagado' | 'Completado' | 'Garantía';
 
 export type RepairJob = {
   id?: string;
@@ -62,6 +64,7 @@ export type RepairJob = {
   notes?: string;
   createdAt: string;
   reservedParts?: ReservedPart[];
+  consumedParts?: ReservedPart[]; 
   completedAt?: string;
   warrantyEndDate?: string;
   partsConsumed?: boolean; 
@@ -174,6 +177,7 @@ export type CartItem = {
   isRepair?: boolean;
   isPromo?: boolean;
   isGift?: boolean;
+  isWarranty?: boolean;
   isCustom?: boolean;
   customPrice?: number;
   customCostPrice?: number;
@@ -209,6 +213,7 @@ export type Sale = {
   status: 'completed' | 'refunded';
   refundedAt?: string;
   refundReason?: string;
+  refundPaymentMethod?: PaymentMethod;
   reconciliationId?: string;
   totalChangeInUSD?: number;
   changeGiven?: Payment[];

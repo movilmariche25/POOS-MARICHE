@@ -92,6 +92,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
       }, 0);
   }, [changePayments, convert, currencyLoading]);
 
+  const remainingToPayInUSD = useMemo(() => Math.max(0, total - totalPaid), [total, totalPaid]);
   const potentialChangeInUSD = useMemo(() => (totalPaid > total ? totalPaid - total : 0), [totalPaid, total]);
   const isPartialPayment = totalPaid < total - 0.01;
   const requiredChangeInUSD = isGivingChange ? potentialChangeInUSD : 0;
@@ -154,10 +155,13 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
   }
 
   const handleCloseAndReset = () => {
-      if (isRepairSale) {
-        router.push('/dashboard/repairs');
-      } else {
-        onClearCart();
+      // SOLO LIMPIAR SI LA VENTA FUE COMPLETADA
+      if (completedSale) {
+          if (isRepairSale) {
+            router.push('/dashboard/repairs');
+          } else {
+            onClearCart();
+          }
       }
       setCompletedSale(null);
       setOpen(false);
@@ -184,7 +188,12 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
   return (
     <Dialog open={open} onOpenChange={(isOpen) => {
         if (!isOpen) {
-             handleCloseAndReset();
+            // SI CERRAMOS SIN HABER COMPLETADO LA VENTA, NO LIMPIAMOS EL CARRITO
+            if (completedSale) {
+                handleCloseAndReset();
+            } else {
+                setOpen(false);
+            }
         } else {
             setOpen(true);
         }
@@ -250,6 +259,8 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                                 {payments.map(p => {
                                     const option = paymentMethodOptions.find(o => o.value === p.method)!;
                                     const symbol = option.isBs ? getSymbol('Bs') : getSymbol('USD');
+                                    const remainingInCurrency = option.isBs ? convert(remainingToPayInUSD, 'USD', 'Bs') : remainingToPayInUSD;
+
                                     return (
                                     <div key={p.id} className="p-3 border rounded-lg bg-background flex flex-col gap-2 shadow-sm">
                                         <div className="flex justify-between items-center">
@@ -259,18 +270,29 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                                             </Button>
                                         </div>
                                         <div className="flex gap-2">
-                                            <div className="relative flex-1">
-                                                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                                                    <span className="text-gray-500 text-xs font-bold">{symbol}</span>
+                                            <div className="flex-1 space-y-1">
+                                                <div className="relative">
+                                                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                                        <span className="text-gray-500 text-xs font-bold">{symbol}</span>
+                                                    </div>
+                                                    <Input
+                                                        type="number"
+                                                        value={p.amount || ''}
+                                                        onChange={(e) => handleUpdatePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}
+                                                        placeholder="0,00"
+                                                        className="pl-8 h-9 text-sm"
+                                                        disabled={isSubmitting}
+                                                    />
                                                 </div>
-                                                <Input
-                                                    type="number"
-                                                    value={p.amount || ''}
-                                                    onChange={(e) => handleUpdatePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}
-                                                    placeholder="0,00"
-                                                    className="pl-8 h-9 text-sm"
-                                                    disabled={isSubmitting}
-                                                />
+                                                {remainingToPayInUSD > 0 && (
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => handleUpdatePayment(p.id, 'amount', parseFloat(remainingInCurrency.toFixed(2)))}
+                                                        className="text-[9px] font-black uppercase text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                                                    >
+                                                        PAGAR RESTANTE: {symbol}{formatCurrency(remainingInCurrency)}
+                                                    </button>
+                                                )}
                                             </div>
                                             {option.hasReference && (
                                                 <Input

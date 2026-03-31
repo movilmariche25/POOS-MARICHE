@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo } from "react";
@@ -33,6 +32,7 @@ const methodIcons: Record<string, any> = {
     'Tarjeta': CreditCard,
     'Pago Móvil': Smartphone,
     'Transferencia': Banknote,
+    'Tarjeta / Pago Móvil': Smartphone,
 };
 
 const methodStyles: Record<string, { color: string, bg: string, border: string }> = {
@@ -40,6 +40,7 @@ const methodStyles: Record<string, { color: string, bg: string, border: string }
     'Tarjeta': { color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200' },
     'Pago Móvil': { color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' },
     'Transferencia': { color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
+    'Tarjeta / Pago Móvil': { color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' },
 };
 
 export function DateRangeReport({ sales, products, reconciliations, repairJobs, exchanges, isLoading }: DateRangeReportProps) {
@@ -76,21 +77,39 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
         let usdNet = 0;
 
         const filteredSales = sales.filter(s => {
-            if (s.status !== 'completed' || !s.transactionDate) return false;
+            if (!s.transactionDate) return false;
             return isWithinInterval(new Date(s.transactionDate), { start: from, end: to });
         });
 
-        // Consolidamos items para el desglose
         const itemsMap = new Map<string, { 
             name: string, 
             quantity: number, 
             totalCost: number, 
             totalRevenue: number,
-            isRepair: boolean 
+            isRepair: boolean,
+            isWarranty: boolean 
         }>();
 
         filteredSales.forEach(s => {
-            // Flujo de caja neto
+            const isRefunded = s.status === 'refunded';
+            const refundMethod = s.refundPaymentMethod;
+            const refundAmountUSD = s.actualPaidAmount ?? s.totalAmount;
+
+            if (isRefunded && refundMethod) {
+                if (refundMethod === 'Efectivo USD') {
+                    usdNet -= refundAmountUSD;
+                } else {
+                    const amountBs = refundAmountUSD * (s.bcvRateAtTime || settings.bcvRate);
+                    const methodKey = refundMethod === 'Tarjeta / Pago Móvil' ? 'Pago Móvil' : refundMethod;
+                    if (bsBreakdown[methodKey as string] !== undefined) {
+                        bsBreakdown[methodKey as string] -= amountBs;
+                    }
+                }
+                return;
+            }
+
+            if (s.status !== 'completed') return;
+
             s.payments.forEach(p => {
                 if (p.method === 'Efectivo USD') usdNet += p.amount;
                 else if (p.method === 'Efectivo Bs') bsBreakdown['Efectivo Bs'] += p.amount;
@@ -116,11 +135,8 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                 }
             });
 
-            // Desglose de rentabilidad por item
             const totalCollected = s.actualPaidAmount ?? s.totalAmount;
             const itemsTotalBillable = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-            
-            // Proporción de pago (para manejar abonos parciales correctamente)
             const paymentRatio = itemsTotalBillable > 0 ? totalCollected / itemsTotalBillable : 1;
 
             s.items.forEach(item => {
@@ -129,6 +145,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                 let key = item.productId;
                 let name = item.name;
                 let isRepair = !!item.isRepair;
+                let isWarranty = !!item.isWarranty;
 
                 if (item.isRepair) {
                     key = `repair-${item.productId}`;
@@ -155,7 +172,8 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                         quantity: item.quantity,
                         totalCost: itemCost,
                         totalRevenue: itemRevenue,
-                        isRepair
+                        isRepair,
+                        isWarranty
                     });
                 }
             });
@@ -176,7 +194,9 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
             }
         });
 
-        const totalIncomeFromSales = filteredSales.reduce((sum, s) => sum + (s.actualPaidAmount ?? s.totalAmount), 0);
+        const totalIncomeFromSales = filteredSales
+            .filter(s => s.status === 'completed')
+            .reduce((sum, s) => sum + (s.actualPaidAmount ?? s.totalAmount), 0);
         
         const itemsBreakdown = Array.from(itemsMap.values()).map(item => ({
             ...item,
@@ -197,8 +217,8 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
             totalSales: totalIncomeFromSales,
             totalProfit,
             totalReconciliationDifference,
-            adjustedTotalSales: totalIncomeFromSales + totalReconciliationDifference,
-            transactionCount: filteredSales.length,
+            adjustedTotalSales: usdNet + convert(Object.values(bsBreakdown).reduce((a,b)=>a+b, 0), 'Bs', 'USD'),
+            transactionCount: filteredSales.filter(s => s.status === 'completed').length,
             bsBreakdown,
             usdNet,
             itemsBreakdown,
@@ -206,7 +226,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
             dateRangeLabel: date.to ? `${format(from, "dd/MM/yy")} al ${format(to, "dd/MM/yy")}` : format(from, "dd/MM/yy")
         };
 
-    }, [date, sales, products, reconciliations, repairJobs, exchanges, settings]);
+    }, [date, sales, products, reconciliations, repairJobs, exchanges, settings, convert]);
 
     if (isLoading) return <div className="p-4 space-y-4"><Skeleton className="h-32 w-full" /><Skeleton className="h-64 w-full" /></div>;
 
@@ -217,7 +237,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <div>
                             <CardTitle className="text-xl font-black text-primary">REPORTE DE FLUJO POR PERIODO</CardTitle>
-                            <CardDescription className="text-[10px] font-bold uppercase tracking-widest">Movimiento Neto (Solo rango seleccionado)</CardDescription>
+                            <CardDescription className="text-[10px] font-bold uppercase tracking-widest">Movimiento Neto (Ventas - Reembolsos - Cambios)</CardDescription>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                             <Popover>
@@ -241,7 +261,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                                 <Tooltip>
                                     <TooltipTrigger><Info className="w-3.5 h-3.5 text-muted-foreground" /></TooltipTrigger>
                                     <TooltipContent className="max-w-xs">
-                                        <p className="text-[10px]">Muestra estrictamente cuánto dinero entró y salió en las fechas marcadas, sin sumar el fondo de apertura.</p>
+                                        <p className="text-[10px]">Muestra estrictamente cuánto dinero entró y salió en las fechas marcadas, incluyendo el impacto de los reembolsos procesados.</p>
                                     </TooltipContent>
                                 </Tooltip>
                             </TooltipProvider>
@@ -255,7 +275,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                                 </CardHeader>
                                 <CardContent>
                                     <div className="text-3xl font-black">${formatCurrency(stats.usdNet)}</div>
-                                    <p className="text-[9px] text-slate-500 uppercase font-bold mt-1">Ingreso neto generado en este periodo</p>
+                                    <p className="text-[9px] text-slate-500 uppercase font-bold mt-1">Ingreso neto generado (Ventas - Vueltos - Reembolsos)</p>
                                 </CardContent>
                             </Card>
 
@@ -295,7 +315,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                     <div>
                         <div className="flex items-center gap-2 mb-4">
                             <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><Sigma className="w-3.5 h-3.5" /> Rendimiento Operativo</h3>
-                            <Badge variant="outline" className="text-[9px] border-primary/20 text-primary">SÓLO MOVIMIENTOS SELECCIONADOS</Badge>
+                            <Badge variant="outline" className="text-[9px] border-primary/20 text-primary uppercase">Sólo Ventas Completadas</Badge>
                         </div>
                         
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
@@ -324,9 +344,9 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                                 <p className="text-[9px] text-muted-foreground mt-1">Descuadres reportados</p>
                             </div>
                             <div className="p-4 rounded-xl bg-primary text-primary-foreground shadow-lg flex flex-col justify-center border-none">
-                                <p className="text-[10px] font-bold uppercase text-primary-foreground/70 tracking-widest">Flujo de Caja Total</p>
+                                <p className="text-[10px] font-bold uppercase text-primary-foreground/70 tracking-widest">Balance de Caja</p>
                                 <p className="text-3xl font-black">{getSymbol()}{formatCurrency(stats.adjustedTotalSales)}</p>
-                                <p className="text-[8px] opacity-60 uppercase font-black mt-1">Ingreso neto final del periodo</p>
+                                <p className="text-[8px] opacity-60 uppercase font-black mt-1">Impacto total en el periodo</p>
                             </div>
                         </div>
                     </div>
@@ -339,7 +359,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                         <ShoppingBag className="w-5 h-5 text-primary" />
                         <div>
                             <CardTitle className="text-sm font-black uppercase">Desglose de Rentabilidad por Artículo</CardTitle>
-                            <CardDescription className="text-[10px]">Detalle de costos, ingresos y ganancias por cada producto o servicio vendido.</CardDescription>
+                            <CardDescription className="text-[10px]">Detalle de costos, ingresos y ganancias por cada producto o servicio vendido (Ventas no reembolsadas).</CardDescription>
                         </div>
                     </div>
                 </CardHeader>
@@ -357,7 +377,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                         <TableBody>
                             {stats.itemsBreakdown.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground italic">
+                                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground italic uppercase font-bold text-xs">
                                         No hay transacciones registradas en este periodo.
                                     </TableCell>
                                 </TableRow>
@@ -368,6 +388,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                                             <div className="flex items-center gap-2">
                                                 {item.isRepair ? <TrendingUp className="w-3 h-3 text-blue-600" /> : <Package className="w-3 h-3 text-slate-400" />}
                                                 <span className="font-bold text-xs uppercase">{item.name}</span>
+                                                {item.isWarranty && <Badge variant="outline" className="text-[8px] h-3 border-orange-200 text-orange-600 font-bold">GARANTÍA</Badge>}
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-center font-mono text-xs font-bold">{item.quantity}</TableCell>
@@ -388,7 +409,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                         {stats.itemsBreakdown.length > 0 && (
                             <TableFooter className="bg-primary/5 font-black">
                                 <TableRow>
-                                    <TableCell colSpan={2} className="text-[10px] uppercase text-primary">Totales del Periodo:</TableCell>
+                                    <TableCell colSpan={2} className="text-[10px] uppercase text-primary">Totales Operativos:</TableCell>
                                     <TableCell className="text-right text-xs">${formatCurrency(stats.totalProductCosts)}</TableCell>
                                     <TableCell className="text-right text-xs">${formatCurrency(stats.totalSales)}</TableCell>
                                     <TableCell className="text-right">

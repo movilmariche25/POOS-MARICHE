@@ -32,8 +32,9 @@ import { Label } from "../ui/label";
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from "@/firebase";
 import { collection, doc, runTransaction, query, orderBy } from "firebase/firestore";
 import { handlePrintAllTickets } from "./repair-ticket";
-import { CheckCircle2, User, Smartphone, Package, Search, Plus, Trash2, Loader2, Tag, Info, TicketPercent, AlertTriangle } from "lucide-react";
-import { format } from "date-fns";
+import { CheckCircle2, User, Smartphone, Package, Search, Plus, Trash2, Loader2, Tag, Info, TicketPercent, AlertTriangle, ShieldCheck, History } from "lucide-react";
+import { format, parseISO, addDays } from "date-fns";
+import { es } from "date-fns/locale";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { cn } from "@/lib/utils";
@@ -49,7 +50,7 @@ const formSchema = z.object({
   deviceMake: z.string().min(2, "Marca obligatoria"),
   deviceModel: z.string().min(1, "Modelo obligatorio"),
   reportedIssue: z.string().min(5, "Detalla la falla del equipo"),
-  status: z.enum(['Pendiente', 'Pagado', 'Completado']),
+  status: z.enum(['Pendiente', 'Pagado', 'Completado', 'Garantía']),
   notes: z.string().default(""),
   reservedParts: z.array(z.any()).default([]),
   isPromo: z.boolean().default(false),
@@ -104,10 +105,13 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
   const { data: allRepairs } = useCollection<RepairJob>(repairsCollection);
 
   const currentID = form.watch("customerID");
-  const reservedParts = form.watch("reservedParts") as (ReservedPart & { isPromo?: boolean, isManual?: boolean })[];
+  const reservedParts = form.watch("reservedParts") as (ReservedPart & { isPromo?: boolean, isWarranty?: boolean, isManual?: boolean })[];
 
-  const partsTotal = useMemo(() => {
-    return reservedParts.reduce((sum, part) => {
+  const partsTotalForClient = useMemo(() => {
+    const allRelevantParts = [...(repairJob?.consumedParts || []), ...reservedParts];
+    return allRelevantParts.reduce((sum, part) => {
+        if (part.isWarranty) return sum;
+
         let price = 0;
         if (part.isManual) {
             price = getDynamicPrice(part.costPrice);
@@ -123,9 +127,9 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
         }
         return sum + (price * part.quantity);
     }, 0);
-  }, [reservedParts, products, getFinalPrice, getDynamicPrice]);
+  }, [reservedParts, repairJob?.consumedParts, products, getFinalPrice, getDynamicPrice]);
 
-  const estimatedTotal = partsTotal;
+  const estimatedTotal = partsTotalForClient;
 
   const foundCustomer = useMemo(() => {
     if (!currentID || currentID.length < 5 || !allRepairs) return null;
@@ -176,7 +180,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
   const handleAddPart = (p: Product) => {
       const originalPart = repairJob?.reservedParts?.find(rp => rp.productId === p.id);
       const originalQty = originalPart ? originalPart.quantity : 0;
-      const dbAvailable = (p.stockLevel || 0) - (p.reservedStock || 0);
+      const dbAvailable = (p.stockLevel || 0) - (p.reservedStock || 0) - (p.damagedStock || 0);
       const realAvailableForThisJob = dbAvailable + originalQty;
 
       const existingInForm = reservedParts.find(item => item.productId === p.id);
@@ -198,7 +202,8 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
               productName: p.name.toUpperCase(),
               quantity: 1,
               costPrice: p.costPrice,
-              isPromo: false
+              isPromo: false,
+              isWarranty: false
           };
           form.setValue('reservedParts', [...reservedParts, newPart]);
       }
@@ -215,6 +220,12 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
       ));
   };
 
+  const handleToggleWarranty = (productId: string) => {
+      form.setValue('reservedParts', reservedParts.map(p => 
+          p.productId === productId ? { ...p, isWarranty: !p.isWarranty } : p
+      ));
+  };
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (!firestore || !user || isSubmitting) return;
 
@@ -224,7 +235,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
             const jobId = repairJob?.id || `R-${format(new Date(), "yyMMdd")}-${Math.floor(1000 + Math.random() * 9000)}`;
             const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', jobId);
 
-            const oldParts = (repairJob?.reservedParts || []).filter(p => !(p as any).isManual);
+            const oldParts = (repairJob?.reservedParts || []).filter(p => !p.isManual);
             const newParts = values.reservedParts.filter(p => !p.isManual);
             const netChanges = new Map<string, { delta: number, name: string }>();
 
@@ -238,38 +249,65 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                 netChanges.set(updated.productId, { delta: current.delta + updated.quantity, name: updated.productName });
             }
 
-            const productIds = Array.from(netChanges.keys());
+            const productIdsToFetch = new Set<string>(netChanges.keys());
+            if (values.status === 'Completado') {
+                values.reservedParts.forEach(p => { if(!p.isManual) productIdsToFetch.add(p.productId) });
+            }
+
             const productSnaps = new Map();
-            
-            if (!repairJob?.isPaid) {
-                for (const pid of productIds) {
-                    const productRef = doc(firestore, 'users', user.uid, 'products', pid);
-                    const snap = await transaction.get(productRef);
-                    productSnaps.set(pid, snap);
+            for (const pid of Array.from(productIdsToFetch)) {
+                const productRef = doc(firestore, 'users', user.uid, 'products', pid);
+                const snap = await transaction.get(productRef);
+                productSnaps.set(pid, snap);
+            }
+
+            for (const pid of Array.from(netChanges.keys())) {
+                const change = netChanges.get(pid)!;
+                if (change.delta === 0) continue;
+
+                const pSnap = productSnaps.get(pid);
+                if (pSnap && pSnap.exists()) {
+                    const data = pSnap.data() as Product;
+                    const currentlyAvailable = (data.stockLevel || 0) - (data.reservedStock || 0) - (data.damagedStock || 0);
+                    
+                    if (change.delta > 0 && currentlyAvailable < change.delta) {
+                        throw new Error(`¡Inventario Bloqueado! No hay stock suficiente para "${change.name}".`);
+                    }
+                    
+                    transaction.update(pSnap.ref, { 
+                        reservedStock: Math.max(0, (data.reservedStock || 0) + change.delta) 
+                    });
                 }
             }
 
-            if (!repairJob?.isPaid) {
-                for (const pid of productIds) {
-                    const change = netChanges.get(pid)!;
-                    if (change.delta === 0) continue;
+            let partsConsumed = !!repairJob?.partsConsumed;
+            let finalReservedParts = [...values.reservedParts];
+            let finalConsumedParts = [...(repairJob?.consumedParts || [])];
+            let completionData: any = {};
 
-                    const pSnap = productSnaps.get(pid);
-                    if (pSnap && pSnap.exists()) {
-                        const data = pSnap.data();
-                        const currentReserved = data.reservedStock || 0;
-                        const physicalStock = data.stockLevel || 0;
-                        const currentlyAvailable = physicalStock - currentReserved;
-                        
-                        if (change.delta > 0 && currentlyAvailable < change.delta) {
-                            throw new Error(`Conflicto de stock para "${change.name}": Solo quedan ${currentlyAvailable} disponibles.`);
-                        }
-                        
-                        transaction.update(pSnap.ref, { 
-                            reservedStock: Math.max(0, currentReserved + change.delta) 
+            if (values.status === 'Completado') {
+                for (const part of values.reservedParts) {
+                    if (part.isManual) continue;
+                    const pSnap = productSnaps.get(part.productId);
+                    if (pSnap?.exists()) {
+                        const pData = pSnap.data() as Product;
+                        transaction.update(pSnap.ref, {
+                            stockLevel: (pData.stockLevel || 0) - part.quantity,
+                            reservedStock: Math.max(0, (pData.reservedStock || 0) - part.quantity)
                         });
                     }
                 }
+                
+                const completionDate = new Date();
+                completionData = {
+                    completedAt: completionDate.toISOString(),
+                    warrantyEndDate: addDays(completionDate, 4).toISOString(),
+                    partsConsumed: true
+                };
+                
+                finalConsumedParts = [...finalConsumedParts, ...values.reservedParts];
+                finalReservedParts = [];
+                partsConsumed = true;
             }
 
             const newEstimatedCost = Number(estimatedTotal.toFixed(2));
@@ -291,22 +329,24 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                 isPaid: isFullyPaidNow,
                 status: (isFullyPaidNow && values.status === 'Pendiente') ? 'Pagado' : values.status,
                 createdAt: repairJob?.createdAt || new Date().toISOString(),
-                partsCost: reservedParts.reduce((sum, p) => sum + (p.costPrice * p.quantity), 0),
-                partsConsumed: !!repairJob?.partsConsumed,
-                laborCost: 0 
+                reservedParts: finalReservedParts,
+                consumedParts: finalConsumedParts,
+                partsConsumed,
+                ...completionData
             };
             
             transaction.set(jobRef, finalData, { merge: true });
             return finalData;
         });
 
-        toast({ title: "Registro guardado correctamente" });
+        toast({ title: "Registro sincronizado con inventario" });
         if (!repairJob) {
             handlePrintAllTickets({ repairJob: result as RepairJob, businessName: profile?.businessName, profile, bcvRate }, () => {});
         }
         setOpen(false);
     } catch (e: any) {
-        toast({ variant: "destructive", title: "Error", description: e.message || "No se pudo procesar la transacción." });
+        console.error("Submit Error:", e);
+        toast({ variant: "destructive", title: "Error en Transacción", description: e.message });
     } finally {
         setIsSubmitting(false);
     }
@@ -371,7 +411,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                     <div className="space-y-4 p-4 rounded-xl border border-blue-100 bg-blue-50/30">
                         <div className="flex items-center justify-between border-b border-blue-200 pb-2 mb-2">
                             <h3 className="text-[10px] font-bold uppercase text-blue-600 tracking-widest flex items-center gap-2">
-                                <Package className="w-3.5 h-3.5" /> 3. Repuestos y Servicios
+                                <Package className="w-3.5 h-3.5" /> 3. Repuestos y Servicios (Nuevos)
                             </h3>
                             <div className="flex gap-2">
                                 <Button 
@@ -400,8 +440,9 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                                                     {(products || []).filter(p => !p.isCombo).map(p => {
                                                         const inForm = reservedParts.find(rp => rp.productId === p.id);
                                                         const qtyInForm = inForm ? inForm.quantity : 0;
-                                                        const originalInDB = repairJob?.reservedParts?.find(rp => rp.productId === p.id)?.quantity || 0;
-                                                        const available = (p.stockLevel - (p.reservedStock || 0)) + originalInDB;
+                                                        const originalInJob = repairJob?.reservedParts?.find(rp => rp.productId === p.id)?.quantity || 0;
+                                                        const currentlyReservedGlobally = p.reservedStock || 0;
+                                                        const available = (p.stockLevel - currentlyReservedGlobally - (p.damagedStock || 0)) + originalInJob;
                                                         
                                                         return (
                                                             <CommandItem key={p.id} onSelect={() => handleAddPart(p)} className="flex justify-between items-center p-2 text-xs cursor-pointer">
@@ -422,45 +463,50 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
 
                         <div className="space-y-2">
                             {reservedParts.length === 0 ? (
-                                <p className="text-[10px] text-center text-slate-400 py-4 italic uppercase">No se han añadido piezas a este presupuesto.</p>
+                                <p className="text-[10px] text-center text-slate-400 py-4 italic uppercase">No hay piezas nuevas en reserva.</p>
                             ) : (
                                 reservedParts.map((part) => {
                                     const pData = products?.find(prod => prod.id === part.productId);
                                     const hasPromo = !!(pData?.promoPrice && pData.promoPrice > 0);
-                                    const price = part.isPromo && pData?.promoPrice ? pData.promoPrice : getFinalPrice(pData || { costPrice: part.costPrice } as Product);
+                                    let price = part.isPromo && pData?.promoPrice ? pData.promoPrice : getFinalPrice(pData || { costPrice: part.costPrice } as Product);
                                     
+                                    if (part.isWarranty) price = 0;
+
                                     return (
                                         <div key={part.productId} className={cn(
                                             "flex items-center justify-between p-2.5 rounded-lg border shadow-sm text-xs transition-all",
-                                            part.isPromo ? "bg-blue-50 border-blue-200" : "bg-white border-slate-200"
+                                            part.isWarranty ? "bg-orange-50 border-orange-200" : (part.isPromo ? "bg-blue-50 border-blue-200" : "bg-white border-slate-200")
                                         )}>
                                             <div className="flex flex-col">
-                                                <span className="font-bold uppercase text-slate-700">{part.productName}</span>
+                                                <span className={cn("font-bold uppercase text-slate-700", part.isWarranty && "text-orange-700")}>
+                                                    {part.productName}
+                                                </span>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tighter">Cant: {part.quantity} x ${price.toFixed(2)}</span>
-                                                    {part.isPromo && <Badge className="h-3 text-[7px] bg-blue-600 font-bold uppercase">Oferta</Badge>}
+                                                    <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tighter">
+                                                        Reservado: {part.quantity} x ${price.toFixed(2)}
+                                                    </span>
+                                                    {part.isPromo && !part.isWarranty && <Badge className="h-3 text-[7px] bg-blue-600 font-bold uppercase">Oferta</Badge>}
+                                                    {part.isWarranty && <Badge className="h-3 text-[7px] bg-orange-600 font-bold uppercase">Garantía</Badge>}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-1.5">
                                                 <TooltipProvider>
-                                                    {hasPromo && (
-                                                        <Tooltip>
-                                                            <TooltipTrigger asChild>
-                                                                <Button 
-                                                                    type="button" 
-                                                                    variant="ghost" 
-                                                                    size="icon" 
-                                                                    className={cn("h-7 w-7", part.isPromo ? "text-blue-600 bg-blue-100" : "text-slate-400")} 
-                                                                    onClick={() => handleTogglePromo(part.productId)}
-                                                                    disabled={isJobCompleted}
-                                                                >
-                                                                    <TicketPercent className="w-3.5 h-3.5" />
-                                                                </Button>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent className="text-[10px] font-bold uppercase">Activar Oferta</TooltipContent>
-                                                        </Tooltip>
-                                                    )}
-                                                    
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button 
+                                                                type="button" 
+                                                                variant="ghost" 
+                                                                size="icon" 
+                                                                className={cn("h-7 w-7", part.isWarranty ? "text-orange-600 bg-orange-100" : "text-slate-400")} 
+                                                                onClick={() => handleToggleWarranty(part.productId)}
+                                                                disabled={isJobCompleted}
+                                                            >
+                                                                <ShieldCheck className="w-3.5 h-3.5" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent className="text-[10px] font-bold uppercase">Garantía ($0)</TooltipContent>
+                                                    </Tooltip>
+
                                                     {!isJobCompleted && (
                                                         <Tooltip>
                                                             <TooltipTrigger asChild>
@@ -486,10 +532,34 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                         </div>
                     </div>
 
+                    {repairJob?.consumedParts && repairJob.consumedParts.length > 0 && (
+                        <div className="space-y-4 p-4 rounded-xl border border-slate-200 bg-slate-50/30">
+                            <div className="border-b border-slate-200 pb-2 mb-2">
+                                <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                                    <History className="w-3.5 h-3.5" /> Historial de Repuestos Consumidos
+                                </h3>
+                            </div>
+                            <div className="space-y-2 opacity-70">
+                                {repairJob.consumedParts.map((part, idx) => (
+                                    <div key={idx} className="flex justify-between items-center p-2 rounded-lg border bg-white text-[10px]">
+                                        <div className="flex flex-col">
+                                            <span className="font-bold uppercase">{part.productName}</span>
+                                            <span className="text-muted-foreground uppercase font-bold">Consumido el {repairJob.completedAt ? format(parseISO(repairJob.completedAt), "dd/MM/yy") : '---'}</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="font-black">${part.isWarranty ? '0.00' : part.costPrice.toFixed(2)}</p>
+                                            {part.isWarranty && <Badge variant="outline" className="h-3 text-[7px] border-orange-200 text-orange-600 font-bold uppercase">Garantía</Badge>}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="pt-2">
                         <div className="p-5 rounded-xl bg-slate-900 text-white space-y-2 shadow-xl border-t-4 border-primary">
                             <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                                <span>Presupuesto Estimado:</span>
+                                <span>Costo Total Acumulado:</span>
                                 <span>${estimatedTotal.toFixed(2)}</span>
                             </div>
                             <div className="flex justify-between items-center text-[10px] text-green-400 font-bold uppercase tracking-wider">
@@ -542,7 +612,8 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                         productName: newProd.name.toUpperCase(),
                         quantity: 1,
                         costPrice: newProd.costPrice,
-                        isPromo: false
+                        isPromo: false,
+                        isWarranty: false
                     };
                     form.setValue('reservedParts', [...reservedParts, newPart]);
                 }
@@ -566,7 +637,8 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                             productName: updatedProd.name.toUpperCase(),
                             quantity: 1,
                             costPrice: updatedProd.costPrice,
-                            isPromo: false
+                            isPromo: false,
+                            isWarranty: false
                         };
                         form.setValue('reservedParts', [...reservedParts, newPart]);
                     }

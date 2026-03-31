@@ -1,4 +1,3 @@
-
 "use client"
 
 import type { Sale, Payment, Product, CartItem, RepairJob, UserProfile, PaymentMethod } from "@/lib/types";
@@ -9,7 +8,7 @@ import { useCurrency } from "@/hooks/use-currency";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { ReceiptView, handlePrintReceipt } from "../pos/receipt-view";
 import { Button } from "../ui/button";
-import { Printer, Undo2, AlertTriangle, Calendar as CalendarIcon, Search, X as ClearIcon, Filter, CreditCard, Banknote, Landmark, Smartphone, DollarSign, ArrowDownLeft, ArrowUpRight, Sigma } from "lucide-react";
+import { Printer, Undo2, AlertTriangle, Calendar as CalendarIcon, Search, X as ClearIcon, Filter, CreditCard, Banknote, Landmark, Smartphone, DollarSign, ArrowDownLeft, ArrowUpRight, Sigma, Loader2 } from "lucide-react";
 import React, { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "../ui/skeleton";
@@ -43,12 +42,20 @@ const PAYMENT_METHODS: (PaymentMethod | 'ALL')[] = [
     'Transferencia'
 ];
 
+const REFUND_METHODS: PaymentMethod[] = [
+    'Efectivo USD',
+    'Efectivo Bs',
+    'Tarjeta / Pago Móvil',
+    'Transferencia'
+];
+
 const methodIcons: Record<string, any> = {
     'Efectivo USD': DollarSign,
     'Efectivo Bs': Landmark,
     'Tarjeta': CreditCard,
     'Pago Móvil': Smartphone,
     'Transferencia': Banknote,
+    'Tarjeta / Pago Móvil': Smartphone,
 };
 
 const RefundButton = ({ sale }: { sale: Sale }) => {
@@ -57,20 +64,45 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
     const [isConfirmOpen, setIsConfirmOpen] = useState(false);
     const [refundReason, setRefundReason] = useState("");
     const [stockAction, setStockAction] = useState<'return' | 'damage'>('return');
+    const [refundMethod, setRefundMethod] = useState<PaymentMethod | "">("");
+    const [isProcessing, setIsProcessing] = useState(false);
     
     const handleRefund = async () => {
-        if (!firestore || !user || !sale.id || !refundReason.trim()) return;
+        if (!firestore || !user || !sale.id || !refundReason.trim() || !refundMethod || isProcessing) return;
         
+        setIsProcessing(true);
         try {
             await runTransaction(firestore, async (transaction) => {
                 const repairJobSnap = sale.repairJobId ? await transaction.get(doc(firestore, 'users', user.uid, 'repair_jobs', sale.repairJobId)) : null;
                 const repairJobData = repairJobSnap?.exists() ? repairJobSnap.data() as RepairJob : null;
 
-                const productIds = Array.from(new Set(sale.items.filter(i => !i.isCustom).map(i => i.productId)));
+                const productIdsToReturn = new Map<string, { quantity: number, isFromRepair: boolean }>();
+
+                sale.items.forEach(item => {
+                    if (item.isCustom) return;
+                    if (item.isRepair) return;
+                    
+                    const existing = productIdsToReturn.get(item.productId) || { quantity: 0, isFromRepair: false };
+                    productIdsToReturn.set(item.productId, { 
+                        quantity: existing.quantity + item.quantity, 
+                        isFromRepair: false 
+                    });
+                });
+
+                if (repairJobData?.reservedParts) {
+                    repairJobData.reservedParts.forEach(part => {
+                        const existing = productIdsToReturn.get(part.productId) || { quantity: 0, isFromRepair: true };
+                        productIdsToReturn.set(part.productId, { 
+                            quantity: existing.quantity + part.quantity, 
+                            isFromRepair: true 
+                        });
+                    });
+                }
+
                 const productSnapshots = new Map<string, DocumentSnapshot>();
-                for(const id of productIds) {
-                    const snap = await transaction.get(doc(firestore, 'users', user.uid, 'products', id));
-                    productSnapshots.set(id, snap);
+                for(const pid of Array.from(productIdsToReturn.keys())) {
+                    const snap = await transaction.get(doc(firestore, 'users', user.uid, 'products', pid));
+                    productSnapshots.set(pid, snap);
                 }
 
                 if (repairJobSnap?.exists() && repairJobData) {
@@ -82,19 +114,18 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
                     });
                 }
 
-                for (const item of sale.items) {
-                    if (item.isCustom) continue;
-                    const pSnap = productSnapshots.get(item.productId);
+                for (const [pid, info] of Array.from(productIdsToReturn.entries())) {
+                    const pSnap = productSnapshots.get(pid);
                     if (pSnap?.exists()) {
                         const data = pSnap.data() as Product;
-                        const newStock = data.stockLevel + item.quantity;
-                        const newDamaged = stockAction === 'damage' ? (data.damagedStock || 0) + item.quantity : (data.damagedStock || 0);
+                        const newStock = (data.stockLevel || 0) + info.quantity;
+                        const newDamaged = stockAction === 'damage' 
+                            ? (data.damagedStock || 0) + info.quantity 
+                            : (data.damagedStock || 0);
                         
                         let newReserved = data.reservedStock || 0;
-                        if (item.isRepair || (sale.repairJobId && repairJobData?.reservedParts?.some(rp => rp.productId === item.productId))) {
-                            if (stockAction === 'return') {
-                                newReserved += item.quantity;
-                            }
+                        if (info.isFromRepair && stockAction === 'return') {
+                            newReserved += info.quantity;
                         }
 
                         transaction.update(pSnap.ref, { 
@@ -106,14 +137,20 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
                 }
 
                 const saleRef = doc(firestore, 'users', user.uid, 'sale_transactions', sale.id!);
-                transaction.update(saleRef, { status: 'refunded', refundedAt: new Date().toISOString(), refundReason });
+                transaction.update(saleRef, { 
+                    status: 'refunded', 
+                    refundedAt: new Date().toISOString(), 
+                    refundReason,
+                    refundPaymentMethod: refundMethod 
+                });
             });
 
-            toast({ title: "Reembolso Procesado con Éxito" });
-        } catch (error) {
+            toast({ title: "Reembolso Procesado", description: "El inventario y la caja han sido ajustados." });
+        } catch (error: any) {
             console.error("Refund Error:", error);
-            toast({ variant: "destructive", title: "Error en el Reembolso", description: "Conflictos de concurrencia detectados." });
+            toast({ variant: "destructive", title: "Error en el Reembolso", description: error.message || "Error de sincronización." });
         } finally {
+            setIsProcessing(false);
             setIsConfirmOpen(false);
         }
     };
@@ -127,36 +164,66 @@ const RefundButton = ({ sale }: { sale: Sale }) => {
                 <Button variant="outline" size="sm" className="h-8"><Undo2 className="mr-2 h-4 w-4" /> Reembolsar</Button>
             </AdminAuthDialog>
             <AlertDialog open={isConfirmOpen} onOpenChange={setIsConfirmOpen}>
-                <AlertDialogContent>
+                <AlertDialogContent className="sm:max-w-md">
                     <AlertDialogHeader>
-                        <AlertDialogTitle>¿Confirmar Reembolso Atómico?</AlertDialogTitle>
+                        <AlertDialogTitle className="uppercase font-bold">Procesar Reembolso</AlertDialogTitle>
                     </AlertDialogHeader>
-                    <div className="py-4 space-y-4">
+                    <div className="py-4 space-y-6">
                         <div className="space-y-2">
-                            <Label>Motivo de la devolución</Label>
+                            <Label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">1. ¿Cómo devuelves el dinero?</Label>
+                            <Select value={refundMethod} onValueChange={(v: any) => setRefundMethod(v)}>
+                                <SelectTrigger className="h-11">
+                                    <SelectValue placeholder="Seleccionar método..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {REFUND_METHODS.map(m => (
+                                        <SelectItem key={m} value={m} className="uppercase text-xs font-bold">{m}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-[9px] text-muted-foreground italic">El monto se restará de este método en tus reportes de caja.</p>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">2. Motivo de la devolución</Label>
                             <Textarea 
-                                placeholder="Ej: Cliente desistió de la compra..." 
+                                placeholder="ESCRIBE EL MOTIVO..." 
                                 value={refundReason} 
-                                onChange={(e) => setRefundReason(e.target.value)} 
+                                onChange={(e) => setRefundReason(e.target.value.toUpperCase())}
+                                className="uppercase text-xs"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label>Acción sobre el inventario</Label>
-                            <RadioGroup value={stockAction} onValueChange={(v: any) => setStockAction(v)}>
-                                <div className="flex items-center space-x-2">
+
+                        <div className="space-y-3">
+                            <Label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">3. Acción sobre el inventario</Label>
+                            <RadioGroup value={stockAction} onValueChange={(v: any) => setStockAction(v)} className="grid grid-cols-1 gap-2">
+                                <div className={cn(
+                                    "flex items-center space-x-2 p-3 rounded-lg border transition-all",
+                                    stockAction === 'return' ? "bg-green-50 border-green-200" : "bg-white border-slate-200"
+                                )}>
                                     <RadioGroupItem value="return" id="r1" />
-                                    <Label htmlFor="r1" className="font-normal">Devolver a stock (Disponible)</Label>
+                                    <Label htmlFor="r1" className="font-bold text-xs cursor-pointer">DEVOLVER A STOCK (DISPONIBLE)</Label>
                                 </div>
-                                <div className="flex items-center space-x-2">
+                                <div className={cn(
+                                    "flex items-center space-x-2 p-3 rounded-lg border transition-all",
+                                    stockAction === 'damage' ? "bg-destructive/5 border-destructive/20" : "bg-white border-slate-200"
+                                )}>
                                     <RadioGroupItem value="damage" id="r2" />
-                                    <Label htmlFor="r2" className="font-normal">Mover a dañado/garantía</Label>
+                                    <Label htmlFor="r2" className="font-bold text-xs cursor-pointer">MOVER A DAÑADO / GARANTÍA</Label>
                                 </div>
                             </RadioGroup>
                         </div>
                     </div>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleRefund} disabled={!refundReason.trim()} className="bg-destructive">Confirmar Reembolso</AlertDialogAction>
+                    <AlertDialogFooter className="gap-2">
+                        <AlertDialogCancel disabled={isProcessing}>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction 
+                            onClick={handleRefund} 
+                            disabled={!refundReason.trim() || !refundMethod || isProcessing} 
+                            className="bg-destructive hover:bg-destructive/90 h-11 font-bold"
+                        >
+                            {isProcessing ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Undo2 className="w-4 h-4 mr-2" />}
+                            CONFIRMAR REEMBOLSO
+                        </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
@@ -214,7 +281,8 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
             if (methodFilter !== 'ALL') {
                 const hasMethod = sale.payments.some(p => p.method === methodFilter);
                 const hasChangeInMethod = sale.changeGiven?.some(c => c.method === methodFilter);
-                if (!hasMethod && !hasChangeInMethod) return false;
+                const hasRefundInMethod = sale.status === 'refunded' && sale.refundPaymentMethod === methodFilter;
+                if (!hasMethod && !hasChangeInMethod && !hasRefundInMethod) return false;
             }
 
             if (searchRef.trim()) {
@@ -237,7 +305,14 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
 
         let total = 0;
         filteredSales.forEach(sale => {
-            if (sale.status === 'refunded') return;
+            if (sale.status === 'refunded') {
+                if (sale.refundPaymentMethod === methodFilter) {
+                    const refundAmountUSD = sale.actualPaidAmount ?? sale.totalAmount;
+                    total -= methodFilter === 'Efectivo USD' ? refundAmountUSD : refundAmountUSD * (sale.bcvRateAtTime || currentBcvRate);
+                }
+                return;
+            }
+            
             sale.payments.forEach(p => {
                 if (p.method === methodFilter) {
                     total += p.amount;
@@ -257,7 +332,7 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
         const amountBS = isBS ? total : convert(total, 'USD', 'Bs');
 
         return { total, amountUSD, amountBS, isBS };
-    }, [filteredSales, methodFilter, convert]);
+    }, [filteredSales, methodFilter, convert, currentBcvRate]);
 
     const resetFilters = () => {
         setDateRange(undefined);
@@ -308,10 +383,10 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                     <div className="relative">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input 
-                            placeholder="Ej: 1234, S-2401..." 
-                            className="pl-8" 
+                            placeholder="EJ: 1234, S-2401..." 
+                            className="pl-8 uppercase" 
                             value={searchRef}
-                            onChange={(e) => setSearchRef(e.target.value)}
+                            onChange={(e) => setSearchRef(e.target.value.toUpperCase())}
                         />
                     </div>
                 </div>
@@ -334,7 +409,7 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                             <p className="text-2xl font-black text-primary leading-none">
                                 {methodTotals.isBS ? 'Bs ' : '$ '}{formatCurrency(methodTotals.total)}
                             </p>
-                            <p className="text-[9px] text-muted-foreground italic mt-1">(Suma cobros - Suma vueltos en este método)</p>
+                            <p className="text-[9px] text-muted-foreground italic mt-1">(Ventas - Vueltos - Reembolsos en este método)</p>
                         </div>
                     </div>
                     <div className="text-center sm:text-right border-t sm:border-t-0 sm:border-l pt-4 sm:pt-0 sm:pl-8 border-primary/10 w-full sm:w-auto">
@@ -365,9 +440,11 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                     </div>
                                     <div className="flex items-center gap-4">
                                         {sale.reconciliationId && <Badge variant="outline" className="border-green-600 text-green-600">Cerrada</Badge>}
-                                        {sale.status === 'refunded' && <Badge variant="destructive">Reembolsado</Badge>}
+                                        {sale.status === 'refunded' && <Badge variant="destructive" className="animate-pulse">REEMBOLSADO</Badge>}
                                         <div className="text-right">
-                                            <p className="font-black text-lg leading-none">{getSymbol()}{formatCurrency(sale.actualPaidAmount ?? sale.totalAmount)}</p>
+                                            <p className={cn("font-black text-lg leading-none", sale.status === 'refunded' && "text-muted-foreground line-through")}>
+                                                {getSymbol()}{formatCurrency(sale.actualPaidAmount ?? sale.totalAmount)}
+                                            </p>
                                             <p className="text-[10px] text-slate-500 mt-1">
                                                 ~ Bs {formatCurrency((sale.actualPaidAmount ?? sale.totalAmount) * (sale.bcvRateAtTime || currentBcvRate))}
                                             </p>
@@ -399,10 +476,11 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                                 <TableBody>
                                                     {sale.items.map((item, idx) => (
                                                         <TableRow key={idx}>
-                                                            <TableCell className="font-medium text-xs">
+                                                            <TableCell className="font-medium text-xs uppercase">
                                                                 {item.name}
-                                                                {item.isPromo && <Badge variant="outline" className="ml-2 text-[9px] h-4 border-blue-200 text-blue-600">OFERTA</Badge>}
-                                                                {item.isGift && <Badge variant="outline" className="ml-2 text-[9px] h-4 border-green-200 text-green-600">OBSEQUIO</Badge>}
+                                                                {item.isPromo && <Badge variant="outline" className="ml-2 text-[9px] h-4 border-blue-200 text-blue-600 font-bold">OFERTA</Badge>}
+                                                                {item.isGift && <Badge variant="outline" className="ml-2 text-[9px] h-4 border-green-200 text-green-600 font-bold">OBSEQUIO</Badge>}
+                                                                {item.isWarranty && <Badge variant="outline" className="ml-2 text-[9px] h-4 border-orange-200 text-orange-600 font-bold">GARANTÍA</Badge>}
                                                             </TableCell>
                                                             <TableCell className="text-center text-xs">{item.quantity}</TableCell>
                                                             <TableCell className="text-right text-xs">${formatCurrency(item.price)}</TableCell>
@@ -428,7 +506,7 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                                             <div className="flex items-center gap-2">
                                                                 <div className="p-1 bg-green-50 rounded text-green-600"><Icon className="w-3.5 h-3.5" /></div>
                                                                 <div className="flex flex-col">
-                                                                    <span className="font-bold">{p.method}</span>
+                                                                    <span className="font-bold uppercase">{p.method}</span>
                                                                     {p.reference && <span className="text-[10px] text-slate-950 font-black font-mono">Ref: {p.reference}</span>}
                                                                 </div>
                                                             </div>
@@ -454,7 +532,7 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                                             <div key={idx} className="flex justify-between items-center p-2 bg-white rounded-md border text-xs shadow-sm border-amber-100">
                                                                 <div className="flex items-center gap-2">
                                                                     <div className="p-1 bg-amber-50 rounded text-amber-600"><Icon className="w-3.5 h-3.5" /></div>
-                                                                    <span className="font-bold">{c.method}</span>
+                                                                    <span className="font-bold uppercase">{c.method}</span>
                                                                 </div>
                                                                 <span className="font-black text-amber-700">
                                                                     {isBS ? 'Bs' : '$'} {formatCurrency(c.amount)}
@@ -468,7 +546,7 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="p-3 bg-slate-50 border rounded-md text-[10px] text-muted-foreground italic text-center">
+                                                <div className="p-3 bg-slate-50 border rounded-md text-[10px] text-muted-foreground italic text-center uppercase font-bold">
                                                     No se registró entrega de vuelto para esta transacción.
                                                 </div>
                                             )}
@@ -490,17 +568,26 @@ export function TransactionList({ sales, isLoading }: TransactionListProps) {
                                         </div>
                                     </div>
                                     
-                                    <div className="p-2 border rounded-md bg-white text-[9px] text-muted-foreground text-center italic">
-                                        Tasa BCV al momento: {(sale.bcvRateAtTime || currentBcvRate).toFixed(2)} Bs/$
+                                    <div className="p-2 border rounded-md bg-white text-[9px] text-muted-foreground text-center italic font-bold">
+                                        TASA BCV AL MOMENTO: {(sale.bcvRateAtTime || currentBcvRate).toFixed(2)} BS/$
                                     </div>
                                     
                                     {sale.status === 'refunded' && (
-                                        <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                                            <p className="text-[10px] font-bold text-destructive uppercase flex items-center gap-1.5 mb-1">
-                                                <AlertTriangle className="w-3.5 h-3.5" /> Motivo del Reembolso
+                                        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl space-y-3">
+                                            <p className="text-[10px] font-black text-destructive uppercase flex items-center gap-1.5 border-b border-destructive/10 pb-2">
+                                                <AlertTriangle className="w-3.5 h-3.5" /> Detalles del Reembolso
                                             </p>
-                                            <p className="text-xs text-destructive/80 italic">"{sale.refundReason}"</p>
-                                            <p className="text-[9px] text-destructive/60 mt-1">Procesado el {sale.refundedAt ? format(parseISO(sale.refundedAt), "dd/MM/yy hh:mm a", { locale: es }) : 'N/A'}</p>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <p className="text-[8px] font-black text-destructive/60 uppercase">Motivo:</p>
+                                                    <p className="text-xs text-destructive italic font-bold">"{sale.refundReason}"</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[8px] font-black text-destructive/60 uppercase">Devuelto por:</p>
+                                                    <Badge variant="destructive" className="text-[9px] uppercase font-black">{sale.refundPaymentMethod}</Badge>
+                                                </div>
+                                            </div>
+                                            <p className="text-[8px] text-destructive/60 text-right uppercase font-bold">Procesado el {sale.refundedAt ? format(parseISO(sale.refundedAt), "dd/MM/yy hh:mm a", { locale: es }) : 'N/A'}</p>
                                         </div>
                                     )}
                                 </div>

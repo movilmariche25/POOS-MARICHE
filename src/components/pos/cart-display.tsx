@@ -1,8 +1,8 @@
 "use client";
 
-import type { CartItem, Payment, Product, Sale, RepairJob } from "@/lib/types";
+import type { CartItem, Payment, Product, Sale, RepairJob, ReservedPart } from "@/lib/types";
 import { Button } from "../ui/button";
-import { Trash2, TicketPercent, Gift, ParkingSquare } from "lucide-react";
+import { Trash2, TicketPercent, Gift, ParkingSquare, ShieldAlert } from "lucide-react";
 import { useState } from "react";
 import { CheckoutDialog } from "./checkout-dialog";
 import { useCurrency } from "@/hooks/use-currency";
@@ -25,6 +25,7 @@ type CartDisplayProps = {
   onClearCart: () => void;
   onTogglePromo: (productId: string) => void;
   onToggleGift: (productId: string) => void;
+  onToggleWarranty: (productId: string) => void;
   onHoldSale?: (name: string) => void;
   repairJobId?: string;
 };
@@ -34,7 +35,7 @@ function generateSaleId() {
     return `S-${format(date, "yyMMdd")}-${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
-export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem, onClearCart, repairJobId, onTogglePromo, onToggleGift, onHoldSale }: CartDisplayProps) {
+export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem, onClearCart, repairJobId, onTogglePromo, onToggleGift, onToggleWarranty, onHoldSale }: CartDisplayProps) {
   const { firestore, user } = useFirebase();
   const { toast } = useToast();
   const { format: formatCurrency, getFinalPrice, getSymbol, convert, bcvRate, parallelRate } = useCurrency();
@@ -47,19 +48,15 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
   const { data: activeRepairJob } = useDoc<RepairJob>(repairJobRef);
 
   const getPrice = (item: CartItem) => {
-    if (item.isGift) return 0;
+    if (item.isGift || item.isWarranty) return 0;
     
     if (item.isRepair) {
         if (!activeRepairJob) return 0;
-        
-        // Calculamos el saldo pendiente base guardado
         const basePending = Math.max(0, activeRepairJob.estimatedCost - (activeRepairJob.amountPaid || 0));
         
-        // Si el usuario activa "OFERTA" en el POS para el ticket de reparación completo
         if (item.isPromo && activeRepairJob.reservedParts && activeRepairJob.reservedParts.length > 0) {
             let totalAdditionalDiscount = 0;
             activeRepairJob.reservedParts.forEach(part => {
-                // Si la pieza NO tenía promo ya aplicada en el registro
                 if (!part.isPromo) {
                     const product = allProducts.find(p => p.id === part.productId);
                     if (product && product.promoPrice && product.promoPrice > 0) {
@@ -105,8 +102,8 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
             const currentRepairJobSnap = (repairJobId && hasRepairInCart) ? await transaction.get(repairJobRef!) : null;
             const currentRepairJob = currentRepairJobSnap?.exists() ? currentRepairJobSnap.data() as RepairJob : null;
 
-            if (currentRepairJob?.reservedParts && !currentRepairJob.partsConsumed && hasRepairInCart) {
-                currentRepairJob.reservedParts.forEach(p => productIdsToGet.add(p.productId));
+            if (currentRepairJob?.reservedParts && hasRepairInCart) {
+                currentRepairJob.reservedParts.forEach(p => { if(!p.isManual) productIdsToGet.add(p.productId) });
             }
             cartWithPrices.filter(i => !i.isRepair && !i.isCustom).forEach(i => productIdsToGet.add(i.productId));
 
@@ -118,8 +115,9 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
 
             const stockDeductions = new Map<string, { stock: number, reserved: number }>();
 
-            if (currentRepairJob?.reservedParts && !currentRepairJob.partsConsumed && hasRepairInCart) {
+            if (currentRepairJob?.reservedParts && hasRepairInCart) {
                 for (const part of currentRepairJob.reservedParts) {
+                    if (part.isManual) continue;
                     const current = stockDeductions.get(part.productId) || { stock: 0, reserved: 0 };
                     stockDeductions.set(part.productId, { 
                         stock: current.stock + part.quantity, 
@@ -142,7 +140,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                 if (pSnap?.exists()) {
                     const data = pSnap.data() as Product;
                     if (data.stockLevel < ded.stock) {
-                        throw new Error(`¡Conflicto de Inventario! Solo quedan ${data.stockLevel} ${data.unit || 'un.'} de "${data.name}".`);
+                        throw new Error(`¡Inventario Bloqueado! Solo quedan ${data.stockLevel} ${data.unit || 'un.'} de "${data.name}".`);
                     }
 
                     transaction.update(pSnap.ref, { 
@@ -182,7 +180,9 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                     amountPaid: Number(newPaidTotal.toFixed(2)), 
                     isPaid: isFullyPaid,
                     status: isFullyPaid ? 'Pagado' : currentRepairJob.status,
-                    partsConsumed: true 
+                    partsConsumed: true,
+                    consumedParts: [...(currentRepairJob.consumedParts || []), ...(currentRepairJob.reservedParts || [])],
+                    reservedParts: []
                 });
             }
 
@@ -251,7 +251,6 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                     
                     let hasPromoAvailable = false;
                     if (item.isRepair) {
-                        // Para reparaciones, hay promo disponible si ALGUNA de sus piezas tiene precio de promo y no está aplicado
                         hasPromoAvailable = !!activeRepairJob?.reservedParts?.some(part => {
                             const p = allProducts.find(prod => prod.id === part.productId);
                             return p && p.promoPrice && p.promoPrice > 0 && !part.isPromo;
@@ -263,14 +262,16 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                     return (
                         <TableRow key={item.productId + (item.isRepair ? '-rep' : '')} className={cn(
                             item.isGift && "bg-green-50/50",
+                            item.isWarranty && "bg-orange-50/50",
                             item.isPromo && "bg-blue-50/50"
                         )}>
                             <TableCell className="font-medium text-xs py-3">
                                 <div className="flex flex-col gap-1">
-                                    <span className={cn(item.isGift && "line-through text-muted-foreground")}>{item.name}</span>
+                                    <span className={cn((item.isGift || item.isWarranty) && "line-through text-muted-foreground")}>{item.name}</span>
                                     <div className="flex flex-wrap gap-1">
                                         {item.isPromo && <Badge className="bg-blue-600 text-white text-[9px] h-4 px-1">OFERTA</Badge>}
                                         {item.isGift && <Badge className="bg-green-600 text-white text-[9px] h-4 px-1">OBSEQUIO</Badge>}
+                                        {item.isWarranty && <Badge className="bg-orange-600 text-white text-[9px] h-4 px-1">GARANTÍA</Badge>}
                                         {item.isRepair && <Badge variant="outline" className="text-[9px] h-4 px-1">REPARACIÓN</Badge>}
                                     </div>
                                 </div>
@@ -312,20 +313,36 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                                         )}
                                         
                                         {!item.isRepair && (
-                                            <Tooltip>
-                                                <TooltipTrigger asChild>
-                                                    <Button 
-                                                        type="button" 
-                                                        variant="ghost" 
-                                                        size="icon" 
-                                                        className={cn("h-7 w-7", item.isGift ? "text-green-600 bg-green-100" : "text-muted-foreground")}
-                                                        onClick={() => onToggleGift(item.productId)}
-                                                    >
-                                                        <Gift className="h-3.5 w-3.5" />
-                                                    </Button>
-                                                </TooltipTrigger>
-                                                <TooltipContent><p>Marcar como Obsequio</p></TooltipContent>
-                                            </Tooltip>
+                                            <>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button 
+                                                            type="button" 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            className={cn("h-7 w-7", item.isGift ? "text-green-600 bg-green-100" : "text-muted-foreground")}
+                                                            onClick={() => onToggleGift(item.productId)}
+                                                        >
+                                                            <Gift className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent><p>Marcar como Obsequio</p></TooltipContent>
+                                                </Tooltip>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button 
+                                                            type="button" 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            className={cn("h-7 w-7", item.isWarranty ? "text-orange-600 bg-orange-100" : "text-muted-foreground")}
+                                                            onClick={() => onToggleWarranty(item.productId)}
+                                                        >
+                                                            <ShieldAlert className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent><p>Reemplazo por Garantía ($0)</p></TooltipContent>
+                                                </Tooltip>
+                                            </>
                                         )}
 
                                         <Tooltip>

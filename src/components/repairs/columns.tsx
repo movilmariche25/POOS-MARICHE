@@ -1,8 +1,7 @@
-
 "use client"
 
 import type { ColumnDef } from "@tanstack/react-table"
-import type { RepairJob, RepairStatus, UserProfile, Product } from "@/lib/types"
+import type { RepairJob, RepairStatus, UserProfile, Product, ReservedPart } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -12,7 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { MoreHorizontal, Edit, Trash2, DollarSign, Printer, Eye, ArrowUpDown, Tag, Files } from "lucide-react"
+import { MoreHorizontal, Edit, Trash2, DollarSign, Printer, Eye, ArrowUpDown, Tag, Files, ShieldCheck, RefreshCcw, Loader2 } from "lucide-react"
 import { Badge } from "../ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import {
@@ -25,12 +24,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { format, parseISO, addDays } from "date-fns"
+import { format, parseISO, addDays, isAfter, differenceInDays } from "date-fns"
 import { es } from "date-fns/locale"
 import { useCurrency } from "@/hooks/use-currency"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { useFirebase, updateDocumentNonBlocking, useDoc, useMemoFirebase } from "@/firebase"
-import { doc, runTransaction } from "firebase/firestore"
+import { doc, runTransaction, type DocumentSnapshot } from "firebase/firestore"
 import { handlePrintCustomerTicket, handlePrintInternalTicket, handlePrintStickerTicket, handlePrintAllTickets } from "./repair-ticket"
 import { AdminAuthDialog } from "../admin-auth-dialog"
 import { useState } from "react"
@@ -38,7 +37,7 @@ import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { RepairFormDialog } from "./repair-form-dialog"
 
-const repairStatuses: RepairStatus[] = ['Pendiente', 'Pagado', 'Completado'];
+const repairStatuses: RepairStatus[] = ['Pendiente', 'Pagado', 'Completado', 'Garantía'];
 
 const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
     const { toast } = useToast();
@@ -56,11 +55,28 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
     const estimatedCost = repairJob.estimatedCost || 0;
     const amountPaid = repairJob.amountPaid || 0;
     const remainingBalance = estimatedCost - amountPaid;
-    const isCompletedAndPaid = repairJob.status === 'Completado' && repairJob.isPaid;
+    const isCompleted = repairJob.status === 'Completado';
+    const isCompletedAndPaid = isCompleted && repairJob.isPaid;
 
     const handlePay = () => {
         const repairData = encodeURIComponent(JSON.stringify(repairJob));
         router.push(`/dashboard/pos?repairJob=${repairData}`);
+    };
+
+    const handleReenterForWarranty = () => {
+        if (!firestore || !user || !repairJob.id) return;
+        const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJob.id);
+        updateDocumentNonBlocking(jobRef, {
+            status: 'Garantía',
+            completedAt: null,
+            warrantyEndDate: null,
+            // NOTA: No limpiamos consumedParts para mantener historial, 
+            // pero el técnico podrá añadir nuevas piezas a reservedParts.
+        });
+        toast({ 
+            title: "Reingreso por Garantía", 
+            description: "El trabajo ha sido reactivado para revisión técnica.",
+        });
     };
 
     const handleDelete = async () => {
@@ -69,29 +85,47 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
         try {
             await runTransaction(firestore, async (transaction) => {
                 const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJob.id!);
+                const jobSnap = await transaction.get(jobRef);
+                if (!jobSnap.exists()) return;
+                const data = jobSnap.data() as RepairJob;
 
-                const productSnaps = new Map();
-                if (repairJob.reservedParts && repairJob.reservedParts.length > 0) {
-                    for (const part of repairJob.reservedParts) {
-                        const productRef = doc(firestore, 'users', user.uid, 'products', part.productId);
-                        const snap = await transaction.get(productRef);
-                        productSnaps.set(part.productId, snap);
+                // Piezas Reservadas (Devolver a stock disponible)
+                const reservedParts = data.reservedParts || [];
+                const consumedParts = data.consumedParts || [];
+                
+                const productIds = Array.from(new Set([
+                    ...reservedParts.map(p => p.productId),
+                    ...consumedParts.map(p => p.productId)
+                ]));
+
+                const productSnaps = new Map<string, DocumentSnapshot>();
+                for (const pid of productIds) {
+                    const productRef = doc(firestore, 'users', user.uid, 'products', pid);
+                    const snap = await transaction.get(productRef);
+                    productSnaps.set(pid, snap);
+                }
+
+                // 1. Devolver Reservas (Liberar reserva)
+                for (const part of reservedParts) {
+                    if (part.isManual) continue;
+                    const pSnap = productSnaps.get(part.productId);
+                    if (pSnap?.exists()) {
+                        const pData = pSnap.data() as Product;
+                        transaction.update(pSnap.ref, { 
+                            reservedStock: Math.max(0, (pData.reservedStock || 0) - part.quantity) 
+                        });
                     }
                 }
 
-                if (repairJob.reservedParts && repairJob.reservedParts.length > 0) {
-                    for (const part of repairJob.reservedParts) {
-                        const pSnap = productSnaps.get(part.productId);
-                        if (pSnap?.exists()) {
-                            const productData = pSnap.data();
-                            if (repairJob.isPaid) {
-                                const newStockLevel = (productData.stockLevel || 0) + part.quantity;
-                                transaction.update(pSnap.ref, { stockLevel: newStockLevel });
-                            } else {
-                                const newReservedStock = (productData.reservedStock || 0) - part.quantity;
-                                transaction.update(pSnap.ref, { reservedStock: Math.max(0, newReservedStock) });
-                            }
-                        }
+                // 2. Devolver Consumidos (Sumar a stock físico)
+                for (const part of consumedParts) {
+                    if (part.isManual) continue;
+                    const pSnap = productSnaps.get(part.productId);
+                    if (pSnap?.exists()) {
+                        const pData = pSnap.data() as Product;
+                        transaction.update(pSnap.ref, { 
+                            stockLevel: (pData.stockLevel || 0) + part.quantity 
+                        });
                     }
                 }
                 
@@ -158,6 +192,13 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                             Cobrar
                         </DropdownMenuItem>
                     )}
+
+                    {isCompleted && (
+                        <DropdownMenuItem onSelect={handleReenterForWarranty} className="text-amber-600 focus:text-amber-700">
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                            Reingresar por Garantía
+                        </DropdownMenuItem>
+                    )}
                     
                     <RepairFormDialog repairJob={repairJob}>
                         <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
@@ -199,7 +240,7 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                     <AlertDialogHeader>
                     <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Esto eliminará permanentemente el trabajo de reparación para <span className="font-semibold">{repairJob.customerName}</span> y devolverá las piezas reservadas al inventario de forma segura.
+                        Esto eliminará permanentemente el trabajo de reparación para <span className="font-semibold">{repairJob.customerName}</span> y devolverá todas las piezas (reservadas y consumidas) al inventario de forma segura.
                     </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -215,28 +256,70 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
 const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
     const { toast } = useToast();
     const { firestore, user } = useFirebase();
+    const [isUpdating, setIsUpdating] = useState(false);
 
-    const handleStatusChange = (newStatus: RepairStatus) => {
-        if (!firestore || !user || !repairJob.id || repairJob.status === 'Completado') return;
-        const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJob.id);
-
-        let updateData: Partial<RepairJob> = { status: newStatus };
-
-        const wasCompleted = repairJob.status === 'Completado';
-        const isNowCompleted = newStatus === 'Completado';
+    const handleStatusChange = async (newStatus: RepairStatus) => {
+        if (!firestore || !user || !repairJob.id || repairJob.status === 'Completado' || isUpdating) return;
         
-        if (isNowCompleted && !wasCompleted) {
-            const completionDate = new Date();
-            updateData.completedAt = completionDate.toISOString();
-            updateData.warrantyEndDate = addDays(completionDate, 4).toISOString();
-             toast({
-                title: 'Trabajo Entregado',
-                description: `Garantía iniciada para ${repairJob.customerName}.`,
-            });
-        }
+        setIsUpdating(true);
+        try {
+            await runTransaction(firestore, async (transaction) => {
+                const jobRef = doc(firestore, 'users', user.uid, 'repair_jobs', repairJob.id!);
+                const jobSnap = await transaction.get(jobRef);
+                if (!jobSnap.exists()) return;
+                const jobData = jobSnap.data() as RepairJob;
 
-        updateDocumentNonBlocking(jobRef, updateData);
-        toast({ title: 'Estado Actualizado' });
+                const reservedParts = jobData.reservedParts || [];
+                const currentConsumed = jobData.consumedParts || [];
+
+                const productIds = Array.from(new Set(reservedParts.map(p => p.productId)));
+                const productSnaps = new Map<string, DocumentSnapshot>();
+                
+                if (newStatus === 'Completado' && reservedParts.length > 0) {
+                    for (const pid of productIds) {
+                        const productRef = doc(firestore, 'users', user.uid, 'products', pid);
+                        const pSnap = await transaction.get(productRef);
+                        productSnaps.set(pid, pSnap);
+                    }
+                }
+
+                let updateData: Partial<RepairJob> = { status: newStatus };
+
+                if (newStatus === 'Completado') {
+                    for (const part of reservedParts) {
+                        if (part.isManual) continue;
+                        const pSnap = productSnaps.get(part.productId);
+                        if (pSnap?.exists()) {
+                            const pData = pSnap.data() as Product;
+                            transaction.update(pSnap.ref, {
+                                stockLevel: (pData.stockLevel || 0) - part.quantity,
+                                reservedStock: Math.max(0, (pData.reservedStock || 0) - part.quantity)
+                            });
+                        }
+                    }
+                    
+                    const completionDate = new Date();
+                    updateData.completedAt = completionDate.toISOString();
+                    updateData.warrantyEndDate = addDays(completionDate, 4).toISOString();
+                    updateData.partsConsumed = true;
+                    updateData.consumedParts = [...currentConsumed, ...reservedParts];
+                    updateData.reservedParts = [];
+                }
+
+                transaction.update(jobRef, updateData);
+            });
+
+            if (newStatus === 'Completado') {
+                toast({ title: 'Trabajo Entregado', description: `Piezas descontadas e inicio de garantía.` });
+            } else {
+                toast({ title: 'Estado Actualizado' });
+            }
+        } catch (e: any) {
+            console.error("Status Change Error:", e);
+            toast({ variant: "destructive", title: "Error al actualizar", description: e.message });
+        } finally {
+            setIsUpdating(false);
+        }
     }
 
     const status: RepairStatus = repairJob.status;
@@ -249,27 +332,43 @@ const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
     } else if (status === 'Pagado') {
         badgeVariant = 'default';
         badgeClassName = 'bg-blue-500 text-white hover:bg-blue-600';
+    } else if (status === 'Garantía') {
+        badgeVariant = 'destructive';
+        badgeClassName = 'bg-orange-600 text-white animate-pulse';
     } else { 
         badgeVariant = 'destructive';
     }
     
     if (status === 'Completado') {
-        return <Badge variant={badgeVariant} className={cn(badgeClassName)}>{repairJob.isPaid ? 'Entregado y Pagado' : 'Entregado'}</Badge>;
+        return (
+            <div className="flex flex-col items-center gap-1">
+                <Badge variant={badgeVariant} className={cn(badgeClassName)}>{repairJob.isPaid ? 'Entregado y Pagado' : 'Entregado'}</Badge>
+                {repairJob.warrantyEndDate && isAfter(parseISO(repairJob.warrantyEndDate), new Date()) && (
+                    <Badge variant="outline" className="text-[9px] border-blue-200 text-blue-600 bg-blue-50 py-0 flex items-center gap-1 font-black">
+                        <ShieldCheck className="w-2.5 h-2.5" />
+                        GARANTÍA: {differenceInDays(parseISO(repairJob.warrantyEndDate), new Date())}D
+                    </Badge>
+                )}
+            </div>
+        );
     }
 
     return (
-        <Select value={repairJob.status} onValueChange={handleStatusChange} disabled={repairJob.status === 'Completado'}>
-            <SelectTrigger className="w-48 border-0 bg-transparent shadow-none focus:ring-0">
-                <SelectValue asChild>
-                     <Badge variant={badgeVariant} className={cn(badgeClassName, "cursor-pointer")}>{repairJob.status}</Badge>
-                </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-                {repairStatuses.map(s => (
-                    <SelectItem key={s} value={s}>{s}</SelectItem>
-                ))}
-            </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+            {isUpdating && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
+            <Select value={repairJob.status} onValueChange={handleStatusChange} disabled={repairJob.status === 'Completado' || isUpdating}>
+                <SelectTrigger className="w-48 border-0 bg-transparent shadow-none focus:ring-0">
+                    <SelectValue asChild>
+                         <Badge variant={badgeVariant} className={cn(badgeClassName, "cursor-pointer")}>{repairJob.status === 'Garantía' ? 'REINGRESO GARANTÍA' : repairJob.status}</Badge>
+                    </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                    {repairStatuses.map(s => (
+                        <SelectItem key={s} value={s}>{s === 'Garantía' ? 'REINGRESO POR GARANTÍA' : s}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </div>
     )
 }
 
@@ -287,12 +386,12 @@ export const columns: ColumnDef<RepairJob>[] = [
         <ArrowUpDown className="ml-2 h-4 w-4" />
       </Button>
     ),
-    cell: ({ row }) => <div className="font-medium">{row.getValue("customerName")}</div>
+    cell: ({ row }) => <div className="font-medium uppercase">{row.getValue("customerName")}</div>
   },
   {
     accessorKey: "device",
     header: "Dispositivo",
-    cell: ({ row }) => `${row.original.deviceMake} ${row.original.deviceModel}`,
+    cell: ({ row }) => <span className="uppercase">{row.original.deviceMake} {row.original.deviceModel}</span>,
   },
   {
     accessorKey: "status",

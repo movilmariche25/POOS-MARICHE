@@ -696,6 +696,7 @@ function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
         }, 0);
     }, [payments, convert]);
 
+    const remainingToPayInUSD = useMemo(() => Math.max(0, pending - totalAbonoInUSD), [pending, totalAbonoInUSD]);
     const potentialChangeInUSD = useMemo(() => (totalAbonoInUSD > pending ? totalAbonoInUSD - pending : 0), [totalAbonoInUSD, pending]);
     const requiredChangeInUSD = isGivingChange ? potentialChangeInUSD : 0;
 
@@ -844,6 +845,8 @@ function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
                                     {payments.map(p => {
                                         const option = paymentMethodOptions.find(o => o.value === p.method)!;
                                         const symbol = option.isBs ? 'Bs' : '$';
+                                        const remainingInCurrency = option.isBs ? convert(remainingToPayInUSD, 'USD', 'Bs') : remainingToPayInUSD;
+
                                         return (
                                             <div key={p.id} className="bg-white p-3 rounded-lg border shadow-sm space-y-2">
                                                 <div className="flex justify-between items-center">
@@ -854,24 +857,35 @@ function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                     </Button>
                                                 </div>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <div className="relative">
-                                                        <span className="absolute left-2.5 top-2.5 text-muted-foreground text-xs">{symbol}</span>
-                                                        <Input 
-                                                            type="number" 
-                                                            placeholder="0.00" 
-                                                            className="h-9 pl-7 text-xs font-bold" 
-                                                            value={p.amount || ''}
-                                                            onChange={(e) => handleUpdatePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}
-                                                        />
+                                                <div className="flex flex-col gap-2">
+                                                    <div className="flex gap-2">
+                                                        <div className="relative flex-1">
+                                                            <span className="absolute left-2.5 top-2.5 text-muted-foreground text-xs">{symbol}</span>
+                                                            <Input 
+                                                                type="number" 
+                                                                placeholder="0.00" 
+                                                                className="h-9 pl-7 text-xs font-bold" 
+                                                                value={p.amount || ''}
+                                                                onChange={(e) => handleUpdatePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}
+                                                            />
+                                                        </div>
+                                                        {option.hasReference && (
+                                                            <Input 
+                                                                placeholder="Ref." 
+                                                                className="h-9 text-xs font-mono font-bold flex-1" 
+                                                                value={p.reference}
+                                                                onChange={(e) => handleUpdatePayment(p.id, 'reference', e.target.value)}
+                                                            />
+                                                        )}
                                                     </div>
-                                                    {option.hasReference && (
-                                                        <Input 
-                                                            placeholder="Ref." 
-                                                            className="h-9 text-xs font-mono font-bold" 
-                                                            value={p.reference}
-                                                            onChange={(e) => handleUpdatePayment(p.id, 'reference', e.target.value)}
-                                                        />
+                                                    {remainingToPayInUSD > 0 && (
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => handleUpdatePayment(p.id, 'amount', parseFloat(remainingInCurrency.toFixed(2)))}
+                                                            className="text-[9px] font-black uppercase text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                                                        >
+                                                            PAGAR RESTANTE: {symbol}{formatCurrency(remainingInCurrency)}
+                                                        </button>
                                                     )}
                                                 </div>
                                             </div>

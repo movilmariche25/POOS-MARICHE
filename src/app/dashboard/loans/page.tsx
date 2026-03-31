@@ -1,4 +1,3 @@
-
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -295,6 +294,7 @@ function ManualPaymentDialog({ loan, children }: { loan: Loan, children: React.R
 
     const selectedOption = paymentMethodOptions.find(o => o.value === method)!;
 
+    // Cuánto representa el monto ingresado en la moneda del préstamo
     const discountInLoanCurrency = useMemo(() => {
         const val = parseFloat(amount) || 0;
         if (loan.currency === 'USD') {
@@ -303,6 +303,16 @@ function ManualPaymentDialog({ loan, children }: { loan: Loan, children: React.R
             return selectedOption.isBs ? val : convert(val, 'USD', 'Bs');
         }
     }, [amount, method, loan.currency, convert]);
+
+    // Cuánto falta por pagar expresado en la moneda del MÉTODO DE PAGO elegido
+    const remainingInSelectedMethod = useMemo(() => {
+        const rem = loan.remainingAmount;
+        if (loan.currency === 'USD') {
+            return selectedOption.isBs ? convert(rem, 'USD', 'Bs') : rem;
+        } else {
+            return selectedOption.isBs ? rem : convert(rem, 'Bs', 'USD');
+        }
+    }, [loan.remainingAmount, loan.currency, selectedOption.isBs, convert]);
 
     const handleAbono = async () => {
         if (!firestore || !user || !amount || loading) return;
@@ -385,8 +395,24 @@ function ManualPaymentDialog({ loan, children }: { loan: Loan, children: React.R
                             <Label className="text-xs uppercase font-black text-muted-foreground">Monto entregado por el socio ({selectedOption.isBs ? 'Bolívares' : 'Dólares'})</Label>
                             <div className="relative">
                                 <span className="absolute left-3 top-3 text-muted-foreground text-xs font-bold">{selectedOption.isBs ? 'Bs' : '$'}</span>
-                                <Input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="pl-9 h-11 text-lg font-black" />
+                                <Input 
+                                    type="number" 
+                                    step="0.01" 
+                                    value={amount} 
+                                    onChange={(e) => setAmount(e.target.value)} 
+                                    placeholder="0.00" 
+                                    className="pl-9 h-11 text-lg font-black" 
+                                />
                             </div>
+                            {loan.remainingAmount > 0 && (
+                                <button 
+                                    type="button"
+                                    onClick={() => setAmount(remainingInSelectedMethod.toFixed(2))}
+                                    className="text-[10px] font-black uppercase text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                                >
+                                    PAGAR RESTANTE: {selectedOption.isBs ? 'Bs' : '$'}{formatCurrency(remainingInSelectedMethod)}
+                                </button>
+                            )}
                         </div>
 
                         {selectedOption.hasReference && (

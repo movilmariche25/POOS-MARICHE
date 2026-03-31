@@ -48,6 +48,19 @@ export function CustomerTicket({ repairJob, businessName, profile, bcvRate = 1 }
                     <p className="meta-info"><span className="bold-header">Marca/Modelo:</span> {repairJob.deviceMake.toUpperCase()} {repairJob.deviceModel.toUpperCase()}</p>
                     <p className="meta-info"><span className="bold-header">Falla:</span> {repairJob.reportedIssue.toUpperCase()}</p>
                 </div>
+
+                {repairJob.reservedParts && repairJob.reservedParts.length > 0 && (
+                    <div className="mt-2">
+                        <p className="section-subtitle text-center">REPUESTOS / SERVICIOS</p>
+                        {repairJob.reservedParts.map((part, idx) => (
+                            <p key={idx} className="meta-info text-[7pt]">
+                                • {part.productName.toUpperCase()} 
+                                {part.isWarranty && <span className="bold-header"> [GARANTÍA]</span>}
+                                {part.isPromo && !part.isWarranty && <span className="bold-header"> [OFERTA]</span>}
+                            </p>
+                        ))}
+                    </div>
+                )}
             </div>
 
             <div className="billing-section mt-3 pt-1 border-t" style={{ borderTopStyle: 'dashed' }}>
@@ -64,7 +77,7 @@ export function CustomerTicket({ repairJob, businessName, profile, bcvRate = 1 }
                     <span>${saldo.toFixed(2)}</span>
                 </div>
                 
-                {!repairJob.isPromo && (
+                {saldo > 0 && (
                     <div className="mt-1 flex-row-between text-[8pt] font-black">
                         <span>EQUIVALENTE EN BS:</span>
                         <span>Bs {saldoBs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>

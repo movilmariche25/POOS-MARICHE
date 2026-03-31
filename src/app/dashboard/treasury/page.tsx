@@ -1,4 +1,3 @@
-
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -124,7 +123,24 @@ function TreasuryContent() {
         const filterByReset = (dateStr: string) => isAfter(parseISO(dateStr), resetDate);
 
         sales.forEach(s => {
-            if (s.status !== 'completed' || !s.transactionDate || !filterByReset(s.transactionDate)) return;
+            if (!s.transactionDate || !filterByReset(s.transactionDate)) return;
+
+            // IMPACTO DE REEMBOLSOS EN EL SALDO REAL
+            if (s.status === 'refunded' && s.refundPaymentMethod) {
+                const refundMethod = s.refundPaymentMethod === 'Tarjeta' || s.refundPaymentMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : s.refundPaymentMethod;
+                const refundAmountUSD = s.actualPaidAmount ?? s.totalAmount;
+                
+                if (refundMethod === 'Efectivo USD') {
+                    usdBalance -= refundAmountUSD;
+                } else if (breakdown[refundMethod] !== undefined) {
+                    const amountBs = refundAmountUSD * (s.bcvRateAtTime || settings.bcvRate);
+                    breakdown[refundMethod] -= amountBs;
+                }
+                return;
+            }
+
+            if (s.status !== 'completed') return;
+
             s.payments.forEach(p => {
                 if (p.method === 'Efectivo USD') usdBalance += p.amount;
                 else if (p.method === 'Efectivo Bs') breakdown['Efectivo Bs'] += p.amount;
@@ -204,27 +220,44 @@ function TreasuryContent() {
         let totalExpensesUSD = 0;
 
         sales.filter(s => {
-            if (s.status !== 'completed' || !s.transactionDate) return false;
+            if (!s.transactionDate) return false;
             return isWithinInterval(new Date(s.transactionDate), { start: from, end: to });
         }).forEach(s => {
-            s.payments.forEach(p => {
-                if (p.method === 'Efectivo USD') usdAccumulated += p.amount;
-                else if (p.method === 'Efectivo Bs') breakdown['Efectivo Bs'] += p.amount;
-                else if (p.method === 'Tarjeta' || p.method === 'Pago Móvil' || p.method === 'Tarjeta / Pago Móvil') {
-                    breakdown['Tarjeta / Pago Móvil'] += p.amount;
-                } else if (p.method === 'Transferencia') {
-                    breakdown['Transferencia'] += p.amount;
+            
+            // RESTAR REEMBOLSOS DEL BALANCE DEL PERIODO
+            if (s.status === 'refunded' && s.refundPaymentMethod) {
+                const refundMethod = s.refundPaymentMethod === 'Tarjeta' || s.refundPaymentMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : s.refundPaymentMethod;
+                const refundAmountUSD = s.actualPaidAmount ?? s.totalAmount;
+                
+                if (refundMethod === 'Efectivo USD') {
+                    usdAccumulated -= refundAmountUSD;
+                } else if (breakdown[refundMethod] !== undefined) {
+                    const amountBs = refundAmountUSD * (s.bcvRateAtTime || settings.bcvRate);
+                    breakdown[refundMethod] -= amountBs;
                 }
-            });
-            s.changeGiven?.forEach(c => {
-                if (c.method === 'Efectivo USD') usdAccumulated -= c.amount;
-                else if (c.method === 'Efectivo Bs') breakdown['Efectivo Bs'] -= c.amount;
-                else if (c.method === 'Tarjeta' || c.method === 'Pago Móvil' || c.method === 'Tarjeta / Pago Móvil') {
-                    breakdown['Tarjeta / Pago Móvil'] -= c.amount;
-                } else if (c.method === 'Transferencia') {
-                    breakdown['Transferencia'] -= c.amount;
-                }
-            });
+                return;
+            }
+
+            if (s.status === 'completed') {
+                s.payments.forEach(p => {
+                    if (p.method === 'Efectivo USD') usdAccumulated += p.amount;
+                    else if (p.method === 'Efectivo Bs') breakdown['Efectivo Bs'] += p.amount;
+                    else if (p.method === 'Tarjeta' || p.method === 'Pago Móvil' || p.method === 'Tarjeta / Pago Móvil') {
+                        breakdown['Tarjeta / Pago Móvil'] += p.amount;
+                    } else if (p.method === 'Transferencia') {
+                        breakdown['Transferencia'] += p.amount;
+                    }
+                });
+                s.changeGiven?.forEach(c => {
+                    if (c.method === 'Efectivo USD') usdAccumulated -= c.amount;
+                    else if (c.method === 'Efectivo Bs') breakdown['Efectivo Bs'] -= c.amount;
+                    else if (c.method === 'Tarjeta' || c.method === 'Pago Móvil' || c.method === 'Tarjeta / Pago Móvil') {
+                        breakdown['Tarjeta / Pago Móvil'] -= c.amount;
+                    } else if (c.method === 'Transferencia') {
+                        breakdown['Transferencia'] -= c.amount;
+                    }
+                });
+            }
         });
 
         (exchanges || []).filter(e => {
@@ -350,7 +383,7 @@ function TreasuryContent() {
                     <Card className="bg-slate-900 text-white shadow-xl border-none overflow-hidden relative">
                         <div className="absolute right-2 top-2 opacity-10"><DollarSign className="w-16 h-16" /></div>
                         <CardHeader className="pb-2"><CardTitle className="text-[10px] uppercase font-black text-slate-400">Ingreso Neto Divisa (Ventas)</CardTitle></CardHeader>
-                        <CardContent><div className="text-3xl font-black">${formatCurrency(cashBoxStatus.usdTotal)}</div><p className="text-[8px] text-slate-500 mt-1 uppercase font-bold tracking-widest">Ingresos USD menos vueltos del periodo</p></CardContent>
+                        <CardContent><div className="text-3xl font-black">${formatCurrency(cashBoxStatus.usdTotal)}</div><p className="text-[8px] text-slate-500 mt-1 uppercase font-bold tracking-widest">Ingresos USD menos vueltos y reembolsos</p></CardContent>
                     </Card>
 
                     <Card className="bg-white border-2 border-destructive/10 shadow-md overflow-hidden relative">
@@ -375,7 +408,7 @@ function TreasuryContent() {
                                 <p className="text-lg font-black text-blue-800">${formatCurrency(walletBalance.usd)}</p>
                                 <p className="text-lg font-black text-blue-800">Bs {formatCurrency(walletBalance.bsAvailable)}</p>
                             </div>
-                            <p className="text-[8px] text-blue-700 uppercase font-bold">Desde Arqueo ({walletBalance.lastReset ? format(walletBalance.lastReset, "dd/MM/yy HH:mm") : 'Inicio'}) + Ventas - Gastos</p>
+                            <p className="text-[8px] text-blue-700 uppercase font-bold">Desde Arqueo ({walletBalance.lastReset ? format(walletBalance.lastReset, "dd/MM/yy HH:mm") : 'Inicio'}) + Ventas - Gastos - Reembolsos</p>
                         </div>
                     </Card>
                     <div className="p-4 bg-muted/50 border rounded-xl flex items-center gap-3">

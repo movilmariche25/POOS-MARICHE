@@ -1,4 +1,3 @@
-
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -107,25 +106,42 @@ function ExchangeContent() {
         };
 
         sales.forEach(s => {
-            if (s.status !== 'completed' || !filterByReset(s.transactionDate)) return;
-            s.payments.forEach(p => {
-                if (p.method === 'Efectivo USD') usdBalance += p.amount;
-                else if (p.method === 'Efectivo Bs') bsBreakdown['Efectivo Bs'] += p.amount;
-                else if (p.method === 'Tarjeta' || p.method === 'Pago Móvil' || p.method === 'Tarjeta / Pago Móvil') {
-                    bsBreakdown['Tarjeta / Pago Móvil'] += p.amount;
-                } else if (p.method === 'Transferencia') {
-                    bsBreakdown['Transferencia'] += p.amount;
+            if (!filterByReset(s.transactionDate)) return;
+
+            // CASO 1: VENTA REEMBOLSADA
+            if (s.status === 'refunded' && s.refundPaymentMethod) {
+                const refundMethod = s.refundPaymentMethod === 'Tarjeta' || s.refundPaymentMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : s.refundPaymentMethod;
+                const refundAmountUSD = s.actualPaidAmount ?? s.totalAmount;
+                
+                if (refundMethod === 'Efectivo USD') {
+                    usdBalance -= refundAmountUSD;
+                } else if (bsBreakdown[refundMethod] !== undefined) {
+                    bsBreakdown[refundMethod] -= refundAmountUSD * (s.bcvRateAtTime || settings.bcvRate);
                 }
-            });
-            s.changeGiven?.forEach(c => {
-                if (c.method === 'Efectivo USD') usdBalance -= c.amount;
-                else if (c.method === 'Efectivo Bs') bsBreakdown['Efectivo Bs'] -= c.amount;
-                else if (c.method === 'Tarjeta' || c.method === 'Pago Móvil' || c.method === 'Tarjeta / Pago Móvil') {
-                    bsBreakdown['Tarjeta / Pago Móvil'] -= c.amount;
-                } else if (c.method === 'Transferencia') {
-                    bsBreakdown['Transferencia'] -= c.amount;
-                }
-            });
+                return;
+            }
+
+            // CASO 2: VENTA COMPLETADA
+            if (s.status === 'completed') {
+                s.payments.forEach(p => {
+                    if (p.method === 'Efectivo USD') usdBalance += p.amount;
+                    else if (p.method === 'Efectivo Bs') bsBreakdown['Efectivo Bs'] += p.amount;
+                    else if (p.method === 'Tarjeta' || p.method === 'Pago Móvil' || p.method === 'Tarjeta / Pago Móvil') {
+                        bsBreakdown['Tarjeta / Pago Móvil'] += p.amount;
+                    } else if (p.method === 'Transferencia') {
+                        bsBreakdown['Transferencia'] += p.amount;
+                    }
+                });
+                s.changeGiven?.forEach(c => {
+                    if (c.method === 'Efectivo USD') usdBalance -= c.amount;
+                    else if (c.method === 'Efectivo Bs') bsBreakdown['Efectivo Bs'] -= c.amount;
+                    else if (c.method === 'Tarjeta' || c.method === 'Pago Móvil' || c.method === 'Tarjeta / Pago Móvil') {
+                        bsBreakdown['Tarjeta / Pago Móvil'] -= c.amount;
+                    } else if (c.method === 'Transferencia') {
+                        bsBreakdown['Transferencia'] -= c.amount;
+                    }
+                });
+            }
         });
 
         (exchanges || []).forEach(e => {
@@ -191,27 +207,45 @@ function ExchangeContent() {
         let usdFromSales = 0; let usdFromExchanges = 0; let bsFromSales = 0; let bsSpent = 0;
 
         sales.forEach(s => {
-            if (s.status !== 'completed' || !s.transactionDate) return;
+            if (!s.transactionDate) return;
             const saleDate = parseISO(s.transactionDate);
             if (isValid(saleDate) && isWithinInterval(saleDate, { start: from, end: to })) {
-                s.payments.forEach(p => {
-                    if (p.method === 'Efectivo USD') usdFromSales += p.amount;
-                    else if (p.method === 'Efectivo Bs') { breakdown['Efectivo Bs'] += p.amount; bsFromSales += p.amount; }
-                    else if (p.method === 'Tarjeta' || p.method === 'Pago Móvil' || p.method === 'Tarjeta / Pago Móvil') {
-                        breakdown['Tarjeta / Pago Móvil'] += p.amount; bsFromSales += p.amount;
-                    } else if (p.method === 'Transferencia') {
-                        breakdown['Transferencia'] += p.amount; bsFromSales += p.amount;
+                
+                // RESTAR REEMBOLSOS DEL FLUJO DEL PERIODO
+                if (s.status === 'refunded' && s.refundPaymentMethod) {
+                    const refundMethod = s.refundPaymentMethod === 'Tarjeta' || s.refundPaymentMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : s.refundPaymentMethod;
+                    const refundAmountUSD = s.actualPaidAmount ?? s.totalAmount;
+                    
+                    if (refundMethod === 'Efectivo USD') {
+                        usdFromSales -= refundAmountUSD;
+                    } else if (breakdown[refundMethod] !== undefined) {
+                        const amountBs = refundAmountUSD * (s.bcvRateAtTime || settings.bcvRate);
+                        breakdown[refundMethod] -= amountBs;
+                        bsFromSales -= amountBs;
                     }
-                });
-                s.changeGiven?.forEach(c => {
-                    if (c.method === 'Efectivo USD') usdFromSales -= c.amount;
-                    else if (c.method === 'Efectivo Bs') { breakdown['Efectivo Bs'] -= c.amount; bsFromSales -= c.amount; }
-                    else if (c.method === 'Tarjeta' || c.method === 'Pago Móvil' || c.method === 'Tarjeta / Pago Móvil') {
-                        breakdown['Tarjeta / Pago Móvil'] -= c.amount; bsFromSales -= c.amount;
-                    } else if (c.method === 'Transferencia') {
-                        breakdown['Transferencia'] -= c.amount; bsFromSales -= c.amount;
-                    }
-                });
+                    return;
+                }
+
+                if (s.status === 'completed') {
+                    s.payments.forEach(p => {
+                        if (p.method === 'Efectivo USD') usdFromSales += p.amount;
+                        else if (p.method === 'Efectivo Bs') { breakdown['Efectivo Bs'] += p.amount; bsFromSales += p.amount; }
+                        else if (p.method === 'Tarjeta' || p.method === 'Pago Móvil' || p.method === 'Tarjeta / Pago Móvil') {
+                            breakdown['Tarjeta / Pago Móvil'] += p.amount; bsFromSales += p.amount;
+                        } else if (p.method === 'Transferencia') {
+                            breakdown['Transferencia'] += p.amount; bsFromSales += p.amount;
+                        }
+                    });
+                    s.changeGiven?.forEach(c => {
+                        if (c.method === 'Efectivo USD') usdFromSales -= c.amount;
+                        else if (c.method === 'Efectivo Bs') { breakdown['Efectivo Bs'] -= c.amount; bsFromSales -= c.amount; }
+                        else if (c.method === 'Tarjeta' || c.method === 'Pago Móvil' || c.method === 'Tarjeta / Pago Móvil') {
+                            breakdown['Tarjeta / Pago Móvil'] -= c.amount; bsFromSales -= c.amount;
+                        } else if (c.method === 'Transferencia') {
+                            breakdown['Transferencia'] -= c.amount; bsFromSales -= c.amount;
+                        }
+                    });
+                }
             }
         });
 

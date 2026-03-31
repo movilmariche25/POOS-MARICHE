@@ -17,7 +17,6 @@ import { Label } from "../ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { cn } from "@/lib/utils";
 import { ReconciliationTicket, handlePrintReconciliation } from "./reconciliation-ticket";
-import { ScrollArea } from "../ui/scroll-area";
 
 type CashReconciliationDialogProps = {
   openSales: Sale[];
@@ -235,7 +234,7 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
                 <div className="p-6 border-b">
                     <DialogTitle className="text-2xl font-black">Cierre de Caja Completado</DialogTitle>
                 </div>
-                <ScrollArea className="flex-1 p-6">
+                <div className="flex-1 p-6 overflow-y-auto">
                     <div className="max-w-sm mx-auto border-2 border-dashed p-4 rounded-xl bg-slate-50">
                         <ReconciliationTicket 
                             reconciliation={completedReconciliation} 
@@ -243,7 +242,7 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
                             businessName={profile?.businessName}
                         />
                     </div>
-                </ScrollArea>
+                </div>
                 <div className="p-6 border-t bg-white flex flex-col sm:flex-row gap-3">
                     <Button onClick={onPrint} variant="outline" className="flex-1 h-12 font-bold"><Printer className="mr-2 h-4 w-4" /> Imprimir Ticket</Button>
                     <Button onClick={handleFinishAndReset} className="flex-1 h-12 font-black">Finalizar y Salir</Button>
@@ -260,7 +259,7 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
                     </DialogHeader>
                 </div>
                 
-                <ScrollArea className="flex-1 p-6">
+                <div className="flex-1 p-6 overflow-y-auto">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pb-6">
                         <div className="space-y-6">
                             <div className="space-y-4">
@@ -354,7 +353,7 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
                             </div>
                         </div>
                     </div>
-                </ScrollArea>
+                </div>
 
                 <div className="p-6 border-t bg-white flex flex-col sm:flex-row gap-3">
                     <Button variant="outline" onClick={() => setIsOpen(false)} className="h-12 flex-1 font-bold">Continuar Vendiendo</Button>

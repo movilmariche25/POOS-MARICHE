@@ -4,13 +4,13 @@ import { useState, useMemo } from "react";
 import type { DateRange } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
-import { PlusCircle, CalendarIcon, X as ClearIcon, Clock, DollarSign, LayoutGrid } from "lucide-react";
+import { PlusCircle, CalendarIcon, X as ClearIcon, Clock, DollarSign, LayoutGrid, ShieldCheck } from "lucide-react";
 import { DataTable } from "@/components/data-table";
 import { columns } from "@/components/repairs/columns";
 import { useCollection, useFirebase, useMemoFirebase } from "@/firebase";
 import { collection, query, orderBy } from "firebase/firestore";
 import type { RepairJob } from "@/lib/types";
-import { format, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+import { format, isWithinInterval, startOfDay, endOfDay, isAfter, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -35,7 +35,7 @@ const repairFilterFn: FilterFn<RepairJob> = (row, columnId, value) => {
     );
 };
 
-type StatusFilter = 'all' | 'unpaid' | 'undelivered';
+type StatusFilter = 'all' | 'unpaid' | 'undelivered' | 'warranty';
 
 export default function RepairsPage() {
     return (
@@ -74,6 +74,12 @@ function RepairsContent() {
             temp = temp.filter(job => !job.isPaid);
         } else if (statusFilter === 'undelivered') {
             temp = temp.filter(job => job.status !== 'Completado');
+        } else if (statusFilter === 'warranty') {
+            const now = new Date();
+            temp = temp.filter(job => {
+                if (job.status !== 'Completado' || !job.warrantyEndDate) return false;
+                return isAfter(parseISO(job.warrantyEndDate), now);
+            });
         }
 
         return temp;
@@ -88,7 +94,7 @@ function RepairsContent() {
             </PageHeader>
             <main className="flex-1 p-4 sm:p-6 space-y-4">
                 <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)} className="w-full">
-                    <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
+                    <TabsList className="grid w-full grid-cols-4 max-w-[800px]">
                         <TabsTrigger value="all" className="flex items-center gap-2">
                             <LayoutGrid className="w-3.5 h-3.5" /> Todas
                         </TabsTrigger>
@@ -97,6 +103,9 @@ function RepairsContent() {
                         </TabsTrigger>
                         <TabsTrigger value="undelivered" className="flex items-center gap-2 text-amber-600 font-bold">
                             <Clock className="w-3.5 h-3.5" /> Por Entregar
+                        </TabsTrigger>
+                        <TabsTrigger value="warranty" className="flex items-center gap-2 text-blue-600 font-bold">
+                            <ShieldCheck className="w-3.5 h-3.5" /> En Garantía
                         </TabsTrigger>
                     </TabsList>
                 </Tabs>

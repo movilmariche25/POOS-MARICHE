@@ -25,6 +25,7 @@ function POSContent() {
     const router = useRouter();
     const [cart, setCart] = useState<CartItem[]>([]);
     const [activeRepairJob, setActiveRepairJob] = useState<RepairJob | null>(null);
+    const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
 
     const productsCollection = useMemoFirebase(() => 
         (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null,
@@ -37,6 +38,31 @@ function POSContent() {
         [firestore, user?.uid]
     );
     const { data: heldSales } = useCollection<HeldSale>(heldSalesCollection);
+
+    // PERSISTENCIA: Cargar carrito desde localStorage al iniciar
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const savedCart = localStorage.getItem('mm_active_cart');
+            if (savedCart && !searchParams.get('items')) {
+                try {
+                    setCart(JSON.parse(savedCart));
+                } catch (e) {
+                    localStorage.removeItem('mm_active_cart');
+                }
+            }
+            setIsInitialLoadDone(true);
+        }
+    }, [searchParams]);
+
+    // PERSISTENCIA: Guardar carrito en localStorage cuando cambie
+    useEffect(() => {
+        if (!isInitialLoadDone) return;
+        if (cart.length > 0) {
+            localStorage.setItem('mm_active_cart', JSON.stringify(cart));
+        } else {
+            localStorage.removeItem('mm_active_cart');
+        }
+    }, [cart, isInitialLoadDone]);
 
     useEffect(() => {
         if (!user || isUserLoading) return;
@@ -74,7 +100,6 @@ function POSContent() {
         }
     }, [searchParams, user, isUserLoading, products, firestore]);
 
-    // Función auxiliar para calcular el stock disponible real
     const getAvailableStock = (product: Product) => {
         if (!products) return 0;
         if (product.isCombo) {
@@ -114,7 +139,6 @@ function POSContent() {
     const handleUpdateQuantity = (id: string, q: number) => {
         const product = products?.find(p => p.id === id);
         
-        // Si no es un producto de inventario (es manual o reparación), permitimos el cambio sin validar stock
         if (!product) {
             setCart(prev => prev.map(i => i.productId === id ? { ...i, quantity: q } : i));
             return;
@@ -175,7 +199,8 @@ function POSContent() {
                         onRemoveItem={handleRemoveItem}
                         onClearCart={() => setCart([])}
                         onTogglePromo={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isPromo: !i.isPromo } : i))}
-                        onToggleGift={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isGift: !i.isGift } : i))}
+                        onToggleGift={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isGift: !i.isGift, isWarranty: false } : i))}
+                        onToggleWarranty={(id) => setCart(prev => prev.map(i => i.productId === id ? { ...i, isWarranty: !i.isWarranty, isGift: false } : i))}
                         onHoldSale={handleHoldSale}
                         repairJobId={activeRepairJob?.id}
                     />

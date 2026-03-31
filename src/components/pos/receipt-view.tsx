@@ -64,6 +64,8 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
                     <div key={idx} className="item-row flex-row-between text-[8pt] mb-1">
                         <span className="item-name flex-1 text-left">
                             {item.name} ({item.quantity})
+                            {item.isWarranty && <span className="bold-header"> [GARANTÍA]</span>}
+                            {item.isGift && <span className="bold-header"> [OBSEQUIO]</span>}
                         </span>
                         <span className="item-total w-1/3 text-right">
                             {formatCurrency(item.price * item.quantity, 'USD')}
