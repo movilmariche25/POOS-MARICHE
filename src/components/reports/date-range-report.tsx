@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { Sale, Product, DailyReconciliation, RepairJob, CurrencyExchange } from "@/lib/types";
+import type { Sale, Product, DailyReconciliation, RepairJob, CurrencyExchange, Fiado } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { DateRange } from "react-day-picker";
 import { format, startOfDay, endOfDay, isWithinInterval } from "date-fns";
@@ -24,6 +24,7 @@ type DateRangeReportProps = {
     reconciliations: DailyReconciliation[];
     repairJobs: RepairJob[];
     exchanges: CurrencyExchange[];
+    fiados: Fiado[];
     isLoading?: boolean;
 };
 
@@ -43,7 +44,7 @@ const methodStyles: Record<string, { color: string, bg: string, border: string }
     'Tarjeta / Pago Móvil': { color: 'text-green-700', bg: 'bg-green-50', border: 'border-green-200' },
 };
 
-export function DateRangeReport({ sales, products, reconciliations, repairJobs, exchanges, isLoading }: DateRangeReportProps) {
+export function DateRangeReport({ sales, products, reconciliations, repairJobs, exchanges, fiados, isLoading }: DateRangeReportProps) {
     const { format: formatCurrency, getSymbol, convert, settings } = useCurrency();
     const [date, setDate] = useState<DateRange | undefined>({
         from: startOfDay(new Date()),
@@ -141,36 +142,49 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
 
             s.items.forEach(item => {
                 const itemRevenue = (item.price * item.quantity) * paymentRatio;
-                let itemCost = 0;
+                let totalOriginalCost = 0;
                 let key = item.productId;
                 let name = item.name;
                 let isRepair = !!item.isRepair;
                 let isWarranty = !!item.isWarranty;
 
                 if (item.isRepair) {
-                    key = `repair-${item.productId}`;
+                    key = `repair-${s.repairJobId || item.productId}`;
                     const repair = repairJobs.find(rj => rj.id === (s.repairJobId || item.productId));
-                    if (repair && repair.reservedParts) {
-                        itemCost = repair.reservedParts.reduce((sum, p) => sum + (p.costPrice * p.quantity), 0);
+                    if (repair) {
+                        const totalJobPartsCost = [...(repair.reservedParts || []), ...(repair.consumedParts || [])]
+                            .reduce((sum, p) => sum + (p.costPrice * p.quantity), 0);
+                        
+                        // Ratio: qué porcentaje del precio estimado es costo
+                        const costRatio = repair.estimatedCost > 0 ? totalJobPartsCost / repair.estimatedCost : 0;
+                        // El costo de esta línea es proporcional a lo que se cobró ahora
+                        totalOriginalCost = itemRevenue * costRatio;
+                    }
+                } else if (s.fiadoId) {
+                    key = `fiado-${s.fiadoId}`;
+                    const fiado = fiados?.find(f => f.id === s.fiadoId);
+                    if (fiado) {
+                        const costRatio = fiado.totalAmount > 0 ? (fiado.totalCost || 0) / fiado.totalAmount : 0;
+                        totalOriginalCost = itemRevenue * costRatio;
                     }
                 } else if (item.isCustom) {
                     key = `custom-${item.name}`;
-                    itemCost = (item.customCostPrice || 0) * item.quantity;
+                    totalOriginalCost = (item.customCostPrice || 0) * item.quantity * paymentRatio;
                 } else {
                     const product = products.find(p => p.id === item.productId);
-                    itemCost = (product?.costPrice || 0) * item.quantity;
+                    totalOriginalCost = (product?.costPrice || 0) * item.quantity * paymentRatio;
                 }
 
                 const existing = itemsMap.get(key);
                 if (existing) {
                     existing.quantity += item.quantity;
-                    existing.totalCost += itemCost;
+                    existing.totalCost += totalOriginalCost;
                     existing.totalRevenue += itemRevenue;
                 } else {
                     itemsMap.set(key, {
                         name,
                         quantity: item.quantity,
-                        totalCost: itemCost,
+                        totalCost: totalOriginalCost,
                         totalRevenue: itemRevenue,
                         isRepair,
                         isWarranty
@@ -226,7 +240,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
             dateRangeLabel: date.to ? `${format(from, "dd/MM/yy")} al ${format(to, "dd/MM/yy")}` : format(from, "dd/MM/yy")
         };
 
-    }, [date, sales, products, reconciliations, repairJobs, exchanges, settings, convert]);
+    }, [date, sales, products, reconciliations, repairJobs, exchanges, fiados, settings, convert]);
 
     if (isLoading) return <div className="p-4 space-y-4"><Skeleton className="h-32 w-full" /><Skeleton className="h-64 w-full" /></div>;
 

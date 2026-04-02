@@ -363,7 +363,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
             if (existing) {
                 return prev.map(i => i.productId === p.id ? { ...i, quantity: i.quantity + 1 } : i);
             }
-            return [...prev, { productId: p.id!, productName: p.name, quantity: 1, price }];
+            return [...prev, { productId: p.id!, productName: p.name, quantity: 1, price, costPrice: p.costPrice }];
         });
         setSearchOpen(false);
     };
@@ -398,6 +398,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
                     }
                 }
 
+                const totalCost = selectedItems.reduce((sum, i) => sum + (i.costPrice * i.quantity), 0);
                 const fiadosRef = collection(firestore, 'users', user.uid, 'fiados');
                 const newDoc = doc(fiadosRef);
                 const data: Fiado = {
@@ -408,6 +409,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
                     concept,
                     totalAmount: parseFloat(totalAmount) || 0,
                     amountPaid: 0,
+                    totalCost: totalCost,
                     status: 'Pendiente',
                     createdAt: new Date().toISOString(),
                     items: selectedItems
@@ -556,7 +558,7 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
             if (existing) {
                 return prev.map(i => i.productId === p.id ? { ...i, quantity: i.quantity + 1 } : i);
             }
-            return [...prev, { productId: p.id!, productName: p.name, quantity: 1, price }];
+            return [...prev, { productId: p.id!, productName: p.name, quantity: 1, price, costPrice: p.costPrice }];
         });
         setSearchOpen(false);
     };
@@ -596,12 +598,15 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
                 }
 
                 const addedTotal = selectedItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+                const addedCost = selectedItems.reduce((sum, i) => sum + (i.costPrice * i.quantity), 0);
                 const newTotal = currentFiadoData.totalAmount + addedTotal;
+                const newCost = (currentFiadoData.totalCost || 0) + addedCost;
                 const newItems = [...(currentFiadoData.items || []), ...selectedItems];
                 const newConcept = currentFiadoData.concept + ", " + selectedItems.map(i => `${i.quantity}x ${i.productName}`).join(", ");
 
                 transaction.update(fiadoRef, {
                     totalAmount: newTotal,
+                    totalCost: newCost,
                     items: newItems,
                     concept: newConcept
                 });

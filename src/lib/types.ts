@@ -78,6 +78,7 @@ export type FiadoItem = {
   productName: string;
   quantity: number;
   price: number;
+  costPrice: number;
 };
 
 export type Fiado = {
@@ -88,6 +89,7 @@ export type Fiado = {
   concept: string;
   totalAmount: number;
   amountPaid: number;
+  totalCost: number;
   status: FiadoStatus;
   createdAt: string;
   dueDate?: string;

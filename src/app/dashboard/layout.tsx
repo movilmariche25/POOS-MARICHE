@@ -14,6 +14,7 @@ import { AlertTriangle, Lock, LogOut, Smartphone } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { isAfter, parseISO, differenceInMinutes } from 'date-fns';
 import { GlobalAnnouncement } from '@/components/dashboard/global-announcement';
+import { RepairDraftPill } from '@/components/repairs/repair-draft-pill';
 import type { ReactNode } from 'react';
 
 const ExchangeRateReminder = dynamic(
@@ -129,6 +130,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           <GlobalAnnouncement />
           <ExchangeRateReminder />
           {children}
+          <RepairDraftPill />
       </SidebarInset>
     </SidebarProvider>
   );

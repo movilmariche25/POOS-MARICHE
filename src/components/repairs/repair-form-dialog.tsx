@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -30,9 +31,9 @@ import { Textarea } from "../ui/textarea";
 import { useCurrency } from "@/hooks/use-currency";
 import { Label } from "../ui/label";
 import { useFirebase, useCollection, useMemoFirebase, useDoc } from "@/firebase";
-import { collection, doc, runTransaction, query, orderBy } from "firebase/firestore";
+import { doc, runTransaction, query, orderBy, collection, type DocumentSnapshot } from "firebase/firestore";
 import { handlePrintAllTickets } from "./repair-ticket";
-import { CheckCircle2, User, Smartphone, Package, Search, Plus, Trash2, Loader2, Tag, Info, TicketPercent, AlertTriangle, ShieldCheck, History } from "lucide-react";
+import { CheckCircle2, User, Smartphone, Package, Search, Plus, Trash2, Loader2, Tag, Info, TicketPercent, AlertTriangle, ShieldCheck, History, Minus, Barcode } from "lucide-react";
 import { format, parseISO, addDays } from "date-fns";
 import { es } from "date-fns/locale";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -41,6 +42,8 @@ import { cn } from "@/lib/utils";
 import { Badge } from "../ui/badge";
 import { ProductFormDialog } from "../inventory/product-form-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+
+const DRAFT_KEY = 'mm_repair_draft';
 
 const formSchema = z.object({
   customerName: z.string().min(2, "Nombre obligatorio"),
@@ -54,20 +57,25 @@ const formSchema = z.object({
   notes: z.string().default(""),
   reservedParts: z.array(z.any()).default([]),
   isPromo: z.boolean().default(false),
+  isMinimized: z.boolean().default(false),
 });
 
-export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJob | null, children: ReactNode }) {
+export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: { repairJob?: RepairJob | null, children?: ReactNode, isOpen?: boolean, onOpenChange?: (v: boolean) => void }) {
   const { firestore, user } = useFirebase();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [partsPopoverOpen, setPartsPopoverOpen] = useState(false);
   const [replenishProduct, setReplenishProduct] = useState<Product | null>(null);
   const [manualAddOpen, setManualAddOpen] = useState(false);
   
+  const open = isOpen !== undefined ? isOpen : internalOpen;
+  const setOpen = onOpenChange !== undefined ? onOpenChange : setInternalOpen;
+
   const { toast } = useToast();
-  const { getFinalPrice, getDynamicPrice, format: formatCurrency, bcvRate } = useCurrency();
+  const { getFinalPrice, getDynamicPrice, format: formatCurrency, bcvRate, profitMargin } = useCurrency();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const isInitialized = useRef(false);
+  const isClosingViaMinimize = useRef(false);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -83,6 +91,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
       reservedParts: [],
       isPromo: false,
       notes: "",
+      isMinimized: false,
     },
   });
 
@@ -106,6 +115,20 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
 
   const currentID = form.watch("customerID");
   const reservedParts = form.watch("reservedParts") as (ReservedPart & { isPromo?: boolean, isWarranty?: boolean, isManual?: boolean })[];
+
+  // Efecto de Autoguardado para Borrador
+  useEffect(() => {
+    if (!repairJob && open) {
+        const subscription = form.watch((value) => {
+            // Solo guardamos automáticamente si NO estamos en proceso de minimizar manualmente
+            // y si el formulario ya terminó de cargar sus datos iniciales
+            if (isInitialized.current && !isClosingViaMinimize.current) {
+                localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...value, isMinimized: false }));
+            }
+        });
+        return () => subscription.unsubscribe();
+    }
+  }, [form, repairJob, open]);
 
   const partsTotalForClient = useMemo(() => {
     const allRelevantParts = [...(repairJob?.consumedParts || []), ...reservedParts];
@@ -145,9 +168,11 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
     }
   };
 
+  // Carga inicial de datos (desde repairJob existente o borrador local)
   useEffect(() => {
     if (!open) {
         isInitialized.current = false;
+        isClosingViaMinimize.current = false;
         return;
     }
 
@@ -164,14 +189,25 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                 notes: (repairJob.notes || "").toUpperCase(),
                 reservedParts: repairJob.reservedParts || [],
                 status: repairJob.status as any,
+                isMinimized: false,
             });
         } else {
-            form.reset({ 
-                customerName: "", customerPhone: "", customerID: "", customerAddress: "",
-                deviceMake: "", deviceModel: "", reportedIssue: "",
-                status: "Pendiente", reservedParts: [],
-                isPromo: false, notes: "",
-            });
+            const savedDraft = localStorage.getItem(DRAFT_KEY);
+            if (savedDraft) {
+                try {
+                    const draftData = JSON.parse(savedDraft);
+                    form.reset({ ...draftData, isMinimized: false });
+                } catch (e) {
+                    localStorage.removeItem(DRAFT_KEY);
+                }
+            } else {
+                form.reset({ 
+                    customerName: "", customerPhone: "", customerID: "", customerAddress: "",
+                    deviceMake: "", deviceModel: "", reportedIssue: "",
+                    status: "Pendiente", reservedParts: [],
+                    isPromo: false, notes: "", isMinimized: false,
+                });
+            }
         }
         isInitialized.current = true;
     }
@@ -226,6 +262,19 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
       ));
   };
 
+  const handleMinimize = () => {
+      // Bloquear autoguardado para evitar sobreescritura de flags
+      isClosingViaMinimize.current = true;
+      isInitialized.current = false;
+      
+      const currentValues = form.getValues();
+      const draft = { ...currentValues, isMinimized: true };
+      
+      // Guardar el estado explícito de minimizado
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      setOpen(false);
+  };
+
   async function onSubmit(values: z.infer<typeof formSchema>) {
     if (!firestore || !user || isSubmitting) return;
 
@@ -254,18 +303,18 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                 values.reservedParts.forEach(p => { if(!p.isManual) productIdsToFetch.add(p.productId) });
             }
 
-            const productSnaps = new Map();
+            const productSnapshots = new Map<string, DocumentSnapshot>();
             for (const pid of Array.from(productIdsToFetch)) {
                 const productRef = doc(firestore, 'users', user.uid, 'products', pid);
                 const snap = await transaction.get(productRef);
-                productSnaps.set(pid, snap);
+                productSnapshots.set(pid, snap);
             }
 
             for (const pid of Array.from(netChanges.keys())) {
                 const change = netChanges.get(pid)!;
                 if (change.delta === 0) continue;
 
-                const pSnap = productSnaps.get(pid);
+                const pSnap = productSnapshots.get(pid);
                 if (pSnap && pSnap.exists()) {
                     const data = pSnap.data() as Product;
                     const currentlyAvailable = (data.stockLevel || 0) - (data.reservedStock || 0) - (data.damagedStock || 0);
@@ -288,7 +337,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
             if (values.status === 'Completado') {
                 for (const part of values.reservedParts) {
                     if (part.isManual) continue;
-                    const pSnap = productSnaps.get(part.productId);
+                    const pSnap = productSnapshots.get(part.productId);
                     if (pSnap?.exists()) {
                         const pData = pSnap.data() as Product;
                         transaction.update(pSnap.ref, {
@@ -314,8 +363,10 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
             const currentAmountPaid = repairJob?.amountPaid || 0;
             const isFullyPaidNow = currentAmountPaid >= (newEstimatedCost - 0.01);
 
+            const { isMinimized, ...dataToSave } = values;
+
             const finalData: any = { 
-                ...values,
+                ...dataToSave,
                 customerName: values.customerName.toUpperCase().trim(),
                 customerID: values.customerID.toUpperCase().trim(),
                 customerAddress: values.customerAddress.toUpperCase().trim(),
@@ -339,6 +390,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
             return finalData;
         });
 
+        localStorage.removeItem(DRAFT_KEY);
         toast({ title: "Registro sincronizado con inventario" });
         if (!repairJob) {
             handlePrintAllTickets({ repairJob: result as RepairJob, businessName: profile?.businessName, profile, bcvRate }, () => {});
@@ -357,23 +409,42 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
   const isJobCompleted = repairJob?.status === 'Completado';
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
+    <Dialog open={open} onOpenChange={(val) => {
+        if (!val && !repairJob && !isClosingViaMinimize.current) {
+            // Cierre normal sin minimizar -> descartar borrador?
+            // Por ahora, solo cerramos el diálogo
+        }
+        setOpen(val);
+    }}>
+      {children && <DialogTrigger asChild>{children}</DialogTrigger>}
       <DialogContent className="sm:max-w-2xl max-h-[95vh] flex flex-col p-0 overflow-hidden shadow-2xl border-none">
-        <div className="p-4 bg-slate-100 border-b flex justify-between items-center">
+        <div className="p-4 bg-slate-100 border-b flex justify-between items-center relative">
             <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-sm font-bold text-slate-700 uppercase">
                     {repairJob ? 'GESTIONAR TRABAJO' : 'NUEVA RECEPCIÓN TÉCNICA'}
                     {(repairJob?.isPaid || currentPending <= 0.01) && <CheckCircle2 className="w-4 h-4 text-green-500" />}
                 </DialogTitle>
             </DialogHeader>
-            {repairJob && <Badge variant="outline" className="font-mono text-[10px] bg-white">{repairJob.id}</Badge>}
+            <div className="flex items-center gap-2 pr-8">
+                {repairJob && <Badge variant="outline" className="font-mono text-[10px] bg-white">{repairJob.id}</Badge>}
+                {!repairJob && (
+                    <Button 
+                        type="button" 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 hover:bg-slate-200" 
+                        onClick={handleMinimize}
+                        title="Minimizar y seguir luego"
+                    >
+                        <Minus className="w-4 h-4" />
+                    </Button>
+                )}
+            </div>
         </div>
         
         <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden">
                 <div className="flex-1 overflow-y-auto px-6 space-y-6 py-6 bg-white">
-                    
                     <div className="space-y-4 p-4 rounded-xl border border-slate-200 bg-slate-50/50 shadow-sm">
                         <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-2">
                             <h3 className="text-[10px] font-bold uppercase text-slate-500 tracking-widest flex items-center gap-2">
@@ -411,7 +482,7 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                     <div className="space-y-4 p-4 rounded-xl border border-blue-100 bg-blue-50/30">
                         <div className="flex items-center justify-between border-b border-blue-200 pb-2 mb-2">
                             <h3 className="text-[10px] font-bold uppercase text-blue-600 tracking-widest flex items-center gap-2">
-                                <Package className="w-3.5 h-3.5" /> 3. Repuestos y Servicios (Nuevos)
+                                <Package className="w-3.5 h-3.5" /> 3. Repuestos y Servicios
                             </h3>
                             <div className="flex gap-2">
                                 <Button 
@@ -491,6 +562,24 @@ export function RepairFormDialog({ repairJob, children }: { repairJob?: RepairJo
                                             </div>
                                             <div className="flex items-center gap-1.5">
                                                 <TooltipProvider>
+                                                    {hasPromo && (
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <Button 
+                                                                    type="button" 
+                                                                    variant="ghost" 
+                                                                    size="icon" 
+                                                                    className={cn("h-7 w-7", part.isPromo ? "text-blue-600 bg-blue-100" : "text-slate-400")} 
+                                                                    onClick={() => handleTogglePromo(part.productId)}
+                                                                    disabled={isJobCompleted || part.isWarranty}
+                                                                >
+                                                                    <TicketPercent className="w-3.5 h-3.5" />
+                                                                </Button>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent className="text-[10px] font-bold uppercase">Precio de Oferta</TooltipContent>
+                                                        </Tooltip>
+                                                    )}
+
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
                                                             <Button 
