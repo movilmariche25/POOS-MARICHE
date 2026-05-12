@@ -51,15 +51,19 @@ export const useCurrency = () => {
     }, [currency]);
 
     /**
-     * Convierte montos entre USD y Bs usando estrictamente la TASA BCV
+     * Convierte montos entre USD y Bs.
+     * @param useParallel - Si es true, usa la tasa de reposición (más alta). Si es false, usa BCV.
      */
-    const convert = useCallback((value: number, from: Currency, to: Currency) => {
+    const convert = useCallback((value: number, from: Currency, to: Currency, useParallel: boolean = false) => {
         if (!value || isNaN(value)) return 0;
         if (from === to) return value;
-        if (from === 'USD' && to === 'Bs') return value * bcvRate;
-        if (from === 'Bs' && to === 'USD') return value / bcvRate;
+        
+        const rate = useParallel ? (parallelRate || 1) : (bcvRate || 1);
+        
+        if (from === 'USD' && to === 'Bs') return value * rate;
+        if (from === 'Bs' && to === 'USD') return value / rate;
         return value;
-    }, [bcvRate]);
+    }, [bcvRate, parallelRate]);
 
     /**
      * CÁLCULO MAESTRO DE PRECIO (Protección de Capital)

@@ -74,14 +74,15 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
         if (totals[payment.method] !== undefined) {
           totals[payment.method] += payment.amount;
         }
-        paymentsUSD += payment.method === 'Efectivo USD' ? payment.amount : convert(payment.amount, 'Bs', 'USD');
+        // Usamos tasa de reposición (true) para la reconciliación del cajón
+        paymentsUSD += payment.method === 'Efectivo USD' ? payment.amount : convert(payment.amount, 'Bs', 'USD', true);
       });
       if (sale.changeGiven) {
           sale.changeGiven.forEach(change => {
               if (totals[change.method] !== undefined) {
                   totals[change.method] -= change.amount;
               }
-              changeUSD += change.method === 'Efectivo USD' ? change.amount : convert(change.amount, 'Bs', 'USD');
+              changeUSD += change.method === 'Efectivo USD' ? change.amount : convert(change.amount, 'Bs', 'USD', true);
           });
       }
     });
@@ -110,7 +111,8 @@ export function CashReconciliationDialog({ openSales }: CashReconciliationDialog
         if (typedMethod === 'Efectivo USD') {
             return acc + amount;
         }
-        return acc + convert(amount, 'Bs', 'USD');
+        // Valuamos lo contado físicamente contra la tasa de reposición
+        return acc + convert(amount, 'Bs', 'USD', true);
      }, 0)
   }, [countedAmounts, convert]);
 

@@ -105,12 +105,17 @@ function ExchangeContent() {
             return isValid(date) && isAfter(date, resetDate);
         };
 
+        const mapBsMethod = (m: string): string => {
+            if (m === 'Tarjeta' || m === 'Pago Móvil' || m === 'Tarjeta / Pago Móvil') return 'Tarjeta / Pago Móvil';
+            return m;
+        };
+
         sales.forEach(s => {
             if (!filterByReset(s.transactionDate)) return;
 
             // CASO 1: VENTA REEMBOLSADA
             if (s.status === 'refunded' && s.refundPaymentMethod) {
-                const refundMethod = s.refundPaymentMethod === 'Tarjeta' || s.refundPaymentMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : s.refundPaymentMethod;
+                const refundMethod = mapBsMethod(s.refundPaymentMethod);
                 const refundAmountUSD = s.actualPaidAmount ?? s.totalAmount;
                 
                 if (refundMethod === 'Efectivo USD') {
@@ -125,20 +130,16 @@ function ExchangeContent() {
             if (s.status === 'completed') {
                 s.payments.forEach(p => {
                     if (p.method === 'Efectivo USD') usdBalance += p.amount;
-                    else if (p.method === 'Efectivo Bs') bsBreakdown['Efectivo Bs'] += p.amount;
-                    else if (p.method === 'Tarjeta' || p.method === 'Pago Móvil' || p.method === 'Tarjeta / Pago Móvil') {
-                        bsBreakdown['Tarjeta / Pago Móvil'] += p.amount;
-                    } else if (p.method === 'Transferencia') {
-                        bsBreakdown['Transferencia'] += p.amount;
+                    else {
+                        const method = mapBsMethod(p.method);
+                        if (bsBreakdown[method] !== undefined) bsBreakdown[method] += p.amount;
                     }
                 });
                 s.changeGiven?.forEach(c => {
                     if (c.method === 'Efectivo USD') usdBalance -= c.amount;
-                    else if (c.method === 'Efectivo Bs') bsBreakdown['Efectivo Bs'] -= c.amount;
-                    else if (c.method === 'Tarjeta' || c.method === 'Pago Móvil' || c.method === 'Tarjeta / Pago Móvil') {
-                        bsBreakdown['Tarjeta / Pago Móvil'] -= c.amount;
-                    } else if (c.method === 'Transferencia') {
-                        bsBreakdown['Transferencia'] -= c.amount;
+                    else {
+                        const method = mapBsMethod(c.method);
+                        if (bsBreakdown[method] !== undefined) bsBreakdown[method] -= c.amount;
                     }
                 });
             }
@@ -147,14 +148,14 @@ function ExchangeContent() {
         (exchanges || []).forEach(e => {
             if (!filterByReset(e.createdAt)) return;
             usdBalance += e.usdAmount || 0;
-            const source = e.sourceMethod === 'Tarjeta' || e.sourceMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : e.sourceMethod;
+            const source = mapBsMethod(e.sourceMethod);
             if (bsBreakdown[source] !== undefined) bsBreakdown[source] -= (e.bsAmount || 0);
         });
 
         (transfers || []).forEach(t => {
             if (!filterByReset(t.createdAt)) return;
-            const source = t.sourceMethod === 'Tarjeta' || t.sourceMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : t.sourceMethod;
-            const target = t.targetMethod === 'Tarjeta' || t.targetMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : t.targetMethod;
+            const source = mapBsMethod(t.sourceMethod);
+            const target = mapBsMethod(t.targetMethod);
             if (bsBreakdown[source] !== undefined) bsBreakdown[source] -= (t.amountSent || 0);
             if (bsBreakdown[target] !== undefined) bsBreakdown[target] += (t.amountReceived || 0);
         });
@@ -163,7 +164,7 @@ function ExchangeContent() {
             if (!filterByReset(p.createdAt)) return;
             if (p.amountUSD > 0) usdBalance -= p.amountUSD;
             if (p.amountBs > 0) {
-                const method = p.methodBs === 'Tarjeta' || p.methodBs === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : (p.methodBs || 'Tarjeta / Pago Móvil');
+                const method = mapBsMethod(p.methodBs || 'Tarjeta / Pago Móvil');
                 if (bsBreakdown[method] !== undefined) bsBreakdown[method] -= p.amountBs;
                 else bsBreakdown['Tarjeta / Pago Móvil'] -= p.amountBs;
             }
@@ -173,7 +174,7 @@ function ExchangeContent() {
             if (!filterByReset(l.createdAt)) return;
             if (l.currency === 'USD') usdBalance -= (l.totalAmount || 0);
             else {
-                const method = l.sourceMethod === 'Tarjeta' || l.sourceMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : (l.sourceMethod || 'Transferencia');
+                const method = mapBsMethod(l.sourceMethod || 'Transferencia');
                 if (bsBreakdown[method] !== undefined) bsBreakdown[method] -= (l.totalAmount || 0);
                 else bsBreakdown['Transferencia'] -= (l.totalAmount || 0);
             }
@@ -183,7 +184,7 @@ function ExchangeContent() {
             if (!filterByReset(ex.createdAt)) return;
             if (ex.amountUSD > 0) usdBalance -= ex.amountUSD;
             if (ex.amountBs > 0) {
-                const method = ex.methodBs === 'Tarjeta' || ex.methodBs === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : (ex.methodBs || 'Tarjeta / Pago Móvil');
+                const method = mapBsMethod(ex.methodBs || 'Tarjeta / Pago Móvil');
                 if (bsBreakdown[method] !== undefined) bsBreakdown[method] -= ex.amountBs;
                 else bsBreakdown['Tarjeta / Pago Móvil'] -= ex.amountBs;
             }
@@ -206,6 +207,11 @@ function ExchangeContent() {
         const breakdown: Record<string, number> = { 'Efectivo Bs': 0, 'Tarjeta / Pago Móvil': 0, 'Transferencia': 0 };
         let usdFromSales = 0; let usdFromExchanges = 0; let bsFromSales = 0; let bsSpent = 0;
 
+        const mapBsMethod = (m: string): string => {
+            if (m === 'Tarjeta' || m === 'Pago Móvil' || m === 'Tarjeta / Pago Móvil') return 'Tarjeta / Pago Móvil';
+            return m;
+        };
+
         sales.forEach(s => {
             if (!s.transactionDate) return;
             const saleDate = parseISO(s.transactionDate);
@@ -213,7 +219,7 @@ function ExchangeContent() {
                 
                 // RESTAR REEMBOLSOS DEL FLUJO DEL PERIODO
                 if (s.status === 'refunded' && s.refundPaymentMethod) {
-                    const refundMethod = s.refundPaymentMethod === 'Tarjeta' || s.refundPaymentMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : s.refundPaymentMethod;
+                    const refundMethod = mapBsMethod(s.refundPaymentMethod);
                     const refundAmountUSD = s.actualPaidAmount ?? s.totalAmount;
                     
                     if (refundMethod === 'Efectivo USD') {
@@ -229,20 +235,22 @@ function ExchangeContent() {
                 if (s.status === 'completed') {
                     s.payments.forEach(p => {
                         if (p.method === 'Efectivo USD') usdFromSales += p.amount;
-                        else if (p.method === 'Efectivo Bs') { breakdown['Efectivo Bs'] += p.amount; bsFromSales += p.amount; }
-                        else if (p.method === 'Tarjeta' || p.method === 'Pago Móvil' || p.method === 'Tarjeta / Pago Móvil') {
-                            breakdown['Tarjeta / Pago Móvil'] += p.amount; bsFromSales += p.amount;
-                        } else if (p.method === 'Transferencia') {
-                            breakdown['Transferencia'] += p.amount; bsFromSales += p.amount;
+                        else {
+                            const method = mapBsMethod(p.method);
+                            if (breakdown[method] !== undefined) {
+                                breakdown[method] += p.amount;
+                                bsFromSales += p.amount;
+                            }
                         }
                     });
                     s.changeGiven?.forEach(c => {
                         if (c.method === 'Efectivo USD') usdFromSales -= c.amount;
-                        else if (c.method === 'Efectivo Bs') { breakdown['Efectivo Bs'] -= c.amount; bsFromSales -= c.amount; }
-                        else if (c.method === 'Tarjeta' || c.method === 'Pago Móvil' || c.method === 'Tarjeta / Pago Móvil') {
-                            breakdown['Tarjeta / Pago Móvil'] -= c.amount; bsFromSales -= c.amount;
-                        } else if (c.method === 'Transferencia') {
-                            breakdown['Transferencia'] -= c.amount; bsFromSales -= c.amount;
+                        else {
+                            const method = mapBsMethod(c.method);
+                            if (breakdown[method] !== undefined) {
+                                breakdown[method] -= c.amount;
+                                bsFromSales -= c.amount;
+                            }
                         }
                     });
                 }
@@ -255,7 +263,7 @@ function ExchangeContent() {
             if (isValid(exchangeDate) && isWithinInterval(exchangeDate, { start: from, end: to })) {
                 bsSpent += (e.bsAmount || 0);
                 usdFromExchanges += (e.usdAmount || 0);
-                const source = e.sourceMethod === 'Tarjeta' || e.sourceMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : e.sourceMethod;
+                const source = mapBsMethod(e.sourceMethod);
                 if (breakdown[source] !== undefined) breakdown[source] -= (e.bsAmount || 0);
             }
         });
@@ -264,15 +272,27 @@ function ExchangeContent() {
             if (!t.createdAt) return;
             const transferDate = parseISO(t.createdAt);
             if (isValid(transferDate) && isWithinInterval(transferDate, { start: from, end: to })) {
-                const source = t.sourceMethod === 'Tarjeta' || t.sourceMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : t.sourceMethod;
-                const target = t.targetMethod === 'Tarjeta' || t.targetMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : t.targetMethod;
+                const source = mapBsMethod(t.sourceMethod);
+                const target = mapBsMethod(t.targetMethod);
                 if (breakdown[source] !== undefined) breakdown[source] -= (t.amountSent || 0);
                 if (breakdown[target] !== undefined) breakdown[target] += (t.amountReceived || 0);
             }
         });
 
+        (expenses || []).forEach(ex => {
+            if (!ex.createdAt) return;
+            const exDate = parseISO(ex.createdAt);
+            if (isValid(exDate) && isWithinInterval(exDate, { start: from, end: to })) {
+                if (ex.amountBs > 0) {
+                    bsSpent += ex.amountBs;
+                    const method = mapBsMethod(ex.methodBs || 'Tarjeta / Pago Móvil');
+                    if (breakdown[method] !== undefined) breakdown[method] -= ex.amountBs;
+                }
+            }
+        });
+
         return { bsFromSales, bsSpent, bsAvailable: Object.values(breakdown).reduce((a, b) => a + b, 0), breakdown, usdFromSales, usdFromExchanges, usdTotal: usdFromSales + usdFromExchanges };
-    }, [sales, exchanges, transfers, dateRange, settings]);
+    }, [sales, exchanges, transfers, expenses, dateRange, settings]);
 
     const combinedHistory = useMemo(() => {
         const history = [
@@ -401,6 +421,7 @@ function ExchangeContent() {
                                                             <span className="text-[10px] font-black uppercase text-slate-600">
                                                                 {isExpense ? (item.description || 'Sin descripción') : (item.sourceMethod || 'N/A')} 
                                                                 {isTransfer && ` -> ${item.targetMethod || 'N/A'}`}
+                                                                {isExpense && item.amountBs > 0 && ` (${item.methodBs})`}
                                                             </span>
                                                             {(isExchange || isTransfer) && item.notes && <span className="text-[9px] text-muted-foreground italic font-bold uppercase truncate max-w-[150px]" title={item.notes}>{item.notes}</span>}
                                                             {isExpense && <span className="text-[9px] text-muted-foreground font-bold uppercase">{item.category}</span>}
@@ -550,6 +571,7 @@ function AddExpenseDialog({ children, onAdded, isOpen, setIsOpen }: { children: 
     const [description, setDescription] = useState("");
     const [amountUSD, setAmountUSD] = useState("");
     const [amountBs, setAmountBs] = useState("");
+    const [methodBs, setMethodBs] = useState<PaymentMethod>("Tarjeta / Pago Móvil");
     const [category, setCategory] = useState<any>("Mercancía");
     const [loading, setLoading] = useState(false);
 
@@ -561,9 +583,9 @@ function AddExpenseDialog({ children, onAdded, isOpen, setIsOpen }: { children: 
             const expensesRef = collection(firestore, 'users', user.uid, 'expenses');
             const newDoc = doc(expensesRef);
             const data: Expense = {
-                id: newDoc.id, description: description.trim(), category,
+                id: newDoc.id, description: description.trim().toUpperCase(), category,
                 amountUSD: parseFloat(amountUSD) || 0, amountBs: parseFloat(amountBs) || 0,
-                methodUSD: 'Efectivo USD', methodBs: 'Tarjeta / Pago Móvil',
+                methodUSD: 'Efectivo USD', methodBs: methodBs,
                 createdAt: new Date().toISOString()
             };
             await setDocumentNonBlocking(newDoc, data, { merge: true });
@@ -583,13 +605,30 @@ function AddExpenseDialog({ children, onAdded, isOpen, setIsOpen }: { children: 
             <DialogContent className="sm:max-w-md">
                 <DialogHeader><DialogTitle className="flex items-center gap-2"><Receipt className="w-5 h-5 text-amber-600"/> Registrar Egreso / Gasto</DialogTitle><DialogDescription>Cualquier pago de mercancía o servicio se restará de tu Saldo Real.</DialogDescription></DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4 py-4">
-                    <div className="space-y-2"><Label>Descripción del Gasto</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ej: Compra de pantallas, Alquiler..." required /></div>
-                    <div className="space-y-2"><Label>Categoría</Label><Select value={category} onValueChange={setCategory}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Mercancía">Mercancía (Inventario)</SelectItem><SelectItem value="Servicios">Servicios (Luz, Agua, Internet)</SelectItem><SelectItem value="Alquiler">Alquiler</SelectItem><SelectItem value="Retiro Personal">Retiro Personal</SelectItem><SelectItem value="Otros">Otros</SelectItem></SelectContent></Select></div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2"><Label>Monto en USD</Label><Input type="number" step="0.01" value={amountUSD} onChange={(e) => setAmountUSD(e.target.value)} placeholder="0.00" /></div>
-                        <div className="space-y-2"><Label>Monto en Bs</Label><Input type="number" step="0.01" value={amountBs} onChange={(e) => setAmountBs(e.target.value)} placeholder="0.00" /></div>
+                    <div className="space-y-2"><Label className="text-xs font-bold uppercase">Descripción del Gasto</Label><Input value={description} onChange={(e) => setDescription(e.target.value.toUpperCase())} placeholder="EJ: COMPRA DE PANTALLAS, ALQUILER..." className="uppercase" required /></div>
+                    <div className="space-y-2"><Label className="text-xs font-bold uppercase">Categoría</Label><Select value={category} onValueChange={setCategory}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Mercancía">Mercancía (Inventario)</SelectItem><SelectItem value="Servicios">Servicios (Luz, Agua, Internet)</SelectItem><SelectItem value="Alquiler">Alquiler</SelectItem><SelectItem value="Retiro Personal">Retiro Personal</SelectItem><SelectItem value="Otros">Otros</SelectItem></SelectContent></Select></div>
+                    
+                    <div className="space-y-4 p-3 bg-muted/50 rounded-lg border border-dashed">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-green-700">Gasto en USD ($)</Label><Input type="number" step="0.01" value={amountUSD} onChange={(e) => setAmountUSD(e.target.value)} placeholder="0.00" /></div>
+                            <div className="space-y-2"><Label className="text-[10px] font-black uppercase text-amber-700">Gasto en Bs (Bolívares)</Label><Input type="number" step="0.01" value={amountBs} onChange={(e) => setAmountBs(e.target.value)} placeholder="0.00" /></div>
+                        </div>
+                        {parseFloat(amountBs) > 0 && (
+                            <div className="space-y-2 animate-in fade-in duration-200">
+                                <Label className="text-[10px] font-black uppercase text-muted-foreground">¿De dónde salen los Bolívares?</Label>
+                                <Select value={methodBs} onValueChange={(v: any) => setMethodBs(v)}>
+                                    <SelectTrigger className="h-9 text-xs font-bold"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Efectivo Bs" className="text-xs">EFECTIVO BS</SelectItem>
+                                        <SelectItem value="Tarjeta / Pago Móvil" className="text-xs">TARJETA / P. MÓVIL</SelectItem>
+                                        <SelectItem value="Transferencia" className="text-xs">TRANSFERENCIA</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                     </div>
-                    <DialogFooter><Button type="submit" className="w-full h-12" disabled={loading}>{loading ? "Procesando..." : "Confirmar Salida de Dinero"}</Button></DialogFooter>
+
+                    <DialogFooter><Button type="submit" className="w-full h-12 text-base font-bold shadow-md" disabled={loading}>{loading ? "Procesando..." : "Confirmar Salida de Dinero"}</Button></DialogFooter>
                 </form>
             </DialogContent>
         </Dialog>

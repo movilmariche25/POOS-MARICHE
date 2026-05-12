@@ -93,7 +93,14 @@ function POSContent() {
             try {
                 const job: RepairJob = JSON.parse(decodeURIComponent(repairJobData));
                 setActiveRepairJob(job);
-                setCart([{ productId: job.id!, name: `Reparación: ${job.deviceMake} ${job.deviceModel}`, quantity: 1, isRepair: true }]);
+                // PASAR EL FLAG DE PROMOCIÓN DETECTADA AL CARRITO
+                setCart([{ 
+                    productId: job.id!, 
+                    name: `Reparación: ${job.deviceMake} ${job.deviceModel}`, 
+                    quantity: 1, 
+                    isRepair: true,
+                    isPromo: !!job.isPromo 
+                }]);
             } catch (error) {
                 router.push('/dashboard/repairs');
             }
@@ -132,7 +139,12 @@ function POSContent() {
             }
 
             if (existing) return prev.map(i => i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i);
-            return [...prev, { productId: product.id!, name: product.name, quantity: 1 }];
+            return [...prev, { 
+                productId: product.id!, 
+                name: product.name, 
+                quantity: 1,
+                isPromo: !!(product.promoPrice && product.promoPrice > 0)
+            }];
         });
     };
 

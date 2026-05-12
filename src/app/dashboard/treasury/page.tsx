@@ -6,7 +6,7 @@ import { collection, doc } from "firebase/firestore";
 import type { Sale, Product, RepairJob, Loan, CurrencyExchange, PaymentMethod, Expense, PayrollPayment } from "@/lib/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useMemo } from "react";
-import { format, startOfDay, endOfDay, isWithinInterval, addWeeks, isAfter, parseISO } from "date-fns";
+import { format, startOfDay, endOfDay, isWithinInterval, addWeeks, isAfter, parseISO, isValid } from "date-fns";
 import { es } from "date-fns/locale";
 import { useCurrency } from "@/hooks/use-currency";
 import { 
@@ -120,14 +120,23 @@ function TreasuryContent() {
         };
         let usdBalance = settings.initialBalances?.['Efectivo USD'] || 0;
 
-        const filterByReset = (dateStr: string) => isAfter(parseISO(dateStr), resetDate);
+        const filterByReset = (dateStr?: string) => {
+            if (!dateStr) return false;
+            const d = parseISO(dateStr);
+            return isValid(d) && isAfter(d, resetDate);
+        };
+
+        const mapBsMethod = (m: string): string => {
+            if (m === 'Tarjeta' || m === 'Pago Móvil' || m === 'Tarjeta / Pago Móvil') return 'Tarjeta / Pago Móvil';
+            return m;
+        };
 
         sales.forEach(s => {
             if (!s.transactionDate || !filterByReset(s.transactionDate)) return;
 
             // IMPACTO DE REEMBOLSOS EN EL SALDO REAL
             if (s.status === 'refunded' && s.refundPaymentMethod) {
-                const refundMethod = s.refundPaymentMethod === 'Tarjeta' || s.refundPaymentMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : s.refundPaymentMethod;
+                const refundMethod = mapBsMethod(s.refundPaymentMethod);
                 const refundAmountUSD = s.actualPaidAmount ?? s.totalAmount;
                 
                 if (refundMethod === 'Efectivo USD') {
@@ -143,20 +152,16 @@ function TreasuryContent() {
 
             s.payments.forEach(p => {
                 if (p.method === 'Efectivo USD') usdBalance += p.amount;
-                else if (p.method === 'Efectivo Bs') breakdown['Efectivo Bs'] += p.amount;
-                else if (p.method === 'Tarjeta' || p.method === 'Pago Móvil' || p.method === 'Tarjeta / Pago Móvil') {
-                    breakdown['Tarjeta / Pago Móvil'] += p.amount;
-                } else if (p.method === 'Transferencia') {
-                    breakdown['Transferencia'] += p.amount;
+                else {
+                    const method = mapBsMethod(p.method);
+                    if (breakdown[method] !== undefined) breakdown[method] += p.amount;
                 }
             });
             s.changeGiven?.forEach(c => {
                 if (c.method === 'Efectivo USD') usdBalance -= c.amount;
-                else if (c.method === 'Efectivo Bs') breakdown['Efectivo Bs'] -= c.amount;
-                else if (c.method === 'Tarjeta' || c.method === 'Pago Móvil' || c.method === 'Tarjeta / Pago Móvil') {
-                    breakdown['Tarjeta / Pago Móvil'] -= c.amount;
-                } else if (c.method === 'Transferencia') {
-                    breakdown['Transferencia'] -= c.amount;
+                else {
+                    const method = mapBsMethod(c.method);
+                    if (breakdown[method] !== undefined) breakdown[method] -= c.amount;
                 }
             });
         });
@@ -164,18 +169,15 @@ function TreasuryContent() {
         (exchanges || []).forEach(e => {
             if (!filterByReset(e.createdAt)) return;
             usdBalance += e.usdAmount;
-            if (e.sourceMethod === 'Tarjeta' || e.sourceMethod === 'Pago Móvil' || e.sourceMethod === 'Tarjeta / Pago Móvil') {
-                breakdown['Tarjeta / Pago Móvil'] -= e.bsAmount;
-            } else if (breakdown[e.sourceMethod] !== undefined) {
-                breakdown[e.sourceMethod] -= e.bsAmount;
-            }
+            const source = mapBsMethod(e.sourceMethod);
+            if (breakdown[source] !== undefined) breakdown[source] -= e.bsAmount;
         });
 
         (payroll || []).forEach(p => {
             if (!filterByReset(p.createdAt)) return;
             if (p.amountUSD > 0) usdBalance -= p.amountUSD;
             if (p.amountBs > 0) {
-                const method = p.methodBs || 'Tarjeta / Pago Móvil';
+                const method = mapBsMethod(p.methodBs || 'Tarjeta / Pago Móvil');
                 if (breakdown[method] !== undefined) breakdown[method] -= p.amountBs;
                 else breakdown['Tarjeta / Pago Móvil'] -= p.amountBs;
             }
@@ -185,7 +187,7 @@ function TreasuryContent() {
             if (!filterByReset(l.createdAt)) return;
             if (l.currency === 'USD') usdBalance -= l.totalAmount;
             else {
-                const method = l.sourceMethod || 'Transferencia';
+                const method = mapBsMethod(l.sourceMethod || 'Transferencia');
                 if (breakdown[method] !== undefined) breakdown[method] -= l.totalAmount;
                 else breakdown['Transferencia'] -= l.totalAmount;
             }
@@ -195,7 +197,7 @@ function TreasuryContent() {
             if (!filterByReset(ex.createdAt)) return;
             if (ex.amountUSD > 0) usdBalance -= ex.amountUSD;
             if (ex.amountBs > 0) {
-                const method = ex.methodBs || 'Tarjeta / Pago Móvil';
+                const method = mapBsMethod(ex.methodBs || 'Tarjeta / Pago Móvil');
                 if (breakdown[method] !== undefined) breakdown[method] -= ex.amountBs;
                 else breakdown['Tarjeta / Pago Móvil'] -= ex.amountBs;
             }
@@ -219,6 +221,11 @@ function TreasuryContent() {
         let usdAccumulated = 0;
         let totalExpensesUSD = 0;
 
+        const mapBsMethod = (m: string): string => {
+            if (m === 'Tarjeta' || m === 'Pago Móvil' || m === 'Tarjeta / Pago Móvil') return 'Tarjeta / Pago Móvil';
+            return m;
+        };
+
         sales.filter(s => {
             if (!s.transactionDate) return false;
             return isWithinInterval(new Date(s.transactionDate), { start: from, end: to });
@@ -226,7 +233,7 @@ function TreasuryContent() {
             
             // RESTAR REEMBOLSOS DEL BALANCE DEL PERIODO
             if (s.status === 'refunded' && s.refundPaymentMethod) {
-                const refundMethod = s.refundPaymentMethod === 'Tarjeta' || s.refundPaymentMethod === 'Pago Móvil' ? 'Tarjeta / Pago Móvil' : s.refundPaymentMethod;
+                const refundMethod = mapBsMethod(s.refundPaymentMethod);
                 const refundAmountUSD = s.actualPaidAmount ?? s.totalAmount;
                 
                 if (refundMethod === 'Efectivo USD') {
@@ -241,46 +248,51 @@ function TreasuryContent() {
             if (s.status === 'completed') {
                 s.payments.forEach(p => {
                     if (p.method === 'Efectivo USD') usdAccumulated += p.amount;
-                    else if (p.method === 'Efectivo Bs') breakdown['Efectivo Bs'] += p.amount;
-                    else if (p.method === 'Tarjeta' || p.method === 'Pago Móvil' || p.method === 'Tarjeta / Pago Móvil') {
-                        breakdown['Tarjeta / Pago Móvil'] += p.amount;
-                    } else if (p.method === 'Transferencia') {
-                        breakdown['Transferencia'] += p.amount;
+                    else {
+                        const method = mapBsMethod(p.method);
+                        if (breakdown[method] !== undefined) breakdown[method] += p.amount;
                     }
                 });
                 s.changeGiven?.forEach(c => {
                     if (c.method === 'Efectivo USD') usdAccumulated -= c.amount;
-                    else if (c.method === 'Efectivo Bs') breakdown['Efectivo Bs'] -= c.amount;
-                    else if (c.method === 'Tarjeta' || c.method === 'Pago Móvil' || c.method === 'Tarjeta / Pago Móvil') {
-                        breakdown['Tarjeta / Pago Móvil'] -= c.amount;
-                    } else if (c.method === 'Transferencia') {
-                        breakdown['Transferencia'] -= c.amount;
+                    else {
+                        const method = mapBsMethod(c.method);
+                        if (breakdown[method] !== undefined) breakdown[method] -= c.amount;
                     }
                 });
             }
         });
 
         (exchanges || []).filter(e => {
-            const eDate = new Date(e.createdAt);
-            return isWithinInterval(eDate, { start: from, end: to });
+            const eDate = parseISO(e.createdAt);
+            return isValid(eDate) && isWithinInterval(eDate, { start: from, end: to });
         }).forEach(e => {
             usdAccumulated += e.usdAmount;
-            if (e.sourceMethod === 'Tarjeta' || e.sourceMethod === 'Pago Móvil' || e.sourceMethod === 'Tarjeta / Pago Móvil') {
-                breakdown['Tarjeta / Pago Móvil'] -= e.bsAmount;
-            } else if (breakdown[e.sourceMethod] !== undefined) {
-                breakdown[e.sourceMethod] -= e.bsAmount;
-            }
+            const source = mapBsMethod(e.sourceMethod);
+            if (breakdown[source] !== undefined) breakdown[source] -= e.bsAmount;
         });
 
-        // Calculamos egresos totales (gastos + nómina + préstamos) del periodo para información
-        (expenses || []).filter(ex => isWithinInterval(parseISO(ex.createdAt), { start: from, end: to })).forEach(ex => {
+        // Egresos del periodo
+        (expenses || []).filter(ex => isValid(parseISO(ex.createdAt)) && isWithinInterval(parseISO(ex.createdAt), { start: from, end: to })).forEach(ex => {
             totalExpensesUSD += ex.amountUSD + convert(ex.amountBs, 'Bs', 'USD');
+            if (ex.amountBs > 0) {
+                const method = mapBsMethod(ex.methodBs || 'Tarjeta / Pago Móvil');
+                if (breakdown[method] !== undefined) breakdown[method] -= ex.amountBs;
+            }
         });
-        (payroll || []).filter(p => isWithinInterval(parseISO(p.createdAt), { start: from, end: to })).forEach(p => {
+        (payroll || []).filter(p => isValid(parseISO(p.createdAt)) && isWithinInterval(parseISO(p.createdAt), { start: from, end: to })).forEach(p => {
             totalExpensesUSD += p.amountUSD + convert(p.amountBs, 'Bs', 'USD');
+            if (p.amountBs > 0) {
+                const method = mapBsMethod(p.methodBs || 'Tarjeta / Pago Móvil');
+                if (breakdown[method] !== undefined) breakdown[method] -= p.amountBs;
+            }
         });
-        (loans || []).filter(l => isWithinInterval(parseISO(l.createdAt), { start: from, end: to })).forEach(l => {
+        (loans || []).filter(l => isValid(parseISO(l.createdAt)) && isWithinInterval(parseISO(l.createdAt), { start: from, end: to })).forEach(l => {
             totalExpensesUSD += l.currency === 'USD' ? l.totalAmount : convert(l.totalAmount, 'Bs', 'USD');
+            if (l.currency === 'Bs') {
+                const method = mapBsMethod(l.sourceMethod || 'Transferencia');
+                if (breakdown[method] !== undefined) breakdown[method] -= l.totalAmount;
+            }
         });
 
         return { usdTotal: usdAccumulated, breakdown, bsAvailable: Object.values(breakdown).reduce((a, b) => a + b, 0), totalExpensesUSD };

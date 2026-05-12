@@ -1,3 +1,4 @@
+
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -53,7 +54,8 @@ function LoansContent() {
     const activeLoansTotalUSD = useMemo(() => {
         if (!loans) return 0;
         return loans.filter(l => l.status === 'active').reduce((sum, l) => {
-            const amountUSD = l.currency === 'USD' ? l.remainingAmount : convert(l.remainingAmount, 'Bs', 'USD');
+            // Evaluamos la deuda acumulada usando la tasa BCV estándar para reportes
+            const amountUSD = l.currency === 'USD' ? l.remainingAmount : convert(l.remainingAmount, 'Bs', 'USD', false);
             return sum + amountUSD;
         }, 0);
     }, [loans, convert]);
@@ -266,7 +268,7 @@ function AddLoanDialog({ children, onAdded, isOpen, setIsOpen }: { children: Rea
                         {hasWeeklyDeduction && (
                             <div className="space-y-2 animate-in slide-in-from-top-2 duration-200">
                                 <Label className="text-xs uppercase font-black text-primary">Cuota Semanal a Descontar ({currency === 'USD' ? '$' : 'Bs'})</Label>
-                                <Input type="number" step="0.01" value={deduction} onChange={(e) => setDeduction(e.target.value)} placeholder="0.00" required={hasWeeklyDeduction} />
+                                <Input type="number" step="0.01" value={deduction} onChange={(e) => setAddDeduction(e.target.value)} placeholder="0.00" required={hasWeeklyDeduction} />
                             </div>
                         )}
                     </div>
@@ -294,23 +296,23 @@ function ManualPaymentDialog({ loan, children }: { loan: Loan, children: React.R
 
     const selectedOption = paymentMethodOptions.find(o => o.value === method)!;
 
-    // Cuánto representa el monto ingresado en la moneda del préstamo
+    // CRITICAL: Usamos tasa de reposición (true) para valuar abonos de deuda de socios
     const discountInLoanCurrency = useMemo(() => {
         const val = parseFloat(amount) || 0;
         if (loan.currency === 'USD') {
-            return selectedOption.isBs ? convert(val, 'Bs', 'USD') : val;
+            return selectedOption.isBs ? convert(val, 'Bs', 'USD', true) : val;
         } else {
-            return selectedOption.isBs ? val : convert(val, 'USD', 'Bs');
+            return selectedOption.isBs ? val : convert(val, 'USD', 'Bs', true);
         }
-    }, [amount, method, loan.currency, convert]);
+    }, [amount, method, loan.currency, convert, selectedOption.isBs]);
 
-    // Cuánto falta por pagar expresado en la moneda del MÉTODO DE PAGO elegido
+    // Cuánto falta por pagar expresado en la moneda del MÉTODO DE PAGO elegido (Tasa Reposición)
     const remainingInSelectedMethod = useMemo(() => {
         const rem = loan.remainingAmount;
         if (loan.currency === 'USD') {
-            return selectedOption.isBs ? convert(rem, 'USD', 'Bs') : rem;
+            return selectedOption.isBs ? convert(rem, 'USD', 'Bs', true) : rem;
         } else {
-            return selectedOption.isBs ? rem : convert(rem, 'Bs', 'USD');
+            return selectedOption.isBs ? rem : convert(rem, 'Bs', 'USD', true);
         }
     }, [loan.remainingAmount, loan.currency, selectedOption.isBs, convert]);
 
@@ -335,7 +337,7 @@ function ManualPaymentDialog({ loan, children }: { loan: Loan, children: React.R
 
                 const saleId = `S-LOAN-${Date.now()}`;
                 const saleRef = doc(firestore, 'users', user.uid, 'sale_transactions', saleId);
-                const finalNetAbonoInUSD = loan.currency === 'USD' ? discountInLoanCurrency : convert(discountInLoanCurrency, 'Bs', 'USD');
+                const finalNetAbonoInUSD = loan.currency === 'USD' ? discountInLoanCurrency : convert(discountInLoanCurrency, 'Bs', 'USD', true);
 
                 const saleData: Sale = {
                     id: saleId,

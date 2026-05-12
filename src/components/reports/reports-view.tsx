@@ -1,3 +1,4 @@
+
 "use client"
 
 import type { Product, Sale, DailyReconciliation, RepairJob, CurrencyExchange, Fiado } from "@/lib/types"
@@ -65,12 +66,17 @@ export function ReportsView({ sales, products, repairJobs, exchanges, fiados, is
                         <CardDescription>Exporta un registro de ventas en formato Excel para un rango de fechas seleccionado.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <ExportSalesButton sales={sales || []} products={products || []} repairJobs={repairJobs || []} />
+                        <ExportSalesButton 
+                            sales={sales || []} 
+                            products={products || []} 
+                            repairJobs={repairJobs || []} 
+                            fiados={fiados || []}
+                        />
                     </CardContent>
                  </Card>
             </TabsContent>
             <TabsContent value="history">
-                 <ReconciliationHistory reconciliations={reconciliations || []} isLoading={reconciliationsLoading} />
+                 < ReconciliationHistory reconciliations={reconciliations || []} isLoading={reconciliationsLoading} />
             </TabsContent>
             <TabsContent value="log">
                 <Card>

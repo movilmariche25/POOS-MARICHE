@@ -84,6 +84,9 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
   const subtotal = cart.reduce((acc, item) => acc + getPrice(item) * item.quantity, 0);
   const total = subtotal - discount;
 
+  // Solo usamos tasa de reposición si hay al menos un artículo en promoción
+  const hasPromo = cart.some(i => i.isPromo);
+
   const handleCheckout = async (payments: Payment[], changeGiven: Payment[], totalChangeInUSD: number): Promise<Sale | null> => {
       if (!firestore || !user) return null;
 
@@ -92,7 +95,8 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
       const hasRepairInCart = cartWithPrices.some(i => i.isRepair);
 
       const totalPaidInUSD = payments.reduce((acc, p) => {
-          return acc + (p.method === 'Efectivo USD' ? p.amount : convert(p.amount, 'Bs', 'USD'));
+          // CRITICAL: Usamos tasa de reposición (Parallel) SOLO si hay promociones involucradas
+          return acc + (p.method === 'Efectivo USD' ? p.amount : convert(p.amount, 'Bs', 'USD', hasPromo));
       }, 0);
       const actualNetPaidInUSD = totalPaidInUSD - totalChangeInUSD;
 
@@ -383,7 +387,7 @@ export function CartDisplay({ cart, allProducts, onUpdateQuantity, onRemoveItem,
                     {getSymbol('USD')}{formatCurrency(total, 'USD')}
                 </span>
                 <span className="text-sm font-bold text-muted-foreground mt-1">
-                    Bs {formatCurrency(convert(total, 'USD', 'Bs'), 'Bs')}
+                    Bs {formatCurrency(convert(total, 'USD', 'Bs', hasPromo), 'Bs')}
                 </span>
             </div>
         </div>

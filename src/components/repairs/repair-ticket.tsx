@@ -1,3 +1,4 @@
+
 import type { RepairJob, UserProfile } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -8,18 +9,22 @@ type RepairTicketProps = {
     businessName?: string;
     profile?: UserProfile | null;
     bcvRate?: number;
+    parallelRate?: number;
 }
 
 // SECCIÓN 1: NOTA DE ENTREGA (CLIENTE)
-export function CustomerTicket({ repairJob, businessName, profile, bcvRate = 1 }: RepairTicketProps) {
+export function CustomerTicket({ repairJob, businessName, profile, bcvRate = 1, parallelRate = 1 }: RepairTicketProps) {
     const total = repairJob.estimatedCost || 0;
     const abono = repairJob.amountPaid || 0;
     const saldo = Math.max(0, total - abono);
     const date = repairJob.createdAt ? parseISO(repairJob.createdAt) : new Date();
     const fecha = format(date, "dd/MM/yyyy HH:mm:ss", { locale: es });
 
-    const totalBs = total * bcvRate;
-    const saldoBs = saldo * bcvRate;
+    // USAR TASA DE REPOSICIÓN SI EL TRABAJO ES PROMO
+    const appliedRate = repairJob.isPromo ? parallelRate : bcvRate;
+    
+    const totalBs = total * appliedRate;
+    const saldoBs = saldo * appliedRate;
 
     const warranty = profile?.repairWarrantyPolicy || "4 DÍAS POR EL SERVICIO REALIZADO.";
     const pickup = profile?.repairPickupPolicy || "7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL NEGOCIO NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.";
@@ -95,19 +100,21 @@ export function CustomerTicket({ repairJob, businessName, profile, bcvRate = 1 }
 
             <div className="text-center mt-4 footer-thanks">
                 <p className="bold-header text-[8pt]">¡GRACIAS POR SU CONFIANZA!</p>
-                <p className="meta-info text-[6pt] mt-1 italic">TASA REF: {bcvRate.toFixed(2)} Bs/$</p>
+                <p className="meta-info text-[6pt] mt-1 italic">TASA REF: {appliedRate.toFixed(2)} Bs/$</p>
             </div>
         </div>
     );
 }
 
 // SECCIÓN 2: CONTROL INTERNO (NEGOCIO)
-export function InternalTicket({ repairJob, bcvRate = 1 }: RepairTicketProps) {
+export function InternalTicket({ repairJob, bcvRate = 1, parallelRate = 1 }: RepairTicketProps) {
     const total = repairJob.estimatedCost || 0;
     const abono = repairJob.amountPaid || 0;
     const saldo = Math.max(0, total - abono);
     const date = repairJob.createdAt ? parseISO(repairJob.createdAt) : new Date();
     const fecha = format(date, "dd/MM/yyyy HH:mm:ss", { locale: es });
+    
+    const appliedRate = repairJob.isPromo ? parallelRate : bcvRate;
 
     return (
         <div className="ticket-body internal">
@@ -125,7 +132,7 @@ export function InternalTicket({ repairJob, bcvRate = 1 }: RepairTicketProps) {
                 
                 <div className="mt-3 p-2 border text-center" style={{ borderStyle: 'solid' }}>
                     <p className="bold-header" style={{ fontSize: '11pt' }}>SALDO: ${saldo.toFixed(2)}</p>
-                    <p className="text-[8pt] font-bold">Bs { (saldo * bcvRate).toLocaleString('de-DE', { minimumFractionDigits: 2 }) }</p>
+                    <p className="text-[8pt] font-bold">Bs { (saldo * appliedRate).toLocaleString('de-DE', { minimumFractionDigits: 2 }) }</p>
                 </div>
             </div>
 

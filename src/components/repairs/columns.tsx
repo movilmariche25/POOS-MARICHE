@@ -1,3 +1,4 @@
+
 "use client"
 
 import type { ColumnDef } from "@tanstack/react-table"
@@ -44,7 +45,7 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
     const { firestore, user } = useFirebase();
     const router = useRouter();
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-    const { bcvRate } = useCurrency();
+    const { bcvRate, parallelRate } = useCurrency();
     
     const profileRef = useMemoFirebase(() => 
         (firestore && user) ? doc(firestore, 'users', user.uid) : null,
@@ -70,8 +71,6 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
             status: 'Garantía',
             completedAt: null,
             warrantyEndDate: null,
-            // NOTA: No limpiamos consumedParts para mantener historial, 
-            // pero el técnico podrá añadir nuevas piezas a reservedParts.
         });
         toast({ 
             title: "Reingreso por Garantía", 
@@ -89,7 +88,6 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                 if (!jobSnap.exists()) return;
                 const data = jobSnap.data() as RepairJob;
 
-                // Piezas Reservadas (Devolver a stock disponible)
                 const reservedParts = data.reservedParts || [];
                 const consumedParts = data.consumedParts || [];
                 
@@ -98,17 +96,16 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                     ...consumedParts.map(p => p.productId)
                 ]));
 
-                const productSnaps = new Map<string, DocumentSnapshot>();
+                const productSnapshots = new Map<string, DocumentSnapshot>();
                 for (const pid of productIds) {
                     const productRef = doc(firestore, 'users', user.uid, 'products', pid);
                     const snap = await transaction.get(productRef);
-                    productSnaps.set(pid, snap);
+                    productSnapshots.set(pid, snap);
                 }
 
-                // 1. Devolver Reservas (Liberar reserva)
                 for (const part of reservedParts) {
                     if (part.isManual) continue;
-                    const pSnap = productSnaps.get(part.productId);
+                    const pSnap = productSnapshots.get(part.productId);
                     if (pSnap?.exists()) {
                         const pData = pSnap.data() as Product;
                         transaction.update(pSnap.ref, { 
@@ -117,10 +114,9 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                     }
                 }
 
-                // 2. Devolver Consumidos (Sumar a stock físico)
                 for (const part of consumedParts) {
                     if (part.isManual) continue;
-                    const pSnap = productSnaps.get(part.productId);
+                    const pSnap = productSnapshots.get(part.productId);
                     if (pSnap?.exists()) {
                         const pData = pSnap.data() as Product;
                         transaction.update(pSnap.ref, { 
@@ -134,43 +130,39 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
 
             toast({
                 title: "Trabajo Eliminado",
-                description: `El registro de ${repairJob.customerName} ha sido borrado y el inventario ajustado.`,
+                description: `El registro de ${repairJob.customerName} ha sido borrado.`,
                 variant: "destructive"
             });
 
         } catch (error: any) {
              console.error("Delete Error:", error);
-             toast({
-                title: "Error de integridad",
-                description: "No se pudo eliminar el trabajo debido a un conflicto de datos.",
-                variant: "destructive"
-            });
+             toast({ title: "Error", description: "No se pudo eliminar.", variant: "destructive" });
         } finally {
             setIsDeleteDialogOpen(false);
         }
     }
     
     const onPrintCustomer = () => {
-        handlePrintCustomerTicket({ repairJob, businessName: profile?.businessName, profile, bcvRate }, (error) => {
-             toast({ variant: "destructive", title: "Error de Impresión", description: error })
+        handlePrintCustomerTicket({ repairJob, businessName: profile?.businessName, profile, bcvRate, parallelRate }, (error) => {
+             toast({ variant: "destructive", title: "Error", description: error })
         });
     }
 
     const onPrintInternal = () => {
-        handlePrintInternalTicket({ repairJob, businessName: profile?.businessName, profile, bcvRate }, (error) => {
-             toast({ variant: "destructive", title: "Error de Impresión", description: error })
+        handlePrintInternalTicket({ repairJob, businessName: profile?.businessName, profile, bcvRate, parallelRate }, (error) => {
+             toast({ variant: "destructive", title: "Error", description: error })
         });
     }
 
     const onPrintSticker = () => {
         handlePrintStickerTicket({ repairJob, profile }, (error) => {
-             toast({ variant: "destructive", title: "Error de Impresión", description: error })
+             toast({ variant: "destructive", title: "Error", description: error })
         });
     }
 
     const onPrintAll = () => {
-        handlePrintAllTickets({ repairJob, businessName: profile?.businessName, profile, bcvRate }, (error) => {
-             toast({ variant: "destructive", title: "Error de Impresión", description: error })
+        handlePrintAllTickets({ repairJob, businessName: profile?.businessName, profile, bcvRate, parallelRate }, (error) => {
+             toast({ variant: "destructive", title: "Error", description: error })
         });
     }
 
@@ -239,9 +231,7 @@ const ActionsCell = ({ repairJob }: { repairJob: RepairJob }) => {
                 <AlertDialogContent>
                     <AlertDialogHeader>
                     <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        Esto eliminará permanentemente el trabajo de reparación para <span className="font-semibold">{repairJob.customerName}</span> y devolverá todas las piezas (reservadas y consumidas) al inventario de forma segura.
-                    </AlertDialogDescription>
+                    <AlertDialogDescription>Esto eliminará el trabajo y devolverá las piezas al stock.</AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
@@ -309,14 +299,10 @@ const StatusCell = ({ repairJob }: { repairJob: RepairJob }) => {
                 transaction.update(jobRef, updateData);
             });
 
-            if (newStatus === 'Completado') {
-                toast({ title: 'Trabajo Entregado', description: `Piezas descontadas e inicio de garantía.` });
-            } else {
-                toast({ title: 'Estado Actualizado' });
-            }
+            toast({ title: 'Estado Actualizado' });
         } catch (e: any) {
             console.error("Status Change Error:", e);
-            toast({ variant: "destructive", title: "Error al actualizar", description: e.message });
+            toast({ variant: "destructive", title: "Error", description: e.message });
         } finally {
             setIsUpdating(false);
         }

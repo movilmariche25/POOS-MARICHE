@@ -63,6 +63,9 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
   );
   const { data: profile } = useDoc<UserProfile>(profileRef);
   
+  // Determinamos si la venta tiene promociones para elegir la tasa
+  const hasPromo = useMemo(() => cart.some(item => item.isPromo), [cart]);
+
   useEffect(() => {
     if (open && !completedSale) {
       setPayments([]);
@@ -78,9 +81,10 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
       if (payment.method === 'Efectivo USD') {
         return acc + payment.amount;
       }
-      return acc + convert(payment.amount, 'Bs', 'USD');
+      // CRITICAL: Usamos Tasa de Reposición (Parallel) SOLO si hay promociones, sino BCV
+      return acc + convert(payment.amount, 'Bs', 'USD', hasPromo);
     }, 0);
-  }, [payments, convert, currencyLoading]);
+  }, [payments, convert, currencyLoading, hasPromo]);
 
   const totalGivenInUSD = useMemo(() => {
       if (currencyLoading) return 0;
@@ -88,9 +92,9 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
           if (payment.method === 'Efectivo USD') {
               return acc + payment.amount;
           }
-          return acc + convert(payment.amount, 'Bs', 'USD');
+          return acc + convert(payment.amount, 'Bs', 'USD', hasPromo);
       }, 0);
-  }, [changePayments, convert, currencyLoading]);
+  }, [changePayments, convert, currencyLoading, hasPromo]);
 
   const remainingToPayInUSD = useMemo(() => Math.max(0, total - totalPaid), [total, totalPaid]);
   const potentialChangeInUSD = useMemo(() => (totalPaid > total ? totalPaid - total : 0), [totalPaid, total]);
@@ -155,7 +159,6 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
   }
 
   const handleCloseAndReset = () => {
-      // SOLO LIMPIAR SI LA VENTA FUE COMPLETADA
       if (completedSale) {
           if (isRepairSale) {
             router.push('/dashboard/repairs');
@@ -188,7 +191,6 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
   return (
     <Dialog open={open} onOpenChange={(isOpen) => {
         if (!isOpen) {
-            // SI CERRAMOS SIN HABER COMPLETADO LA VENTA, NO LIMPIAMOS EL CARRITO
             if (completedSale) {
                 handleCloseAndReset();
             } else {
@@ -236,9 +238,12 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                     <div className="text-center p-4 bg-muted rounded-lg relative">
                         <p className="text-sm text-muted-foreground">Monto Total a Pagar</p>
                         <p className="text-4xl font-bold">{getSymbol('USD')}{formatCurrency(total, 'USD')}</p>
-                        <p className="text-sm text-muted-foreground">o ~Bs {formatCurrency(convert(total, 'USD', 'Bs'), 'Bs')}</p>
+                        <p className="text-sm text-muted-foreground font-black">o ~Bs {formatCurrency(convert(total, 'USD', 'Bs', hasPromo), 'Bs')}</p>
                         {isPartialPayment && (
                             <Badge variant="destructive" className="absolute top-2 right-2 animate-pulse">PAGO PARCIAL / ABONO</Badge>
+                        )}
+                        {hasPromo && (
+                            <Badge className="absolute top-2 left-2 bg-blue-600 font-black text-[9px] tracking-tighter">OFERTA ACTIVA</Badge>
                         )}
                     </div>
 
@@ -259,7 +264,9 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                                 {payments.map(p => {
                                     const option = paymentMethodOptions.find(o => o.value === p.method)!;
                                     const symbol = option.isBs ? getSymbol('Bs') : getSymbol('USD');
-                                    const remainingInCurrency = option.isBs ? convert(remainingToPayInUSD, 'USD', 'Bs') : remainingToPayInUSD;
+                                    
+                                    // Calculamos el restante en la moneda del método
+                                    const remainingInCurrency = option.isBs ? convert(remainingToPayInUSD, 'USD', 'Bs', hasPromo) : remainingToPayInUSD;
 
                                     return (
                                     <div key={p.id} className="p-3 border rounded-lg bg-background flex flex-col gap-2 shadow-sm">
@@ -319,7 +326,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                             <div className="font-black text-green-600">
                                 <p className="text-2xl">{getSymbol('USD')}{formatCurrency(potentialChangeInUSD, 'USD')}</p>
                                 <p className="text-[10px] text-green-700/80">
-                                o Bs {formatCurrency(convert(potentialChangeInUSD, 'USD', 'Bs'), 'Bs')}
+                                o Bs {formatCurrency(convert(potentialChangeInUSD, 'USD', 'Bs', hasPromo), 'Bs')}
                                 </p>
                             </div>
                             </>
@@ -328,12 +335,19 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                             <p className="text-xs font-bold text-muted-foreground uppercase">Monto Restante</p>
                             <div className="font-black text-destructive">
                                 <p className="text-2xl">{getSymbol('USD')}{formatCurrency(total - totalPaid, 'USD')}</p>
-                                <p className="text-[10px] text-destructive/80">
-                                o Bs {formatCurrency(convert(total - totalPaid, 'USD', 'Bs'), 'Bs')}
+                                <p className="text-[10px] text-destructive/80 font-black">
+                                o Bs {formatCurrency(convert(total - totalPaid, 'USD', 'Bs', hasPromo), 'Bs')}
                                 </p>
                             </div>
                             </>
                         )}
+                    </div>
+
+                    <div className="p-3 bg-slate-50 border rounded-lg flex items-center gap-2">
+                        <div className={cn("w-2 h-2 rounded-full", hasPromo ? "bg-amber-500 animate-pulse" : "bg-green-500")} />
+                        <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
+                            Tasa de Cobro: <span className="text-slate-800">{hasPromo ? 'REPOSICIÓN (PROMO ACTIVA)' : 'OFICIAL (BCV)'}</span>
+                        </span>
                     </div>
 
                     {isPartialPayment && isRepairSale && (
@@ -366,7 +380,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                         <div className="text-center p-3 rounded-lg bg-primary/10 border border-primary/20">
                             <p className="text-[10px] font-bold text-primary uppercase tracking-widest">Vuelto Requerido</p>
                             <p className="text-3xl font-black text-primary">${formatCurrency(requiredChangeInUSD)}</p>
-                            <p className="text-[10px] text-primary/80 font-bold">o Bs {formatCurrency(convert(requiredChangeInUSD, 'USD', 'Bs'))}</p>
+                            <p className="text-[10px] text-primary/80 font-bold">o Bs {formatCurrency(convert(requiredChangeInUSD, 'USD', 'Bs', hasPromo))}</p>
                         </div>
 
                         <div className="space-y-2">
@@ -416,7 +430,7 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                             ? (
                                 <div className="flex flex-col gap-0.5">
                                     <span>Faltan devolver: ${formatCurrency(Math.abs(changeDifference))}</span>
-                                    <span>o Bs {formatCurrency(convert(Math.abs(changeDifference), 'USD', 'Bs'))}</span>
+                                    <span>o Bs {formatCurrency(convert(Math.abs(changeDifference), 'USD', 'Bs', hasPromo))}</span>
                                 </div>
                             )
                             : "Vuelto Correcto ✓"}

@@ -79,6 +79,7 @@ export type FiadoItem = {
   quantity: number;
   price: number;
   costPrice: number;
+  isPromo?: boolean;
 };
 
 export type Fiado = {
@@ -95,6 +96,7 @@ export type Fiado = {
   dueDate?: string;
   notes?: string;
   items?: FiadoItem[];
+  isPromo?: boolean;
 };
 
 export type Worker = {

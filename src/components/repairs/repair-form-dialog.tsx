@@ -24,6 +24,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { RepairJob, RepairStatus, Product, UserProfile, ReservedPart } from "@/lib/types";
 import { useState, useEffect, ReactNode, useMemo, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -71,7 +72,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
   const setOpen = onOpenChange !== undefined ? onOpenChange : setInternalOpen;
 
   const { toast } = useToast();
-  const { getFinalPrice, getDynamicPrice, format: formatCurrency, bcvRate, profitMargin } = useCurrency();
+  const { getFinalPrice, getDynamicPrice, format: formatCurrency, bcvRate, parallelRate, profitMargin } = useCurrency();
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const isInitialized = useRef(false);
@@ -115,13 +116,24 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
 
   const currentID = form.watch("customerID");
   const reservedParts = form.watch("reservedParts") as (ReservedPart & { isPromo?: boolean, isWarranty?: boolean, isManual?: boolean })[];
+  
+  // DETECCIÓN AUTOMÁTICA DE PROMOCIÓN
+  const effectiveIsPromo = useMemo(() => {
+    const parts = [...reservedParts, ...(repairJob?.consumedParts || [])];
+    return parts.some(p => p.isPromo && !p.isWarranty);
+  }, [reservedParts, repairJob?.consumedParts]);
+
+  // Sincronizar el flag isPromo del formulario con la detección automática
+  useEffect(() => {
+    if (isInitialized.current) {
+        form.setValue("isPromo", effectiveIsPromo);
+    }
+  }, [effectiveIsPromo, form]);
 
   // Efecto de Autoguardado para Borrador
   useEffect(() => {
     if (!repairJob && open) {
         const subscription = form.watch((value) => {
-            // Solo guardamos automáticamente si NO estamos en proceso de minimizar manualmente
-            // y si el formulario ya terminó de cargar sus datos iniciales
             if (isInitialized.current && !isClosingViaMinimize.current) {
                 localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...value, isMinimized: false }));
             }
@@ -168,7 +180,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
     }
   };
 
-  // Carga inicial de datos (desde repairJob existente o borrador local)
+  // Carga inicial de datos
   useEffect(() => {
     if (!open) {
         isInitialized.current = false;
@@ -190,6 +202,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                 reservedParts: repairJob.reservedParts || [],
                 status: repairJob.status as any,
                 isMinimized: false,
+                isPromo: repairJob.isPromo || false
             });
         } else {
             const savedDraft = localStorage.getItem(DRAFT_KEY);
@@ -238,7 +251,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
               productName: p.name.toUpperCase(),
               quantity: 1,
               costPrice: p.costPrice,
-              isPromo: false,
+              isPromo: !!(p.promoPrice && p.promoPrice > 0), // Detección automática al añadir
               isWarranty: false
           };
           form.setValue('reservedParts', [...reservedParts, newPart]);
@@ -263,15 +276,10 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
   };
 
   const handleMinimize = () => {
-      // Bloquear autoguardado para evitar sobreescritura de flags
       isClosingViaMinimize.current = true;
       isInitialized.current = false;
-      
       const currentValues = form.getValues();
-      const draft = { ...currentValues, isMinimized: true };
-      
-      // Guardar el estado explícito de minimizado
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ ...currentValues, isMinimized: true }));
       setOpen(false);
   };
 
@@ -342,7 +350,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                         const pData = pSnap.data() as Product;
                         transaction.update(pSnap.ref, {
                             stockLevel: (pData.stockLevel || 0) - part.quantity,
-                            reservedStock: Math.max(0, (pData.reservedStock || 0) - part.quantity)
+                            reservedStock: Math.max(0, (data.reservedStock || 0) - part.quantity)
                         });
                     }
                 }
@@ -383,6 +391,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                 reservedParts: finalReservedParts,
                 consumedParts: finalConsumedParts,
                 partsConsumed,
+                isPromo: effectiveIsPromo, // Guardamos la detección automática
                 ...completionData
             };
             
@@ -393,7 +402,13 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
         localStorage.removeItem(DRAFT_KEY);
         toast({ title: "Registro sincronizado con inventario" });
         if (!repairJob) {
-            handlePrintAllTickets({ repairJob: result as RepairJob, businessName: profile?.businessName, profile, bcvRate }, () => {});
+            handlePrintAllTickets({ 
+                repairJob: result as RepairJob, 
+                businessName: profile?.businessName, 
+                profile, 
+                bcvRate,
+                parallelRate 
+            }, () => {});
         }
         setOpen(false);
     } catch (e: any) {
@@ -410,10 +425,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
 
   return (
     <Dialog open={open} onOpenChange={(val) => {
-        if (!val && !repairJob && !isClosingViaMinimize.current) {
-            // Cierre normal sin minimizar -> descartar borrador?
-            // Por ahora, solo cerramos el diálogo
-        }
+        if (!val && !repairJob && !isClosingViaMinimize.current) {}
         setOpen(val);
     }}>
       {children && <DialogTrigger asChild>{children}</DialogTrigger>}
@@ -658,11 +670,26 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                             <div className="border-t border-white/10 pt-3 mt-1 flex justify-between items-end">
                                 <div className="flex flex-col">
                                     <span className="text-[10px] font-bold text-primary uppercase tracking-widest">Saldo Pendiente</span>
-                                    <span className="text-[9px] text-slate-500 font-bold uppercase">Eq: Bs {formatCurrency(currentPending * bcvRate)}</span>
+                                    <span className="text-[9px] text-slate-500 font-bold uppercase">
+                                        Eq: Bs {formatCurrency(currentPending * (effectiveIsPromo ? parallelRate : bcvRate))}
+                                    </span>
                                 </div>
                                 <span className="text-3xl font-black text-primary leading-none tabular-nums">${currentPending.toFixed(2)}</span>
                             </div>
                         </div>
+                        
+                        {/* PANEL INFORMATIVO DE PROMOCIÓN DETECTADA */}
+                        {effectiveIsPromo && (
+                            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-col animate-in slide-in-from-top-2">
+                                <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-blue-700">
+                                    <TicketPercent className="w-3.5 h-3.5" /> 
+                                    Tasa de Reposición Activa
+                                </div>
+                                <p className="text-[8px] text-blue-600/70 font-bold uppercase ml-5">
+                                    Se ha detectado el uso de repuestos en oferta. El saldo en Bolívares se protege usando el dólar de reposición.
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     <FormField control={form.control} name="notes" render={({field}) => (
@@ -701,7 +728,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                         productName: newProd.name.toUpperCase(),
                         quantity: 1,
                         costPrice: newProd.costPrice,
-                        isPromo: false,
+                        isPromo: !!(newProd.promoPrice && newProd.promoPrice > 0),
                         isWarranty: false
                     };
                     form.setValue('reservedParts', [...reservedParts, newPart]);
@@ -726,7 +753,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                             productName: updatedProd.name.toUpperCase(),
                             quantity: 1,
                             costPrice: updatedProd.costPrice,
-                            isPromo: false,
+                            isPromo: !!(updatedProd.promoPrice && updatedProd.promoPrice > 0),
                             isWarranty: false
                         };
                         form.setValue('reservedParts', [...reservedParts, newPart]);

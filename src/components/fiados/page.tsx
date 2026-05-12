@@ -1,4 +1,3 @@
-
 "use client";
 
 import { PageHeader } from "@/components/page-header";
@@ -13,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useMemo, useEffect } from "react";
-import { PlusCircle, HandCoins, DollarSign, Trash2, Search, PackageSearch, X, Plus, ShoppingCart, List, Clock, AlertTriangle, UserCheck, Calendar as CalendarIcon, Smartphone, CreditCard, Landmark, Banknote } from "lucide-react";
+import { PlusCircle, HandCoins, DollarSign, Trash2, Search, PackageSearch, X, Plus, ShoppingCart, List, Clock, AlertTriangle, UserCheck, Calendar as CalendarIcon, Smartphone, CreditCard, Landmark, Banknote, TicketPercent } from "lucide-react";
 import { format, parseISO, differenceInDays, isBefore, isToday, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -160,7 +159,10 @@ function FiadosContent() {
                                             </TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col">
-                                                    <span className="font-bold text-sm">{fiado.customerName}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-sm">{fiado.customerName}</span>
+                                                        {fiado.isPromo && <Badge className="bg-blue-600 text-[8px] h-3 px-1">PROMO</Badge>}
+                                                    </div>
                                                     <span className="text-[10px] text-muted-foreground">{fiado.customerID}</span>
                                                 </div>
                                             </TableCell>
@@ -310,6 +312,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
     const [concept, setConcept] = useState("");
     const [totalAmount, setTotalAmount] = useState("");
     const [selectedItems, setSelectedItems] = useState<FiadoItem[]>([]);
+    const [isPromo, setIsPromo] = useState(false);
 
     const productsCollection = useMemoFirebase(() => 
         (firestore && user) ? collection(firestore, 'users', user.uid, 'products') : null, 
@@ -323,40 +326,6 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
     );
     const { data: repairJobs } = useCollection<RepairJob>(repairJobsCollection);
 
-    const hasPendingFiado = useMemo(() => {
-        if (!customerID) return null;
-        return existingFiados.find(f => f.customerID === customerID && f.status === 'Pendiente');
-    }, [customerID, existingFiados]);
-
-    const foundCustomer = useMemo(() => {
-        if (!customerID || customerID.length < 5) return null;
-        
-        const fiadoMatch = existingFiados.find(f => f.customerID.toLowerCase() === customerID.toLowerCase());
-        if (fiadoMatch) return { name: fiadoMatch.customerName, phone: fiadoMatch.customerPhone };
-        
-        const repairMatch = repairJobs?.find(r => r.customerID?.toLowerCase() === customerID.toLowerCase());
-        if (repairMatch) return { name: repairMatch.customerName, phone: repairMatch.customerPhone };
-        
-        return null;
-    }, [customerID, existingFiados, repairJobs]);
-
-    const handleApplyCustomerData = () => {
-        if (foundCustomer) {
-            setCustomerName(foundCustomer.name);
-            setCustomerPhone(foundCustomer.phone);
-            toast({ title: "Datos cargados", description: `Se han aplicado los datos de ${foundCustomer.name}` });
-        }
-    };
-
-    useEffect(() => {
-        if (selectedItems.length > 0) {
-            const total = selectedItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-            const desc = selectedItems.map(i => `${i.quantity}x ${i.productName}`).join(", ");
-            setTotalAmount(total.toFixed(2));
-            setConcept(desc);
-        }
-    }, [selectedItems]);
-
     const handleAddItem = (p: Product) => {
         const price = getFinalPrice(p);
         setSelectedItems(prev => {
@@ -364,7 +333,14 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
             if (existing) {
                 return prev.map(i => i.productId === p.id ? { ...i, quantity: i.quantity + 1 } : i);
             }
-            return [...prev, { productId: p.id!, productName: p.name, quantity: 1, price, costPrice: p.costPrice }];
+            return [...prev, { 
+                productId: p.id!, 
+                productName: p.name, 
+                quantity: 1, 
+                price, 
+                costPrice: p.costPrice,
+                isPromo: !!(p.promoPrice && p.promoPrice > 0)
+            }];
         });
         setSearchOpen(false);
     };
@@ -393,7 +369,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
                     if (pDoc?.exists()) {
                         const currentStock = pDoc.data().stockLevel || 0;
                         if (currentStock < item.quantity) {
-                            throw new Error(`¡Conflicto de Inventario! Stock insuficiente para "${item.productName}". Alguien más podría haber modificado este producto.`);
+                            throw new Error(`Stock insuficiente para "${item.productName}".`);
                         }
                         transaction.update(pDoc.ref, { stockLevel: currentStock - item.quantity });
                     }
@@ -413,7 +389,8 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
                     totalCost: totalCost,
                     status: 'Pendiente',
                     createdAt: new Date().toISOString(),
-                    items: selectedItems
+                    items: selectedItems,
+                    isPromo: isPromo || selectedItems.some(i => i.isPromo)
                 };
                 transaction.set(newDoc, data);
             });
@@ -422,7 +399,7 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
             setIsOpen(false);
             setCustomerID(""); setCustomerName(""); setCustomerPhone(""); setConcept(""); setTotalAmount(""); setSelectedItems([]);
         } catch (e: any) {
-            toast({ title: "Error en base de datos", description: e.message, variant: "destructive" });
+            toast({ title: "Error", description: e.message, variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -432,105 +409,42 @@ function AddFiadoDialog({ children, onAdded, isOpen, setIsOpen, existingFiados }
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>{children}</DialogTrigger>
             <DialogContent className="sm:max-w-lg">
-                <DialogHeader>
-                    <DialogTitle>Registrar Nuevo Crédito</DialogTitle>
-                    <DialogDescription>Los productos seleccionados se restarán del inventario inmediatamente de forma segura.</DialogDescription>
-                </DialogHeader>
+                <DialogHeader><DialogTitle>Registrar Nuevo Crédito</DialogTitle></DialogHeader>
                 <form onSubmit={handleSubmit} className="space-y-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label>Cédula / RIF</Label>
-                            <Input value={customerID} onChange={(e) => setCustomerID(e.target.value)} placeholder="V-12345678" required />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Nombre y Apellido</Label>
-                            <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Juan Perez" required />
-                        </div>
+                        <div className="space-y-2"><Label>Cédula / RIF</Label><Input value={customerID} onChange={(e) => setCustomerID(e.target.value)} placeholder="V-12345678" required /></div>
+                        <div className="space-y-2"><Label>Nombre y Apellido</Label><Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Juan Perez" required /></div>
                     </div>
 
-                    {foundCustomer && (customerName !== foundCustomer.name) && (
-                        <Button 
-                            type="button" 
-                            variant="ghost" 
-                            size="sm" 
-                            className="h-7 text-[10px] text-blue-600 bg-blue-50 hover:bg-blue-100 flex items-center gap-1 font-bold w-full"
-                            onClick={handleApplyCustomerData}
-                        >
-                            <UserCheck className="w-3.5 h-3.5" />
-                            ¿CARGAR DATOS DE {foundCustomer.name.toUpperCase()}?
-                        </Button>
-                    )}
-
-                    {hasPendingFiado && (
-                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-md flex items-center gap-2">
-                            <HandCoins className="w-4 h-4 text-amber-600 shrink-0" />
-                            <p className="text-xs text-amber-800 font-bold">
-                                ESTE CLIENTE TIENE UNA CUENTA PENDIENTE. 
-                                <span className="block font-normal">Puedes añadir productos directamente a su cuenta actual desde la lista principal.</span>
-                            </p>
-                        </div>
-                    )}
-
                     <div className="space-y-2">
-                        <Label>Añadir Productos del Inventario</Label>
+                        <Label>Añadir Productos</Label>
                         <Popover open={searchOpen} onOpenChange={setSearchOpen}>
-                            <PopoverTrigger asChild>
-                                <Button type="button" variant="outline" className="w-full justify-start text-muted-foreground">
-                                    <PackageSearch className="mr-2 h-4 w-4" /> Buscar producto...
-                                </Button>
-                            </PopoverTrigger>
+                            <PopoverTrigger asChild><Button type="button" variant="outline" className="w-full justify-start text-muted-foreground"><PackageSearch className="mr-2 h-4 w-4" /> Buscar producto...</Button></PopoverTrigger>
                             <PopoverContent className="p-0 w-[400px]" align="start">
-                                <Command>
-                                    <CommandInput placeholder="Nombre o SKU..." />
-                                    <CommandList>
-                                        <CommandEmpty>Sin resultados.</CommandEmpty>
-                                        <CommandGroup>
-                                            {(products || []).filter(p => !p.isCombo && p.stockLevel > 0).map(p => (
-                                                <CommandItem key={p.id} onSelect={() => handleAddItem(p)} className="flex justify-between items-center">
-                                                    <span>{p.name}</span>
-                                                    <Badge variant="secondary">{p.stockLevel} disp.</Badge>
-                                                </CommandItem>
-                                            ))}
-                                        </CommandGroup>
-                                    </CommandList>
-                                </Command>
+                                <Command><CommandInput placeholder="Nombre o SKU..." /><CommandList><CommandEmpty>Sin resultados.</CommandEmpty><CommandGroup>
+                                    {(products || []).filter(p => !p.isCombo && p.stockLevel > 0).map(p => (
+                                        <CommandItem key={p.id} onSelect={() => handleAddItem(p)} className="flex justify-between items-center">
+                                            <span>{p.name}</span>
+                                            <Badge variant="secondary">{p.stockLevel} disp.</Badge>
+                                        </CommandItem>
+                                    ))}
+                                </CommandGroup></CommandList></Command>
                             </PopoverContent>
                         </Popover>
                     </div>
 
-                    {selectedItems.length > 0 && (
-                        <div className="border rounded-md p-2 space-y-2 bg-muted/30">
-                            {selectedItems.map(item => (
-                                <div key={item.productId} className="flex items-center justify-between text-xs bg-white p-2 rounded shadow-sm">
-                                    <span className="font-medium flex-1">{item.productName} (x{item.quantity})</span>
-                                    <span className="font-bold mr-4">${(item.price * item.quantity).toFixed(2)}</span>
-                                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleRemoveItem(item.productId)}>
-                                        <X className="h-3 w-3" />
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    <div className="flex items-center space-x-2 p-2 bg-blue-50 border border-blue-100 rounded-md">
+                        <Checkbox id="promo-fiado" checked={isPromo} onCheckedChange={(v) => setIsPromo(!!v)} />
+                        <Label htmlFor="promo-fiado" className="font-bold text-[10px] uppercase text-blue-700 flex items-center gap-1.5 cursor-pointer">
+                            <TicketPercent className="w-3.5 h-3.5" /> Aplicar Tasa de Reposición (Oferta)
+                        </Label>
+                    </div>
 
-                    <div className="space-y-2">
-                        <Label>Concepto (Descripción final)</Label>
-                        <Input value={concept} onChange={(e) => setConcept(e.target.value)} placeholder="Ej: Pantalla Samsung A51" required />
-                    </div>
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label>Teléfono</Label>
-                            <Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="0414-..." required />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Monto Total ($)</Label>
-                            <Input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} placeholder="0.00" required />
-                        </div>
+                        <div className="space-y-2"><Label>Teléfono</Label><Input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="0414-..." required /></div>
+                        <div className="space-y-2"><Label>Monto Total ($)</Label><Input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} placeholder="0.00" required /></div>
                     </div>
-                    <DialogFooter>
-                        <Button type="submit" className="w-full" disabled={loading || selectedItems.length === 0}>
-                            {loading ? "PROCESANDO TRANSACCIÓN SEGURA..." : "Crear Fiado y Descontar Stock"}
-                        </Button>
-                    </DialogFooter>
+                    <DialogFooter><Button type="submit" className="w-full" disabled={loading}>{loading ? "PROCESANDO..." : "Crear Fiado"}</Button></DialogFooter>
                 </form>
             </DialogContent>
         </Dialog>
@@ -576,7 +490,7 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
             await runTransaction(firestore, async (transaction) => {
                 const fiadoRef = doc(firestore, 'users', user.uid, 'fiados', fiado.id!);
                 const fiadoSnap = await transaction.get(fiadoRef);
-                if (!fiadoSnap.exists()) throw new Error("El registro de deuda ya no existe.");
+                if (!fiadoSnap.exists()) throw new Error("El registro ya no existe.");
                 const currentFiadoData = fiadoSnap.data() as Fiado;
 
                 const productSnaps = new Map();
@@ -592,7 +506,7 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
                     if (pDoc?.exists()) {
                         const currentStock = pDoc.data().stockLevel || 0;
                         if (currentStock < item.quantity) {
-                            throw new Error(`¡Error de Sincronización! No hay stock suficiente para "${item.productName}".`);
+                            throw new Error(`No hay stock suficiente para "${item.productName}".`);
                         }
                         transaction.update(pDoc.ref, { stockLevel: currentStock - item.quantity });
                     }
@@ -600,24 +514,20 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
 
                 const addedTotal = selectedItems.reduce((sum, i) => sum + (i.price * i.quantity), 0);
                 const addedCost = selectedItems.reduce((sum, i) => sum + (i.costPrice * i.quantity), 0);
-                const newTotal = currentFiadoData.totalAmount + addedTotal;
-                const newCost = (currentFiadoData.totalCost || 0) + addedCost;
-                const newItems = [...(currentFiadoData.items || []), ...selectedItems];
-                const newConcept = currentFiadoData.concept + ", " + selectedItems.map(i => `${i.quantity}x ${i.productName}`).join(", ");
-
+                
                 transaction.update(fiadoRef, {
-                    totalAmount: newTotal,
-                    totalCost: newCost,
-                    items: newItems,
-                    concept: newConcept
+                    totalAmount: currentFiadoData.totalAmount + addedTotal,
+                    totalCost: (currentFiadoData.totalCost || 0) + addedCost,
+                    items: [...(currentFiadoData.items || []), ...selectedItems],
+                    concept: currentFiadoData.concept + ", " + selectedItems.map(i => `${i.quantity}x ${i.productName}`).join(", ")
                 });
             });
 
-            toast({ title: "Cuenta actualizada correctamente" });
+            toast({ title: "Cuenta actualizada" });
             setOpen(false);
             setSelectedItems([]);
         } catch (e: any) {
-            toast({ title: "Error en la operación", description: e.message, variant: "destructive" });
+            toast({ variant: "destructive", title: "Error", description: e.message });
         } finally {
             setLoading(false);
         }
@@ -625,60 +535,24 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 px-2" title="Añadir más productos a esta cuenta">
-                    <ShoppingCart className="w-4 h-4" />
-                </Button>
-            </DialogTrigger>
+            <DialogTrigger asChild><Button size="sm" variant="outline" className="h-8 px-2"><ShoppingCart className="w-4 h-4" /></Button></DialogTrigger>
             <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Añadir a la cuenta de {fiado.customerName}</DialogTitle>
-                    <DialogDescription>Los productos se sumarán a la deuda actual y se descontarán del inventario de forma atómica.</DialogDescription>
-                </DialogHeader>
+                <DialogHeader><DialogTitle>Añadir a la cuenta de {fiado.customerName}</DialogTitle></DialogHeader>
                 <div className="space-y-4 py-4">
                     <Popover open={searchOpen} onOpenChange={setSearchOpen}>
-                        <PopoverTrigger asChild>
-                            <Button type="button" variant="outline" className="w-full justify-start text-muted-foreground">
-                                <PackageSearch className="mr-2 h-4 w-4" /> Buscar producto para añadir...
-                            </Button>
-                        </PopoverTrigger>
+                        <PopoverTrigger asChild><Button type="button" variant="outline" className="w-full justify-start text-muted-foreground"><PackageSearch className="mr-2 h-4 w-4" /> Buscar producto...</Button></PopoverTrigger>
                         <PopoverContent className="p-0 w-[400px]" align="start">
-                            <Command>
-                                <CommandInput placeholder="Nombre o SKU..." />
-                                <CommandList>
-                                    <CommandEmpty>Sin resultados.</CommandEmpty>
-                                    <CommandGroup>
-                                        {(products || []).filter(p => !p.isCombo && p.stockLevel > 0).map(p => (
-                                            <CommandItem key={p.id} onSelect={() => handleAddItem(p)} className="flex justify-between items-center">
-                                                <span>{p.name}</span>
-                                                <Badge variant="secondary">{p.stockLevel} disp.</Badge>
-                                            </CommandItem>
-                                        ))}
-                                    </CommandGroup>
-                                </CommandList>
-                            </Command>
+                            <Command><CommandInput placeholder="Nombre o SKU..." /><CommandList><CommandEmpty>Sin resultados.</CommandEmpty><CommandGroup>
+                                {(products || []).filter(p => !p.isCombo && p.stockLevel > 0).map(p => (
+                                    <CommandItem key={p.id} onSelect={() => handleAddItem(p)} className="flex justify-between items-center">
+                                        <span>{p.name}</span><Badge variant="secondary">{p.stockLevel} disp.</Badge>
+                                    </CommandItem>
+                                ))}
+                            </CommandGroup></CommandList></Command>
                         </PopoverContent>
                     </Popover>
-
-                    {selectedItems.length > 0 && (
-                        <div className="border rounded-md p-2 space-y-2 bg-muted/30">
-                            {selectedItems.map(item => (
-                                <div key={item.productId} className="flex items-center justify-between text-xs bg-white p-2 rounded shadow-sm">
-                                    <span className="font-medium flex-1">{item.productName} (x{item.quantity})</span>
-                                    <span className="font-bold mr-4">${(item.price * item.quantity).toFixed(2)}</span>
-                                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleRemoveItem(item.productId)}>
-                                        <X className="h-3 w-3" />
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
                 </div>
-                <DialogFooter>
-                    <Button onClick={handleUpdate} className="w-full" disabled={loading || selectedItems.length === 0}>
-                        {loading ? "SINCRONIZANDO CON INVENTARIO..." : "Confirmar y Añadir a Deuda"}
-                    </Button>
-                </DialogFooter>
+                <DialogFooter><Button onClick={handleUpdate} className="w-full" disabled={loading || selectedItems.length === 0}>{loading ? "GUARDANDO..." : "Confirmar y Añadir"}</Button></DialogFooter>
             </DialogContent>
         </Dialog>
     );
@@ -687,7 +561,7 @@ function AddItemsToFiadoDialog({ fiado }: { fiado: Fiado }) {
 function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
     const { firestore, user } = useFirebase();
     const { toast } = useToast();
-    const { format: formatCurrency, getSymbol, bcvRate, parallelRate, convert } = useCurrency();
+    const { format: formatCurrency, bcvRate, parallelRate, convert } = useCurrency();
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [payments, setPayments] = useState<(Payment & { id: number })[]>([]);
@@ -695,13 +569,14 @@ function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
     const [isGivingChange, setIsGivingChange] = useState(false);
 
     const pending = fiado.totalAmount - fiado.amountPaid;
+    const hasPromo = !!fiado.isPromo;
 
     const totalAbonoInUSD = useMemo(() => {
         return payments.reduce((acc, p) => {
-            // CRITICAL: Usamos tasa de reposición (true) para valuar abonos de deuda
-            return acc + (p.method === 'Efectivo USD' ? p.amount : convert(p.amount, 'Bs', 'USD', true));
+            // CRITICAL: Usamos tasa de reposición (hasPromo) SOLO si el fiado tiene promociones
+            return acc + (p.method === 'Efectivo USD' ? p.amount : convert(p.amount, 'Bs', 'USD', hasPromo));
         }, 0);
-    }, [payments, convert]);
+    }, [payments, convert, hasPromo]);
 
     const remainingToPayInUSD = useMemo(() => Math.max(0, pending - totalAbonoInUSD), [pending, totalAbonoInUSD]);
     const potentialChangeInUSD = useMemo(() => (totalAbonoInUSD > pending ? totalAbonoInUSD - pending : 0), [totalAbonoInUSD, pending]);
@@ -709,19 +584,12 @@ function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
 
     const totalChangeGivenInUSD = useMemo(() => {
         return changePayments.reduce((acc, p) => {
-            return acc + (p.method === 'Efectivo USD' ? p.amount : convert(p.amount, 'Bs', 'USD', true));
+            return acc + (p.method === 'Efectivo USD' ? p.amount : convert(p.amount, 'Bs', 'USD', hasPromo));
         }, 0);
-    }, [changePayments, convert]);
+    }, [changePayments, convert, hasPromo]);
 
     const changeDifference = requiredChangeInUSD - totalChangeGivenInUSD;
     const remainingInUSD = Math.max(0, pending - (totalAbonoInUSD - totalChangeGivenInUSD));
-
-    useEffect(() => {
-        if (potentialChangeInUSD <= 0.001) {
-            setIsGivingChange(false);
-            setChangePayments([]);
-        }
-    }, [potentialChangeInUSD]);
 
     const handleAddPayment = (method: PaymentMethod) => {
         setPayments(prev => [...prev, { id: Date.now(), method, amount: 0, reference: '' }]);
@@ -753,7 +621,7 @@ function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
         const finalNetAbonoInUSD = totalAbonoInUSD - totalChangeGivenInUSD;
         
         if (finalNetAbonoInUSD <= 0) {
-            toast({ title: "Monto inválido", description: "El abono neto debe ser mayor a 0.", variant: "destructive" });
+            toast({ title: "Monto inválido", variant: "destructive" });
             return;
         }
 
@@ -762,10 +630,9 @@ function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
             await runTransaction(firestore, async (transaction) => {
                 const fiadoRef = doc(firestore, 'users', user.uid, 'fiados', fiado.id!);
                 const fiadoSnap = await transaction.get(fiadoRef);
-                
-                if (!fiadoSnap.exists()) throw new Error("El registro de deuda ya no existe.");
-                const currentFiado = fiadoSnap.data() as Fiado;
+                if (!fiadoSnap.exists()) return;
 
+                const currentFiado = fiadoSnap.data() as Fiado;
                 const saleId = `S-FIA-${Date.now()}`;
                 const saleRef = doc(firestore, 'users', user.uid, 'sale_transactions', saleId);
 
@@ -775,7 +642,7 @@ function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
                 const saleData: Sale = {
                     id: saleId,
                     fiadoId: fiado.id,
-                    items: [{ productId: fiado.id!, name: `Abono Fiado: ${currentFiado.customerName}`, quantity: 1, price: finalNetAbonoInUSD }],
+                    items: [{ productId: fiado.id!, name: `Abono: ${currentFiado.customerName}`, quantity: 1, price: finalNetAbonoInUSD }],
                     totalAmount: finalNetAbonoInUSD,
                     subtotal: finalNetAbonoInUSD,
                     discount: 0,
@@ -797,13 +664,11 @@ function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
                 });
             });
             
-            toast({ title: "Operación Registrada con Éxito" });
+            toast({ title: "Abono Registrado" });
             setOpen(false);
-            setPayments([]);
-            setChangePayments([]);
-            setIsGivingChange(false);
+            setPayments([]); setChangePayments([]); setIsGivingChange(false);
         } catch (e: any) {
-            toast({ title: "Error al procesar", description: e.message, variant: "destructive" });
+            toast({ title: "Error", description: e.message, variant: "destructive" });
         } finally {
             setLoading(false);
         }
@@ -811,198 +676,73 @@ function CobrarFiadoDialog({ fiado }: { fiado: Fiado }) {
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <Button size="sm" variant="outline" className="h-8 text-green-600 border-green-200 hover:bg-green-50">
-                    <DollarSign className="w-3.5 h-3.5 mr-1" /> Abonar
-                </Button>
-            </DialogTrigger>
-            <DialogContent className={cn(
-                "transition-all duration-300",
-                isGivingChange ? "sm:max-w-4xl" : "sm:max-w-md"
-            )}>
-                <DialogHeader>
-                    <DialogTitle>Registrar Pago: {fiado.customerName}</DialogTitle>
-                    <DialogDescription>
-                        Deuda actual: <span className="font-bold text-primary">${pending.toFixed(2)}</span>
-                    </DialogDescription>
-                </DialogHeader>
+            <DialogTrigger asChild><Button size="sm" variant="outline" className="h-8 text-green-600 border-green-200 hover:bg-green-50"><DollarSign className="w-3.5 h-3.5 mr-1" /> Abonar</Button></DialogTrigger>
+            <DialogContent className={cn("transition-all", isGivingChange ? "sm:max-w-4xl" : "sm:max-w-md")}>
+                <DialogHeader><DialogTitle>Registrar Pago: {fiado.customerName}</DialogTitle><DialogDescription>Deuda: <span className="font-bold text-primary">${pending.toFixed(2)}</span> {hasPromo && <Badge className="ml-2 bg-blue-600 text-[8px]">OFERTA</Badge>}</DialogDescription></DialogHeader>
                 
                 <div className={cn("grid grid-cols-1 gap-6 py-2", isGivingChange && "md:grid-cols-2")}>
                     <div className="space-y-4">
-                        <div className="space-y-2">
-                            <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Añadir Métodos de Pago</Label>
-                            <div className="flex flex-wrap gap-2">
-                                {paymentMethodOptions.map(option => (
-                                    <Button 
-                                        key={option.value} 
-                                        variant="outline" 
-                                        size="sm" 
-                                        className="h-8 text-[10px]"
-                                        onClick={() => handleAddPayment(option.value)}
-                                    >
-                                        <option.icon className="w-3.5 h-3.5 mr-1.5" /> {option.label}
-                                    </Button>
-                                ))}
-                            </div>
+                        <div className="flex flex-wrap gap-2">
+                            {paymentMethodOptions.map(option => (
+                                <Button key={option.value} variant="outline" size="sm" className="h-8 text-[10px]" onClick={() => handleAddPayment(option.value)}>
+                                    <option.icon className="w-3.5 h-3.5 mr-1.5" /> {option.label}
+                                </Button>
+                            ))}
                         </div>
 
                         {payments.length > 0 && (
-                            <ScrollArea className="h-[200px] pr-2">
-                                <div className="space-y-3">
-                                    {payments.map(p => {
-                                        const option = paymentMethodOptions.find(o => o.value === p.method)!;
-                                        const symbol = option.isBs ? 'Bs' : '$';
-                                        // CRITICAL: Usamos tasa de reposición para que el abono en Bs cubra el costo de reposición del dólar
-                                        const remainingInCurrency = option.isBs ? convert(remainingToPayInUSD, 'USD', 'Bs', true) : remainingToPayInUSD;
-
-                                        return (
-                                            <div key={p.id} className="bg-white p-3 rounded-lg border shadow-sm space-y-2">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-xs font-bold flex items-center gap-1.5">
-                                                        <option.icon className="w-3.5 h-3.5" /> {p.method}
-                                                    </span>
-                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleRemovePayment(p.id)}>
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </Button>
-                                                </div>
-                                                <div className="flex flex-col gap-2">
-                                                    <div className="flex gap-2">
-                                                        <div className="relative flex-1">
-                                                            <span className="absolute left-2.5 top-2.5 text-muted-foreground text-xs">{symbol}</span>
-                                                            <Input 
-                                                                type="number" 
-                                                                placeholder="0.00" 
-                                                                className="h-9 pl-7 text-xs font-bold" 
-                                                                value={p.amount || ''}
-                                                                onChange={(e) => handleUpdatePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}
-                                                            />
-                                                        </div>
-                                                        {option.hasReference && (
-                                                            <Input 
-                                                                placeholder="Ref." 
-                                                                className="h-9 text-xs font-mono font-bold flex-1" 
-                                                                value={p.reference}
-                                                                onChange={(e) => handleUpdatePayment(p.id, 'reference', e.target.value)}
-                                                            />
-                                                        )}
-                                                    </div>
-                                                    {remainingToPayInUSD > 0 && (
-                                                        <button 
-                                                            type="button"
-                                                            onClick={() => handleUpdatePayment(p.id, 'amount', parseFloat(remainingInCurrency.toFixed(2)))}
-                                                            className="text-[9px] font-black uppercase text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
-                                                        >
-                                                            PAGAR RESTANTE: {symbol}{formatCurrency(remainingInCurrency)}
-                                                        </button>
-                                                    )}
-                                                </div>
+                            <ScrollArea className="h-[200px] pr-2"><div className="space-y-3">
+                                {payments.map(p => {
+                                    const option = paymentMethodOptions.find(o => o.value === p.method)!;
+                                    const symbol = option.isBs ? 'Bs' : '$';
+                                    const remainingInCurrency = option.isBs ? convert(remainingToPayInUSD, 'USD', 'Bs', hasPromo) : remainingToPayInUSD;
+                                    return (
+                                        <div key={p.id} className="bg-white p-3 rounded-lg border shadow-sm space-y-2">
+                                            <div className="flex justify-between items-center"><span className="text-xs font-bold flex items-center gap-1.5"><option.icon className="w-3.5 h-3.5" /> {p.method}</span><Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleRemovePayment(p.id)}><Trash2 className="w-3.5 h-3.5" /></Button></div>
+                                            <div className="flex gap-2">
+                                                <div className="relative flex-1"><span className="absolute left-2.5 top-2.5 text-muted-foreground text-xs">{symbol}</span><Input type="number" placeholder="0.00" className="h-9 pl-7 text-xs font-bold" value={p.amount || ''} onChange={(e) => handleUpdatePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}/></div>
+                                                {option.hasReference && <Input placeholder="Ref." className="h-9 text-xs font-mono font-bold flex-1" value={p.reference} onChange={(e) => handleUpdatePayment(p.id, 'reference', e.target.value)}/>}
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                            </ScrollArea>
+                                            {remainingToPayInUSD > 0 && <button type="button" onClick={() => handleUpdatePayment(p.id, 'amount', parseFloat(remainingInCurrency.toFixed(2)))} className="text-[9px] font-black uppercase text-muted-foreground hover:text-primary transition-colors flex items-center gap-1">PAGAR RESTANTE: {symbol}{formatCurrency(remainingInCurrency)}</button>}
+                                        </div>
+                                    );
+                                })}
+                            </div></ScrollArea>
                         )}
 
                         <div className="p-3 bg-primary/5 rounded-lg border border-primary/10">
-                            <div className="flex justify-between items-center text-sm">
-                                <span className="text-muted-foreground font-bold uppercase text-[10px]">Total Recibido:</span>
-                                <span className="font-black text-primary text-lg">${totalAbonoInUSD.toFixed(2)}</span>
-                            </div>
-                            <div className="flex justify-between items-start text-[10px] mt-1 border-t pt-1">
-                                <span className="text-muted-foreground uppercase font-bold text-[10px]">Nuevo Saldo:</span>
-                                <div className="flex flex-col items-end">
-                                    <span className={cn("font-black text-sm", remainingInUSD < 0 ? "text-destructive" : "text-slate-600")}>
-                                        ${remainingInUSD.toFixed(2)}
-                                    </span>
-                                </div>
-                            </div>
+                            <div className="flex justify-between items-center text-sm"><span className="text-muted-foreground font-bold uppercase text-[10px]">Total Recibido:</span><span className="font-black text-primary text-lg">${totalAbonoInUSD.toFixed(2)}</span></div>
                         </div>
 
-                        {potentialChangeInUSD > 0.001 && (
-                            <div className="flex items-center space-x-2 pt-2 border-t">
-                                <Checkbox 
-                                    id="give-change-fiados" 
-                                    checked={isGivingChange} 
-                                    onCheckedChange={(checked) => setIsGivingChange(!!checked)} 
-                                />
-                                <Label htmlFor="give-change-fiados" className="cursor-pointer font-black text-xs text-primary">REGISTRAR VUELTO ENTREGADO</Label>
-                            </div>
-                        )}
+                        {potentialChangeInUSD > 0.001 && <div className="flex items-center space-x-2 pt-2 border-t"><Checkbox id="give-change-fiados" checked={isGivingChange} onCheckedChange={(checked) => setIsGivingChange(!!checked)} /><Label htmlFor="give-change-fiados" className="cursor-pointer font-black text-xs text-primary uppercase">Registrar Vuelto</Label></div>}
                     </div>
 
                     {isGivingChange && (
                         <div className="space-y-4 md:border-l md:pl-6 animate-in slide-in-from-right-4 duration-300">
-                            <div className="text-center p-3 rounded-lg bg-primary/10 border border-primary/20">
-                                <p className="text-[10px] text-primary font-bold uppercase tracking-widest">Vuelto Requerido</p>
-                                <p className="text-3xl font-black text-primary">${potentialChangeInUSD.toFixed(2)}</p>
-                                <p className="text-[10px] text-primary/80 font-bold">o Bs {formatCurrency(convert(potentialChangeInUSD, 'USD', 'Bs', true))}</p>
+                            <div className="text-center p-3 rounded-lg bg-primary/10 border border-primary/20"><p className="text-[10px] text-primary font-bold uppercase">Vuelto Requerido</p><p className="text-3xl font-black text-primary">${potentialChangeInUSD.toFixed(2)}</p></div>
+                            <div className="flex flex-wrap gap-2">
+                                {changeMethodOptions.map(method => (
+                                    <Button key={method.value} variant="outline" size="sm" className="h-7 text-[9px]" onClick={() => handleAddChangePayment(method.value)}><method.icon className="w-3 h-3 mr-1.5" /> {method.label}</Button>
+                                ))}
                             </div>
-
-                            <div className="space-y-2">
-                                <p className="text-[10px] font-bold text-muted-foreground uppercase">Métodos de Entrega</p>
-                                <div className="flex flex-wrap gap-2">
-                                    {changeMethodOptions.map(method => (
-                                        <Button 
-                                            key={method.value} 
-                                            variant="outline" 
-                                            size="sm" 
-                                            className="h-7 text-[9px]"
-                                            onClick={() => handleAddChangePayment(method.value)}
-                                        >
-                                            <method.icon className="w-3 h-3 mr-1.5" /> {method.label}
-                                        </Button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <ScrollArea className="h-[180px] pr-2">
-                                <div className="space-y-2">
-                                    {changePayments.map(p => {
-                                        const option = changeMethodOptions.find(o => o.value === p.method)!;
-                                        const symbol = option.isBs ? 'Bs' : '$';
-                                        return (
-                                            <div key={p.id} className="bg-white p-2 rounded-lg border flex gap-2 items-center shadow-sm">
-                                                <span className="text-[10px] font-bold text-muted-foreground w-20 truncate">{p.method}</span>
-                                                <div className="relative flex-1">
-                                                    <span className="absolute left-2.5 top-2 text-muted-foreground text-[10px] font-bold">{symbol}</span>
-                                                    <Input 
-                                                        type="number" 
-                                                        className="h-8 pl-7 text-xs font-bold" 
-                                                        value={p.amount || ''}
-                                                        onChange={(e) => handleUpdateChangePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}
-                                                    />
-                                                </div>
-                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleRemovePayment(p.id)}>
-                                                    <Trash2 className="w-3.5 h-3.5" />
-                                                </Button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </ScrollArea>
-
-                            <div className={cn(
-                                "text-center font-black text-[10px] p-3 rounded-md uppercase border",
-                                Math.abs(changeDifference) > 0.01 ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-green-600/10 text-green-700 border-green-600/20"
-                            )}>
-                                {Math.abs(changeDifference) > 0.01 
-                                    ? (
-                                        <div className="flex flex-col gap-0.5">
-                                            <span>Faltan devolver: ${Math.abs(changeDifference).toFixed(2)}</span>
-                                            <span>o Bs {formatCurrency(convert(Math.abs(changeDifference), 'USD', 'Bs', true))}</span>
+                            <ScrollArea className="h-[180px] pr-2"><div className="space-y-2">
+                                {changePayments.map(p => {
+                                    const option = changeMethodOptions.find(o => o.value === p.method)!;
+                                    const symbol = option.isBs ? 'Bs' : '$';
+                                    return (
+                                        <div key={p.id} className="bg-white p-2 rounded-lg border flex gap-2 items-center shadow-sm">
+                                            <span className="text-[10px] font-bold text-muted-foreground w-20 truncate">{p.method}</span>
+                                            <div className="relative flex-1"><span className="absolute left-2.5 top-2 text-muted-foreground text-[10px] font-bold">{symbol}</span><Input type="number" className="h-8 pl-7 text-xs font-bold" value={p.amount || ''} onChange={(e) => handleUpdateChangePayment(p.id, 'amount', parseFloat(e.target.value) || 0)}/></div>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleRemovePayment(p.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
                                         </div>
-                                    )
-                                    : "Vuelto Correcto ✓"}
-                            </div>
+                                    );
+                                })}
+                            </div></ScrollArea>
                         </div>
                     )}
                 </div>
 
-                <DialogFooter className="mt-4">
-                    <Button onClick={handleAbono} className="w-full h-12 text-base font-black shadow-md" disabled={payments.length === 0 || totalAbonoInUSD <= 0 || loading}>
-                        {loading ? "PROCESANDO PAGO..." : "CONFIRMAR ABONO"}
-                    </Button>
-                </DialogFooter>
+                <DialogFooter className="mt-4"><Button onClick={handleAbono} className="w-full h-12 text-base font-black shadow-md" disabled={payments.length === 0 || loading}>{loading ? "PROCESANDO..." : "CONFIRMAR ABONO"}</Button></DialogFooter>
             </DialogContent>
         </Dialog>
     );
