@@ -28,6 +28,7 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
     };
 
     const showInfo = profile?.showInfoOnReceipt;
+    const showRate = profile?.showRateOnReceipt !== false;
     const isRepairReceipt = !!sale.repairJobId && repairData;
     
     const bcvRate = sale.bcvRateAtTime || 1;
@@ -141,7 +142,9 @@ export function ReceiptView({ sale, currency, businessName, profile, repairData 
 
              <div className="footer-section mt-4 border-t pt-2 text-center">
                 <p className="bold-header text-[8pt]">¡GRACIAS POR SU COMPRA!</p>
-                <p className="meta-info text-[6pt] mt-1 italic">TASA REF: {bcvRate.toFixed(2)} Bs/$</p>
+                {showRate && (
+                    <p className="meta-info text-[6pt] mt-1 italic">TASA REF: {bcvRate.toFixed(2)} Bs/$</p>
+                )}
                 <p className="meta-info text-[6pt] mt-2">Documento generado desde el sistema</p>
              </div>
         </div>

@@ -188,6 +188,8 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
     });
   };
 
+  const showRateInfo = profile?.showRateOnReceipt !== false;
+
   return (
     <Dialog open={open} onOpenChange={(isOpen) => {
         if (!isOpen) {
@@ -343,12 +345,14 @@ export function CheckoutDialog({ cart, allProducts, total, children, onCheckout,
                         )}
                     </div>
 
-                    <div className="p-3 bg-slate-50 border rounded-lg flex items-center gap-2">
-                        <div className={cn("w-2 h-2 rounded-full", hasPromo ? "bg-amber-500 animate-pulse" : "bg-green-500")} />
-                        <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
-                            Tasa de Cobro: <span className="text-slate-800">{hasPromo ? 'REPOSICIÓN (PROMO ACTIVA)' : 'OFICIAL (BCV)'}</span>
-                        </span>
-                    </div>
+                    {showRateInfo && (
+                        <div className="p-3 bg-slate-50 border rounded-lg flex items-center gap-2">
+                            <div className={cn("w-2 h-2 rounded-full", hasPromo ? "bg-amber-500 animate-pulse" : "bg-green-500")} />
+                            <span className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">
+                                Tasa de Cobro: <span className="text-slate-800">{hasPromo ? 'REPOSICIÓN (PROMO ACTIVA)' : 'OFICIAL (BCV)'}</span>
+                            </span>
+                        </div>
+                    )}
 
                     {isPartialPayment && isRepairSale && (
                         <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-md text-blue-800 text-[10px] font-bold">

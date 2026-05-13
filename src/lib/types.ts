@@ -280,6 +280,8 @@ export type UserProfile = {
   businessAddress?: string;
   businessRIF?: string;
   showInfoOnReceipt?: boolean;
+  showRateOnReceipt?: boolean;
+  showTermsOnReceipt?: boolean;
   licenseStatus: 'active' | 'expired' | 'trial';
   licenseExpiry: string;
   createdAt: string;

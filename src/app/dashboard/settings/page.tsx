@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, LogOut, ShieldCheck, UserCog, Mail, Lock, KeyRound, AlertCircle, FileSpreadsheet, DownloadCloud, UploadCloud, Database, RefreshCcw, MapPin, Hash, ReceiptText, Wrench, Save, PiggyBank, Users, Home, Percent, ShieldAlert, Wallet, Landmark, DollarSign, Smartphone, CreditCard, Banknote, Info } from "lucide-react";
+import { Loader2, LogOut, ShieldCheck, UserCog, Mail, Lock, KeyRound, AlertCircle, FileSpreadsheet, DownloadCloud, UploadCloud, Database, RefreshCcw, MapPin, Hash, ReceiptText, Wrench, Save, PiggyBank, Users, Home, Percent, ShieldAlert, Wallet, Landmark, DollarSign, Smartphone, CreditCard, Banknote, Info, Eye, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { z } from "zod";
@@ -48,6 +48,8 @@ const profileSchema = z.object({
     businessAddress: z.string().optional(),
     businessRIF: z.string().optional(),
     showInfoOnReceipt: z.boolean().default(false),
+    showRateOnReceipt: z.boolean().default(true),
+    showTermsOnReceipt: z.boolean().default(true),
     repairWarrantyPolicy: z.string().optional(),
     repairPickupPolicy: z.string().optional(),
     repairDisclaimer: z.string().optional(),
@@ -66,15 +68,7 @@ const PROTECTABLE_MODULES: { id: UserModule, label: string }[] = [
     { id: 'analysis', label: 'Análisis de Negocio' },
 ];
 
-export default function SettingsPage() {
-    return (
-        <SecurityGate module="settings">
-            <SettingsContent />
-        </SecurityGate>
-    );
-}
-
-function SettingsContent() {
+export default function SettingsContent() {
     const { toast } = useToast();
     const { firestore, auth, user } = useFirebase();
     const [isUpdatingCredentials, setIsUpdatingCredentials] = useState(false);
@@ -132,6 +126,8 @@ function SettingsContent() {
             businessAddress: "", 
             businessRIF: "", 
             showInfoOnReceipt: false,
+            showRateOnReceipt: true,
+            showTermsOnReceipt: true,
             repairWarrantyPolicy: "",
             repairPickupPolicy: "",
             repairDisclaimer: ""
@@ -184,6 +180,8 @@ function SettingsContent() {
                 businessAddress: (profile.businessAddress || "").toUpperCase(),
                 businessRIF: (profile.businessRIF || "").toUpperCase(),
                 showInfoOnReceipt: profile.showInfoOnReceipt || false,
+                showRateOnReceipt: profile.showRateOnReceipt !== false,
+                showTermsOnReceipt: profile.showTermsOnReceipt !== false,
                 repairWarrantyPolicy: (profile.repairWarrantyPolicy || "4 DÍAS POR EL SERVICIO REALIZADO.").toUpperCase(),
                 repairPickupPolicy: (profile.repairPickupPolicy || "7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL NEGOCIO NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.").toUpperCase(),
                 repairDisclaimer: (profile.repairDisclaimer || "NO NOS HACEMOS RESPONSABLES POR TELÉFONOS MOJADOS O QUE SUFRIERON CAÍDAS.").toUpperCase()
@@ -572,15 +570,78 @@ function SettingsContent() {
                                     )} />
                                 </div>
                                 <Separator />
-                                <FormField control={profileForm.control} name="showInfoOnReceipt" render={({ field }) => (
-                                    <FormItem className="flex items-center justify-between rounded-lg border p-4 bg-muted/20">
-                                        <div className="space-y-0.5"><FormLabel className="flex items-center gap-2 text-xs font-bold uppercase"><ReceiptText className="w-4 h-4 text-primary" /> Datos en Recibos</FormLabel><FormDescription>Mostrar RIF y Dirección en los tickets impresos.</FormDescription></div>
-                                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
-                                    </FormItem>
-                                )} />
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <FormField control={profileForm.control} name="showInfoOnReceipt" render={({ field }) => (
+                                        <FormItem className="flex items-center justify-between rounded-lg border p-4 bg-muted/20">
+                                            <div className="space-y-0.5">
+                                                <FormLabel className="flex items-center gap-2 text-xs font-bold uppercase"><ReceiptText className="w-4 h-4 text-primary" /> Datos en Recibos</FormLabel>
+                                                <FormDescription>Mostrar RIF y Dirección en los tickets.</FormDescription>
+                                            </div>
+                                            <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={profileForm.control} name="showRateOnReceipt" render={({ field }) => (
+                                        <FormItem className="flex items-center justify-between rounded-lg border p-4 bg-muted/20">
+                                            <div className="space-y-0.5">
+                                                <FormLabel className="flex items-center gap-2 text-xs font-bold uppercase"><Eye className="w-4 h-4 text-blue-600" /> Mostrar Tasa de Cobro</FormLabel>
+                                                <FormDescription>Muestra la tasa BCV/Reposición en el ticket y pago.</FormDescription>
+                                            </div>
+                                            <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                        </FormItem>
+                                    )} />
+                                </div>
                             </CardContent>
                             <CardFooter className="border-t pt-4">
                                 <Button type="submit" className="uppercase font-bold">Actualizar Perfil</Button>
+                            </CardFooter>
+                        </form>
+                    </Form>
+                </Card>
+
+                <Card className="shadow-md">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 uppercase font-bold text-sm text-primary"><FileText className="w-5 h-5"/> Políticas de Servicio Técnico</CardTitle>
+                        <CardDescription>Personaliza los términos y condiciones que aparecen en los tickets de reparación.</CardDescription>
+                    </CardHeader>
+                    <Form {...profileForm}>
+                        <form onSubmit={profileForm.handleSubmit(handleSaveProfile)}>
+                            <CardContent className="space-y-6">
+                                <FormField control={profileForm.control} name="showTermsOnReceipt" render={({ field }) => (
+                                    <FormItem className="flex items-center justify-between rounded-lg border p-4 bg-primary/5">
+                                        <div className="space-y-0.5">
+                                            <FormLabel className="flex items-center gap-2 text-xs font-bold uppercase">Mostrar Términos en Tickets</FormLabel>
+                                            <FormDescription>Activa o desactiva la sección de condiciones en la nota del cliente.</FormDescription>
+                                        </div>
+                                        <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>
+                                    </FormItem>
+                                )} />
+                                
+                                <div className="space-y-4">
+                                    <FormField control={profileForm.control} name="repairWarrantyPolicy" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Política de Garantía</FormLabel>
+                                            <FormControl><Textarea {...field} onChange={(e) => field.onChange(e.target.value.toUpperCase())} className="uppercase text-xs min-h-[60px]" placeholder="EJ: 4 DÍAS POR EL SERVICIO REALIZADO." /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={profileForm.control} name="repairPickupPolicy" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Política de Retiro y Abandono</FormLabel>
+                                            <FormControl><Textarea {...field} onChange={(e) => field.onChange(e.target.value.toUpperCase())} className="uppercase text-xs min-h-[60px]" placeholder="EJ: 7 DÍAS MÁXIMO UNA VEZ NOTIFICADO..." /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                    <FormField control={profileForm.control} name="repairDisclaimer" render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel className="text-[10px] font-bold uppercase text-muted-foreground">Nota de Responsabilidad / Disclaimer</FormLabel>
+                                            <FormControl><Textarea {...field} onChange={(e) => field.onChange(e.target.value.toUpperCase())} className="uppercase text-xs min-h-[60px]" placeholder="EJ: NO NOS HACEMOS RESPONSABLES POR TELÉFONOS MOJADOS..." /></FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )} />
+                                </div>
+                            </CardContent>
+                            <CardFooter className="border-t pt-4">
+                                <Button type="submit" className="uppercase font-bold">Guardar Políticas</Button>
                             </CardFooter>
                         </form>
                     </Form>

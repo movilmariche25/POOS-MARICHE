@@ -1,4 +1,3 @@
-
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -422,6 +421,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
   const currentPaid = Number(repairJob?.amountPaid || 0);
   const currentPending = Math.max(0, estimatedTotal - currentPaid);
   const isJobCompleted = repairJob?.status === 'Completado';
+  const showRateInfo = profile?.showRateOnReceipt !== false;
 
   return (
     <Dialog open={open} onOpenChange={(val) => {
@@ -679,7 +679,7 @@ export function RepairFormDialog({ repairJob, children, isOpen, onOpenChange }: 
                         </div>
                         
                         {/* PANEL INFORMATIVO DE PROMOCIÓN DETECTADA */}
-                        {effectiveIsPromo && (
+                        {effectiveIsPromo && showRateInfo && (
                             <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex flex-col animate-in slide-in-from-top-2">
                                 <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-blue-700">
                                     <TicketPercent className="w-3.5 h-3.5" /> 

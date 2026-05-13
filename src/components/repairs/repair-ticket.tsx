@@ -1,4 +1,3 @@
-
 import type { RepairJob, UserProfile } from "@/lib/types";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -29,6 +28,8 @@ export function CustomerTicket({ repairJob, businessName, profile, bcvRate = 1, 
     const warranty = profile?.repairWarrantyPolicy || "4 DÍAS POR EL SERVICIO REALIZADO.";
     const pickup = profile?.repairPickupPolicy || "7 DÍAS MÁXIMO UNA VEZ NOTIFICADO. EL NEGOCIO NO SE HACE RESPONSABLE PASADO ESTE TIEMPO.";
     const disclaimer = profile?.repairDisclaimer || "NO NOS HACEMOS RESPONSABLES POR TELÉFONOS MOJADOS O QUE SUFRIERON CAÍDAS.";
+    const showRate = profile?.showRateOnReceipt !== false;
+    const showTerms = profile?.showTermsOnReceipt !== false;
 
     return (
         <div className="ticket-body">
@@ -90,24 +91,28 @@ export function CustomerTicket({ repairJob, businessName, profile, bcvRate = 1, 
                 )}
             </div>
 
-            <div className="disclaimer-section mt-3 text-[6.5pt]">
-                <p className="text-center font-bold mb-1" style={{ fontSize: '8pt' }}>TÉRMINOS Y CONDICIONES</p>
-                <p className="policy-text"><span className="bold-header">GARANTÍA:</span> {warranty.toUpperCase()}</p>
-                <p className="policy-text"><span className="bold-header">RETIRO:</span> {pickup.toUpperCase()}</p>
-                <p className="mt-1 font-bold policy-text">{disclaimer.toUpperCase()}</p>
-                <p className="text-center uppercase mt-3 bold-header" style={{ fontSize: '8pt' }}>INDISPENSABLE PRESENTAR TICKET</p>
-            </div>
+            {showTerms && (
+                <div className="disclaimer-section mt-3 text-[6.5pt]">
+                    <p className="text-center font-bold mb-1" style={{ fontSize: '8pt' }}>TÉRMINOS Y CONDICIONES</p>
+                    <p className="policy-text"><span className="bold-header">GARANTÍA:</span> {warranty.toUpperCase()}</p>
+                    <p className="policy-text"><span className="bold-header">RETIRO:</span> {pickup.toUpperCase()}</p>
+                    <p className="mt-1 font-bold policy-text">{disclaimer.toUpperCase()}</p>
+                    <p className="text-center uppercase mt-3 bold-header" style={{ fontSize: '8pt' }}>INDISPENSABLE PRESENTAR TICKET</p>
+                </div>
+            )}
 
             <div className="text-center mt-4 footer-thanks">
                 <p className="bold-header text-[8pt]">¡GRACIAS POR SU CONFIANZA!</p>
-                <p className="meta-info text-[6pt] mt-1 italic">TASA REF: {appliedRate.toFixed(2)} Bs/$</p>
+                {showRate && (
+                    <p className="meta-info text-[6pt] mt-1 italic">TASA REF: {appliedRate.toFixed(2)} Bs/$</p>
+                )}
             </div>
         </div>
     );
 }
 
 // SECCIÓN 2: CONTROL INTERNO (NEGOCIO)
-export function InternalTicket({ repairJob, bcvRate = 1, parallelRate = 1 }: RepairTicketProps) {
+export function InternalTicket({ repairJob, bcvRate = 1, parallelRate = 1, profile }: RepairTicketProps) {
     const total = repairJob.estimatedCost || 0;
     const abono = repairJob.amountPaid || 0;
     const saldo = Math.max(0, total - abono);
@@ -115,6 +120,7 @@ export function InternalTicket({ repairJob, bcvRate = 1, parallelRate = 1 }: Rep
     const fecha = format(date, "dd/MM/yyyy HH:mm:ss", { locale: es });
     
     const appliedRate = repairJob.isPromo ? parallelRate : bcvRate;
+    const showRate = profile?.showRateOnReceipt !== false;
 
     return (
         <div className="ticket-body internal">
@@ -132,7 +138,9 @@ export function InternalTicket({ repairJob, bcvRate = 1, parallelRate = 1 }: Rep
                 
                 <div className="mt-3 p-2 border text-center" style={{ borderStyle: 'solid' }}>
                     <p className="bold-header" style={{ fontSize: '11pt' }}>SALDO: ${saldo.toFixed(2)}</p>
-                    <p className="text-[8pt] font-bold">Bs { (saldo * appliedRate).toLocaleString('de-DE', { minimumFractionDigits: 2 }) }</p>
+                    {showRate && (
+                        <p className="text-[8pt] font-bold">Bs { (saldo * appliedRate).toLocaleString('de-DE', { minimumFractionDigits: 2 }) }</p>
+                    )}
                 </div>
             </div>
 
