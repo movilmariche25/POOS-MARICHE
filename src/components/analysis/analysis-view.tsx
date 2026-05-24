@@ -9,7 +9,7 @@ import { Skeleton } from "../ui/skeleton";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { subDays, startOfMonth, isAfter, isBefore, differenceInDays, parseISO } from "date-fns";
+import { subDays, startOfMonth, isAfter, differenceInDays, parseISO } from "date-fns";
 import { useCurrency } from "@/hooks/use-currency";
 import { cn } from "@/lib/utils";
 import { 
@@ -17,8 +17,6 @@ import {
     Flame, 
     Ghost, 
     Zap, 
-    ChevronUp,
-    ChevronDown,
     Layers,
     DollarSign,
     Package,
@@ -29,7 +27,14 @@ import {
     AlertCircle,
     ShoppingCart,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    Search,
+    ArrowRightCircle,
+    History,
+    Target,
+    ShieldAlert,
+    Lightbulb,
+    ArrowUpRight
 } from "lucide-react";
 import { Progress } from "../ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
@@ -56,7 +61,6 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
 
     const showRepairs = enabledModules?.includes('repairs') ?? true;
 
-    // Resetear página al cambiar el rango de fecha
     useEffect(() => {
         setCurrentPage(1);
     }, [dateRange]);
@@ -86,15 +90,22 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
 
         const filterByRange = (items: any[], start: Date) => 
             items.filter(item => {
-                const d = new Date(item.transactionDate || item.createdAt);
-                return isAfter(d, start);
+                const dateStr = item.transactionDate || item.createdAt;
+                if (!dateStr) return false;
+                return isAfter(parseISO(dateStr), start);
             });
 
         const currentSales = filterByRange(sales, currentStart).filter(s => s.status === 'completed');
 
-        // Cálculo de Ganancia Neta Real (Venta - Costo)
+        // GANANCIA REAL (Ajustada a Tasa de Reposición)
         const currentProfit = currentSales.reduce((acc, s) => {
-            const income = s.actualPaidAmount ?? s.totalAmount;
+            const nominalIncome = s.actualPaidAmount ?? s.totalAmount;
+            const saleBcv = s.bcvRateAtTime || bcvRate;
+            const saleParallel = s.parallelRateAtTime || parallelRate;
+            const isSalePromo = s.items.some(i => i.isPromo);
+            const rateFactor = isSalePromo ? 1 : (saleBcv / saleParallel);
+            const realIncome = nominalIncome * rateFactor;
+
             let cost = 0;
             s.items.forEach(item => {
                 if (item.isCustom) cost += (item.customCostPrice || 0) * item.quantity;
@@ -103,327 +114,277 @@ export function AnalysisView({ sales, products, repairJobs, isLoading, enabledMo
                     cost += (p?.costPrice || 0) * item.quantity;
                 }
             });
-            return acc + (income - cost);
+            const itemsTotalBillable = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+            const paymentRatio = itemsTotalBillable > 0 ? nominalIncome / itemsTotalBillable : 1;
+            
+            return acc + (realIncome - (cost * paymentRatio));
         }, 0);
 
-        // Mapeo de salud de inventario y matriz estratégica
-        const inventoryHealth = products.map(p => {
-            const soldInPeriod = currentSales.reduce((acc, s) => {
-                const item = s.items.find(i => i.productId === p.id);
-                return acc + (item?.quantity || 0);
-            }, 0);
+        // SALUD DE INVENTARIO CON FILTRO ANTI-RUIDO
+        const inventoryHealth = products
+            .filter(p => !((p.stockLevel <= 0) && (currentSales.reduce((acc, s) => acc + (s.items.find(i => i.productId === p.id)?.quantity || 0), 0) === 0)))
+            .map(p => {
+                const soldInPeriod = currentSales.reduce((acc, s) => {
+                    const item = s.items.find(i => i.productId === p.id);
+                    return acc + (item?.quantity || 0);
+                }, 0);
 
-            const velocity = soldInPeriod / daysInPeriod;
-            const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
-            const retailPrice = getFinalPrice(p);
-            
-            // Margen vs Reposición (Costo Actual)
-            const margin = p.costPrice > 0 ? ((retailPrice - p.costPrice) / p.costPrice) * 100 : 0;
-
-            // Lógica de Estatus Estratégico
-            let status: 'STAR' | 'TRACTION' | 'DORMANT' | 'CRITICAL' | 'STABLE' = 'STABLE';
-            if (available < 0) status = 'CRITICAL';
-            else if (soldInPeriod > 0 && margin > 50) status = 'STAR';
-            else if (soldInPeriod > 2 && margin <= 50) status = 'TRACTION';
-            else if (soldInPeriod === 0 && available > 0 && (!p.createdAt || differenceInDays(now, parseISO(p.createdAt)) > 15)) status = 'DORMANT';
-
-            return { ...p, soldInPeriod, velocity, available, margin, status };
-        });
-
-        // Artículos para comprar (Agotándose o con alta demanda)
-        const toBuy = inventoryHealth.filter(p => (p.velocity > 0 && p.available / p.velocity <= 7) || p.available <= 0)
-            .sort((a,b) => b.velocity - a.velocity);
-
-        // Capital en Riesgo: Valor de costo de artículos "Dormidos"
-        const capitalAtRisk = inventoryHealth
-            .filter(p => p.status === 'DORMANT')
-            .reduce((acc, p) => acc + (p.available * p.costPrice), 0);
-
-        const healthScore = products.length > 0 
-            ? ((inventoryHealth.filter(p => p.status !== 'DORMANT' && p.status !== 'CRITICAL').length / products.length) * 100)
-            : 0;
-
-        // Correlación de Reparaciones (Agrupación Inteligente)
-        const recipes: Record<string, { model: string, parts: Record<string, { count: number, stock: number, id: string }> }> = {};
-        if (showRepairs) {
-            repairJobs.forEach(job => {
-                const modelKey = `${job.deviceMake} ${job.deviceModel}`.toUpperCase();
-                if (!recipes[modelKey]) recipes[modelKey] = { model: modelKey, parts: {} };
+                const velocity = soldInPeriod / daysInPeriod;
+                const available = p.stockLevel - (p.reservedStock || 0) - (p.damagedStock || 0);
                 
-                const parts = [...(job.reservedParts || []), ...(job.consumedParts || [])];
+                const nominalRetailPrice = getFinalPrice(p);
+                const isProductPromo = !!(p.promoPrice && p.promoPrice > 0);
+                const realRetailPrice = isProductPromo ? (p.promoPrice || nominalRetailPrice) : (nominalRetailPrice * (bcvRate / parallelRate));
+                
+                const margin = p.costPrice > 0 ? ((realRetailPrice - p.costPrice) / p.costPrice) * 100 : 0;
+
+                let status: 'STAR' | 'TRACTION' | 'DORMANT' | 'CRITICAL' | 'STABLE' = 'STABLE';
+                if (available < 0) status = 'CRITICAL';
+                else if (soldInPeriod > 0 && margin > 40) status = 'STAR';
+                else if (soldInPeriod > 1 && margin <= 40) status = 'TRACTION';
+                else if (soldInPeriod === 0 && available > 0 && (!p.createdAt || differenceInDays(now, parseISO(p.createdAt)) > 15)) status = 'DORMANT';
+
+                return { ...p, soldInPeriod, velocity, available, margin, status, realRetailPrice };
+            });
+
+        // PRIORIDAD #1: TALLER (Faltantes)
+        const workshopMissing: { model: string, part: string, count: number, id: string }[] = [];
+        if (showRepairs) {
+            repairJobs.filter(j => j.status !== 'Completado').forEach(job => {
+                const parts = job.reservedParts || [];
                 parts.forEach(part => {
-                    if (!recipes[modelKey].parts[part.productName]) {
-                        const pData = products.find(prod => prod.id === part.productId);
-                        recipes[modelKey].parts[part.productName] = { 
-                            count: 0, 
-                            stock: pData ? (pData.stockLevel - (pData.reservedStock || 0) - (pData.damagedStock || 0)) : 0,
+                    const pData = products.find(prod => prod.id === part.productId);
+                    const available = pData ? (pData.stockLevel - (pData.reservedStock || 0) - (pData.damagedStock || 0)) : 0;
+                    if (available < 0) {
+                        workshopMissing.push({
+                            model: `${job.deviceMake} ${job.deviceModel}`,
+                            part: part.productName,
+                            count: Math.abs(available),
                             id: part.productId
-                        };
+                        });
                     }
-                    recipes[modelKey].parts[part.productName].count += part.quantity;
                 });
             });
         }
 
+        // PRIORIDAD #2: STOCK ALTO RITMO
+        const highVelocityShortage = inventoryHealth
+            .filter(p => p.velocity > 0 && (p.available <= (p.lowStockThreshold || 1)))
+            .sort((a, b) => b.velocity - a.velocity)
+            .slice(0, 3);
+
+        const stagnantCapital = inventoryHealth
+            .filter(p => p.status === 'DORMANT')
+            .reduce((acc, p) => acc + (p.available * p.costPrice), 0);
+
+        const healthScore = products.length > 0 
+            ? ((inventoryHealth.filter(p => p.status !== 'DORMANT' && p.status !== 'CRITICAL').length / inventoryHealth.length) * 100)
+            : 0;
+
+        const dormantCategories = Array.from(new Set(inventoryHealth.filter(p => p.status === 'DORMANT').map(p => p.category)));
+
         return { 
             currentProfit, 
             healthScore,
-            capitalAtRisk,
+            stagnantCapital,
             inventoryHealth, 
-            toBuy, 
-            recipes: Object.values(recipes).sort((a, b) => Object.keys(b.parts).length - Object.keys(a.parts).length).slice(0, 6)
+            workshopMissing: workshopMissing.slice(0, 2),
+            highVelocityShortage,
+            dormantCategories: dormantCategories.slice(0, 3)
         };
-    }, [sales, products, repairJobs, isLoading, dateRange, getFinalPrice]);
+    }, [sales, products, repairJobs, isLoading, dateRange, getFinalPrice, bcvRate, parallelRate, showRepairs]);
 
-    // Filtrar y ordenar antes de paginar
-    const performanceItems = useMemo(() => {
-        if (!stats) return [];
-        return stats.inventoryHealth
-            .filter(p => p.status !== 'STABLE')
-            .sort((a, b) => b.soldInPeriod - a.soldInPeriod);
-    }, [stats]);
-
-    const totalPages = Math.ceil(performanceItems.length / ITEMS_PER_PAGE);
     const paginatedItems = useMemo(() => {
+        if (!stats) return [];
         const start = (currentPage - 1) * ITEMS_PER_PAGE;
-        return performanceItems.slice(start, start + ITEMS_PER_PAGE);
-    }, [performanceItems, currentPage]);
+        return stats.inventoryHealth.slice(start, start + ITEMS_PER_PAGE);
+    }, [stats, currentPage]);
 
-    if (isLoading) return <div className="p-8 text-center"><Skeleton className="h-96 w-full" /></div>;
+    const totalPages = stats ? Math.ceil(stats.inventoryHealth.length / ITEMS_PER_PAGE) : 0;
+
+    if (isLoading) return <div className="p-10 space-y-4"><Skeleton className="h-20 w-full" /><Skeleton className="h-64 w-full" /></div>;
     if (!stats) return null;
 
+    const efficiencyDiag = stats.healthScore > 80 ? "Sólida Rotación" : stats.healthScore > 50 ? "Riesgo de Estancamiento" : "Crítica Descapitalización";
+
     return (
-        <div className="space-y-8 pb-20">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h1 className="text-2xl font-black tracking-tight text-slate-800 uppercase">Inteligencia de Inventario</h1>
-                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Transforma datos en órdenes de compra y ajustes de precio</p>
+        <div className="space-y-6 max-w-5xl mx-auto w-full pb-20">
+            <div className="flex justify-between items-center bg-slate-900 text-white p-4 rounded-xl shadow-lg border-b-4 border-primary">
+                <div className="flex items-center gap-3">
+                    <Target className="w-6 h-6 text-primary" />
+                    <h1 className="text-lg font-black uppercase tracking-tighter">Motor de Inteligencia Comercial</h1>
                 </div>
                 <Select value={dateRange} onValueChange={(v: any) => setDateRange(v)}>
-                    <SelectTrigger className="w-[220px] bg-white shadow-sm border-2">
+                    <SelectTrigger className="w-[180px] h-9 text-[10px] font-black uppercase bg-white/10 border-white/20">
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="7d">Últimos 7 días</SelectItem>
                         <SelectItem value="30d">Últimos 30 días</SelectItem>
-                        <SelectItem value="this_month">Mes Actual</SelectItem>
+                        <SelectItem value="this_month">Mes actual</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="border-l-4 border-l-green-600 shadow-md">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="border-2 border-primary/20 bg-primary/5">
                     <CardHeader className="pb-2">
-                        <CardDescription className="text-[10px] font-black uppercase text-green-700">Utilidad Operativa (Neto)</CardDescription>
-                        <CardTitle className="text-3xl font-black">${formatCurrency(stats.currentProfit)}</CardTitle>
+                        <CardTitle className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                            <TrendingUp className="w-3.5 h-3.5" /> 📊 Finanzas Express
+                        </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                        <p className="text-[9px] text-muted-foreground font-bold uppercase">Ganancia real descontando costo de inversión</p>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-l-4 border-l-blue-600 shadow-md">
-                    <CardHeader className="pb-2">
-                        <CardDescription className="text-[10px] font-black uppercase text-blue-700">Salud del Inventario</CardDescription>
-                        <CardTitle className="text-3xl font-black">{stats.healthScore.toFixed(0)}%</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <Progress value={stats.healthScore} className="h-2 bg-blue-100" />
-                        <p className="text-[9px] text-muted-foreground mt-2 font-bold uppercase">Artículos con rotación activa</p>
-                    </CardContent>
-                </Card>
-
-                <Card className="border-l-4 border-l-destructive shadow-md">
-                    <CardHeader className="pb-2">
-                        <CardDescription className="text-[10px] font-black uppercase text-destructive">Capital en Riesgo (Inactivo)</CardDescription>
-                        <CardTitle className="text-3xl font-black text-destructive">${formatCurrency(stats.capitalAtRisk)}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <p className="text-[9px] text-muted-foreground font-bold uppercase">Valor de stock sin ventas en 15+ días</p>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="border-2 border-primary/10 shadow-lg overflow-hidden">
-                    <CardHeader className="bg-primary/5 border-b">
-                        <div className="flex items-center gap-2 text-primary">
-                            <Zap className="w-5 h-5 fill-primary" />
-                            <CardTitle className="text-sm font-black uppercase">¿Qué Comprar Hoy? (Reposición)</CardTitle>
+                    <CardContent className="space-y-3">
+                        <div>
+                            <p className="text-[9px] font-bold text-muted-foreground uppercase">Utilidad Real (Reposición):</p>
+                            <p className="text-2xl font-black text-slate-800">${formatCurrency(stats.currentProfit)}</p>
                         </div>
-                        <CardDescription>Basado en ritmo de venta y quiebre de stock inminente.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead className="text-[10px] uppercase">Artículo</TableHead>
-                                    <TableHead className="text-center text-[10px] uppercase">Estatus</TableHead>
-                                    <TableHead className="text-right text-[10px] uppercase">Acción</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {stats.toBuy.slice(0, 6).map(p => (
-                                    <TableRow key={p.id}>
-                                        <TableCell className="py-3">
-                                            <p className="font-bold text-xs uppercase">{p.name}</p>
-                                            <p className="text-[9px] text-muted-foreground">Quedan: {p.available} {p.unit === 'unit' ? 'un.' : p.unit}</p>
-                                        </TableCell>
-                                        <TableCell className="text-center">
-                                            {p.available <= 0 ? (
-                                                <Badge variant="destructive" className="text-[8px] animate-pulse">AGOTADO</Badge>
-                                            ) : (
-                                                <Badge variant="outline" className="text-[8px] border-amber-500 text-amber-600">CRÍTICO</Badge>
-                                            )}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            <Button 
-                                                size="sm" 
-                                                className="h-8 text-[10px] font-black uppercase"
-                                                onClick={() => setReplenishProduct(p as Product)}
-                                            >
-                                                <ShoppingCart className="w-3 h-3 mr-1" /> Abastecer
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                        <div className="pt-2 border-t border-primary/10">
+                            <div className="flex justify-between items-center mb-1">
+                                <span className="text-[9px] font-bold text-muted-foreground uppercase">Eficiencia:</span>
+                                <span className="text-[10px] font-black text-primary">{stats.healthScore.toFixed(0)}%</span>
+                            </div>
+                            <p className="text-[10px] font-black uppercase text-slate-600">{efficiencyDiag}</p>
+                        </div>
+                        <div className="pt-2 border-t border-primary/10">
+                            <p className="text-[9px] font-bold text-muted-foreground uppercase">Capital Estancado (&gt;15 días):</p>
+                            <p className="text-lg font-black text-destructive">${formatCurrency(stats.stagnantCapital)}</p>
+                        </div>
                     </CardContent>
                 </Card>
 
-                <Card className="border-2 border-slate-200 shadow-lg overflow-hidden">
-                    <CardHeader className="bg-slate-50 border-b">
-                        <div className="flex items-center gap-2 text-slate-600">
-                            <Layers className="w-5 h-5" />
-                            <CardTitle className="text-sm font-black uppercase">Guía de Modelos vs Repuestos</CardTitle>
-                        </div>
-                        <CardDescription>Piezas sugeridas según los equipos que más recibes.</CardDescription>
+                <Card className="border-2 border-amber-200 bg-amber-50 md:col-span-2">
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-[10px] font-black uppercase text-amber-700 tracking-widest flex items-center gap-2">
+                            <ShieldAlert className="w-3.5 h-3.5" /> 🚨 Acciones Críticas (Máx. 4)
+                        </CardTitle>
                     </CardHeader>
-                    <CardContent className="p-4 space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {stats.recipes.map((recipe) => (
-                                <div key={recipe.model} className="p-3 rounded-lg border bg-white shadow-sm space-y-2">
-                                    <p className="text-[10px] font-black text-slate-700 uppercase border-b pb-1">{recipe.model}</p>
-                                    <div className="space-y-1.5">
-                                        {Object.entries(recipe.parts).slice(0, 2).map(([name, data]) => (
-                                            <div key={name} className="flex justify-between items-center text-[9px]">
-                                                <span className="text-muted-foreground truncate max-w-[100px]">{name}</span>
-                                                <Badge variant={data.stock > 0 ? "secondary" : "destructive"} className="text-[8px] px-1 h-3.5">
-                                                    {data.stock > 0 ? `${data.stock} en stock` : 'AGOTADO'}
-                                                </Badge>
-                                            </div>
-                                        ))}
+                    <CardContent className="space-y-2">
+                        {stats.workshopMissing.length === 0 && stats.highVelocityShortage.length === 0 && (
+                            <div className="h-24 flex items-center justify-center text-xs font-bold text-amber-600/50 uppercase italic">Sin alertas críticas pendientes</div>
+                        )}
+                        
+                        {stats.workshopMissing.map((m, i) => (
+                            <div key={`wm-${i}`} className="flex items-center justify-between p-3 bg-white rounded-lg border border-amber-300 shadow-sm animate-pulse">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-1.5 bg-amber-100 rounded text-amber-700"><Layers className="w-4 h-4"/></div>
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase text-amber-800">[TALLER] Pieza faltante para {m.model}</p>
+                                        <p className="text-xs font-bold">Comprar {m.count}un. de {m.part}</p>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
+                                <Button size="sm" variant="ghost" className="h-8 text-amber-700 hover:bg-amber-100" onClick={() => setReplenishProduct(products.find(p => p.id === m.id) || null)}>
+                                    <ArrowUpRight className="w-4 h-4" />
+                                </Button>
+                            </div>
+                        ))}
+
+                        {stats.highVelocityShortage.map((p, i) => (
+                            <div key={`hv-${i}`} className="flex items-center justify-between p-3 bg-white rounded-lg border border-primary/20 shadow-sm">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-1.5 bg-primary/10 rounded text-primary"><Zap className="w-4 h-4 fill-primary"/></div>
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase text-slate-500">[STOCK ALTO RITMO] Reponer {p.name}</p>
+                                        <p className="text-xs font-bold">Ritmo: {p.soldInPeriod}un/mes | Margen: {p.margin.toFixed(0)}%</p>
+                                    </div>
+                                </div>
+                                <Button size="sm" variant="ghost" className="h-8 text-primary hover:bg-primary/10" onClick={() => setReplenishProduct(p as Product)}>
+                                    <ShoppingCart className="w-4 h-4" />
+                                </Button>
+                            </div>
+                        ))}
                     </CardContent>
                 </Card>
             </div>
 
-            <Card className="shadow-xl border-none">
-                <CardHeader className="bg-slate-900 text-white rounded-t-xl">
-                    <div className="flex items-center gap-2">
-                        <TrendingUp className="w-5 h-5 text-green-400"/>
-                        <div>
-                            <CardTitle className="text-sm font-black uppercase">Matriz de Rendimiento (80/20)</CardTitle>
-                            <CardDescription className="text-slate-400 text-[10px]">Análisis enfocado en artículos que generan utilidad real vs capital atrapado.</CardDescription>
-                        </div>
+            <Card className="border-2 border-blue-100 bg-blue-50/30">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-[10px] font-black uppercase text-blue-700 tracking-widest flex items-center gap-2">
+                        <Lightbulb className="w-3.5 h-3.5" /> 💡 Estrategia de Liquidez
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="flex items-center justify-between">
+                    <div className="space-y-1">
+                        <p className="text-xs font-bold text-blue-900 uppercase">
+                            Liquidar {stats.dormantCategories.length > 0 ? stats.dormantCategories.join(", ") : "mercancía lenta"}
+                        </p>
+                        <p className="text-[10px] font-medium text-blue-700 uppercase tracking-tighter">
+                            0 ventas en los últimos 30 días. Sugerencia: Pack de accesorios o promoción rápida en divisa.
+                        </p>
                     </div>
+                    <Badge className="bg-blue-600 text-white text-[10px] font-black px-3 py-1 uppercase">Liberar ${formatCurrency(stats.stagnantCapital)}</Badge>
+                </CardContent>
+            </Card>
+
+            <Card className="shadow-xl border-none overflow-hidden rounded-xl">
+                <CardHeader className="bg-slate-50 border-b py-4">
+                    <CardTitle className="text-xs font-black uppercase text-slate-500 tracking-widest">Matriz de Rendimiento Táctico (Pareto)</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0 bg-white">
                     <Table>
                         <TableHeader>
-                            <TableRow className="bg-slate-50">
-                                <TableHead className="text-[10px] font-black uppercase">Artículo</TableHead>
+                            <TableRow className="bg-slate-50/50">
+                                <TableHead className="text-[10px] font-black uppercase py-4">Artículo Estratégico</TableHead>
                                 <TableHead className="text-center text-[10px] font-black uppercase">Ventas</TableHead>
-                                <TableHead className="text-center text-[10px] font-black uppercase">Margen Real</TableHead>
-                                <TableHead className="text-center text-[10px] font-black uppercase">Estatus Estratégico</TableHead>
-                                <TableHead className="text-right text-[10px] font-black uppercase">Acción Sugerida</TableHead>
+                                <TableHead className="text-center text-[10px] font-black uppercase">Rentabilidad Real</TableHead>
+                                <TableHead className="text-center text-[10px] font-black uppercase">Estatus Gemini</TableHead>
+                                <TableHead className="text-right text-[10px] font-black uppercase pr-6">Acción Recomendada</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {paginatedItems.map(p => (
-                                <TableRow key={p.id} className="group hover:bg-slate-50 transition-colors">
-                                    <TableCell>
-                                        <div className="flex items-center gap-2">
+                                <TableRow key={p.id} className="group hover:bg-slate-50/80 transition-colors">
+                                    <TableCell className="py-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded bg-muted flex items-center justify-center font-black text-[10px] text-muted-foreground uppercase">{p.category.slice(0,2)}</div>
                                             <div>
-                                                <p className="font-bold text-xs uppercase">{p.name}</p>
-                                                <TooltipProvider>
-                                                    <Tooltip>
-                                                        <TooltipTrigger className="text-[8px] text-muted-foreground font-mono hidden group-hover:block cursor-help">VER SKU</TooltipTrigger>
-                                                        <TooltipContent className="text-[10px] font-mono">{p.sku}</TooltipContent>
-                                                    </Tooltip>
-                                                </TooltipProvider>
+                                                <p className="font-black text-xs uppercase text-slate-800">{p.name}</p>
+                                                <p className="text-[8px] text-muted-foreground font-mono uppercase">DISP: {p.available} {p.unit}</p>
                                             </div>
                                         </div>
                                     </TableCell>
-                                    <TableCell className="text-center font-black text-xs">
-                                        {p.soldInPeriod} <span className="text-[9px] font-normal text-muted-foreground">un.</span>
+                                    <TableCell className="text-center font-black text-sm">{p.soldInPeriod}</TableCell>
+                                    <TableCell className="text-center">
+                                        <Badge variant="outline" className={cn(
+                                            "font-mono text-[10px] border-none px-2",
+                                            p.margin < 15 ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
+                                        )}>{p.margin.toFixed(0)}%</Badge>
                                     </TableCell>
                                     <TableCell className="text-center">
-                                        <div className="flex flex-col items-center">
-                                            <span className={cn(
-                                                "text-xs font-black",
-                                                p.margin < 15 ? "text-destructive" : "text-blue-600"
-                                            )}>{p.margin.toFixed(0)}%</span>
-                                            {p.margin < 15 && <span className="text-[7px] font-bold text-destructive uppercase">Descapitalizado</span>}
-                                        </div>
+                                        {p.status === 'STAR' && <Badge className="bg-yellow-400 text-slate-900 text-[8px] font-black uppercase">ESTRELLA</Badge>}
+                                        {p.status === 'TRACTION' && <Badge className="bg-blue-600 text-white text-[8px] font-black uppercase">TRACCIÓN</Badge>}
+                                        {p.status === 'DORMANT' && <Badge variant="outline" className="text-slate-500 border-slate-300 text-[8px] font-black uppercase">DORMIDO</Badge>}
+                                        {p.status === 'CRITICAL' && <Badge variant="destructive" className="text-[8px] font-black uppercase animate-pulse">CRÍTICO</Badge>}
                                     </TableCell>
-                                    <TableCell className="text-center">
-                                        {p.status === 'STAR' && <Badge className="bg-yellow-500 text-black text-[9px] uppercase font-black"><Star className="w-2 h-2 mr-1 fill-black" /> ESTRELLA</Badge>}
-                                        {p.status === 'TRACTION' && <Badge className="bg-blue-600 text-white text-[9px] uppercase font-black"><ZapIcon className="w-2 h-2 mr-1" /> TRACCIÓN</Badge>}
-                                        {p.status === 'DORMANT' && <Badge variant="outline" className="bg-slate-100 text-slate-500 text-[9px] uppercase font-black"><Ghost className="w-2 h-2 mr-1" /> DORMIDO</Badge>}
-                                        {p.status === 'CRITICAL' && <Badge variant="destructive" className="text-[9px] uppercase font-black animate-pulse"><AlertCircle className="w-2 h-2 mr-1" /> CRÍTICO</Badge>}
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                        <p className="text-[9px] font-black uppercase text-slate-600">
-                                            {p.status === 'STAR' && 'No permitir quiebre'}
-                                            {p.status === 'TRACTION' && 'Ajustar margen +5%'}
-                                            {p.status === 'DORMANT' && 'Liquidar / Promo'}
-                                            {p.status === 'CRITICAL' && 'Corregir stock'}
-                                        </p>
+                                    <TableCell className="text-right pr-6">
+                                        <span className="text-[9px] font-black text-slate-700 uppercase tracking-tighter">
+                                            {p.status === 'STAR' && 'No permitir quiebre de stock'}
+                                            {p.status === 'TRACTION' && 'Evaluar ajuste de margen +5%'}
+                                            {p.status === 'DORMANT' && 'Liquidar / Promoción en divisa'}
+                                            {p.status === 'CRITICAL' && 'Ajuste manual de inventario'}
+                                            {p.status === 'STABLE' && 'Mantener flujo actual'}
+                                        </span>
                                     </TableCell>
                                 </TableRow>
                             ))}
-                            {paginatedItems.length === 0 && (
-                                <TableRow>
-                                    <TableCell colSpan={5} className="h-32 text-center text-muted-foreground italic uppercase font-bold text-xs">
-                                        Sin datos significativos para este periodo.
-                                    </TableCell>
-                                </TableRow>
-                            )}
                         </TableBody>
                     </Table>
                     
-                    {totalPages > 1 && (
-                        <div className="flex items-center justify-between px-4 py-4 bg-slate-50 border-t">
-                            <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                                Página {currentPage} de {totalPages} ({performanceItems.length} artículos)
-                            </p>
-                            <div className="flex gap-2">
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    className="h-8 text-[10px] font-bold uppercase"
-                                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                                    disabled={currentPage === 1}
-                                >
-                                    <ChevronLeft className="w-3.5 h-3.5 mr-1" /> Anterior
+                    <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-t">
+                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">
+                            Mostrando {paginatedItems.length} de {stats.inventoryHealth.length} activos estratégicos
+                        </p>
+                        <div className="flex items-center gap-4">
+                            <span className="text-[10px] font-black text-slate-400 uppercase">PÁG. {currentPage} / {totalPages}</span>
+                            <div className="flex gap-1">
+                                <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-2" onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))} disabled={currentPage === 1}>
+                                    <ChevronLeft className="w-4 h-4" />
                                 </Button>
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
-                                    className="h-8 text-[10px] font-bold uppercase"
-                                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                    disabled={currentPage === totalPages}
-                                >
-                                    Siguiente <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                                <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-2" onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))} disabled={currentPage === totalPages}>
+                                    <ChevronRight className="w-4 h-4" />
                                 </Button>
                             </div>
                         </div>
-                    )}
+                    </div>
                 </CardContent>
             </Card>
 

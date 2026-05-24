@@ -31,7 +31,7 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
     to: new Date(),
   });
   const { toast } = useToast();
-  const { bcvRate: currentBcvRate } = useCurrency();
+  const { bcvRate: currentBcvRate, parallelRate: currentParallelRate } = useCurrency();
 
   const handleExport = () => {
     if (!date?.from || !sales || !repairJobs || !products) {
@@ -63,59 +63,66 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
     // Map para consolidar actividad de reparaciones en el periodo
     const repairsActivity = new Map<string, {
         revenue: number,
+        realRevenue: number,
         repairJob: RepairJob,
         lastDate: string,
         lastSaleId: string,
         paymentMethods: Set<string>,
-        bcvRate: number
+        bcvRate: number,
+        parallelRate: number
     }>();
 
     const productLines: any[] = [];
 
     filteredSales.forEach(sale => {
-        const totalCollected = sale.actualPaidAmount ?? sale.totalAmount;
+        const totalCollectedNominal = sale.actualPaidAmount ?? sale.totalAmount;
         const saleBcvRate = sale.bcvRateAtTime || currentBcvRate;
+        const saleParallelRate = sale.parallelRateAtTime || currentParallelRate;
+        
+        // AJUSTE DE VALOR REAL (REPOSICIÓN)
+        const isSalePromo = sale.items.some(i => i.isPromo);
+        const rateFactor = isSalePromo ? 1 : (saleBcvRate / saleParallelRate);
         
         // Calculamos el ratio de cobro (qué % del total solicitado se cobró realmente en esta transacción)
         const itemsTotalBillable = sale.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-        const collectionRatio = itemsTotalBillable > 0 ? totalCollected / itemsTotalBillable : 1;
+        const collectionRatio = itemsTotalBillable > 0 ? totalCollectedNominal / itemsTotalBillable : 1;
 
         // Procesar productos que NO son reparaciones (incluye servicios manuales y fiados)
         const productItemsInSale = sale.items.filter(i => !i.isRepair);
         
         productItemsInSale.forEach(item => {
-            const revenue = (item.price * item.quantity) * collectionRatio;
+            const nominalRevenue = (item.price * item.quantity) * collectionRatio;
+            const realRevenue = nominalRevenue * rateFactor;
+            
             let cost = 0;
 
             if (sale.fiadoId) {
-                // Es un abono a un fiado: el costo es proporcional al abono basado en el costo inicial registrado
                 const fiado = fiados.find(f => f.id === sale.fiadoId);
                 if (fiado) {
                     const costRatio = fiado.totalAmount > 0 ? (fiado.totalCost || 0) / fiado.totalAmount : 0;
-                    cost = revenue * costRatio;
+                    cost = nominalRevenue * costRatio;
                 }
             } else if (item.isCustom) {
-                // Venta rápida manual
                 cost = (item.customCostPrice || 0) * item.quantity * collectionRatio;
             } else {
-                // Producto estándar del inventario
                 const product = products.find(p => p.id === item.productId);
                 cost = (product?.costPrice || 0) * item.quantity * collectionRatio;
             }
             
-            const profit = revenue - cost;
+            const realProfit = realRevenue - cost;
             
             productLines.push({
                 'Fecha': format(new Date(sale.transactionDate), 'dd/MM/yyyy HH:mm'),
-                'Producto/Servicio': item.name,
+                'Producto/Servicio': item.name + (item.isPromo ? ' [OFERTA]' : ''),
                 'ID Transacción': sale.id,
                 'Costo Inversión ($)': Number(cost.toFixed(2)),
-                'Precio Venta ($)': Number(item.price.toFixed(2)),
+                'Precio Venta Nom. ($)': Number(item.price.toFixed(2)),
                 'Cantidad': item.quantity,
-                'Ingreso Recibido ($)': Number(revenue.toFixed(2)),
-                'Ganancia Est. ($)': Number(profit.toFixed(2)),
-                'Total (Bs)': Number((revenue * saleBcvRate).toFixed(2)),
-                'Tasa BCV Aplicada': Number(saleBcvRate.toFixed(2)),
+                'Ingreso Real ($ - Reposición)': Number(realRevenue.toFixed(2)),
+                'Ganancia Real ($ - Reposición)': Number(realProfit.toFixed(2)),
+                'Total Recibido (Bs)': Number((nominalRevenue * saleBcvRate).toFixed(2)),
+                'Tasa BCV': Number(saleBcvRate.toFixed(2)),
+                'Tasa Reposición': Number(saleParallelRate.toFixed(2)),
                 'Método de Pago': sale.paymentMethod
             });
         });
@@ -125,28 +132,33 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
         const rId = sale.repairJobId || repairItem?.productId;
         
         if (rId) {
-            const repairRevenueInThisSale = (repairItem ? (repairItem.price * repairItem.quantity) : 0) * collectionRatio;
+            const repairRevenueInThisSaleNominal = (repairItem ? (repairItem.price * repairItem.quantity) : 0) * collectionRatio;
+            const repairRealRevenueInThisSale = repairRevenueInThisSaleNominal * rateFactor;
             
-            if (repairRevenueInThisSale > 0) {
+            if (repairRevenueInThisSaleNominal > 0) {
                 const repairJob = repairJobs.find(job => job.id === rId);
                 if (repairJob) {
                     const existing = repairsActivity.get(rId);
                     if (existing) {
-                        existing.revenue += repairRevenueInThisSale;
+                        existing.revenue += repairRevenueInThisSaleNominal;
+                        existing.realRevenue += repairRealRevenueInThisSale;
                         existing.paymentMethods.add(sale.paymentMethod);
                         if (new Date(sale.transactionDate) > new Date(existing.lastDate)) {
                             existing.lastDate = sale.transactionDate;
                             existing.lastSaleId = sale.id!;
                             existing.bcvRate = saleBcvRate;
+                            existing.parallelRate = saleParallelRate;
                         }
                     } else {
                         repairsActivity.set(rId, {
-                            revenue: repairRevenueInThisSale,
+                            revenue: repairRevenueInThisSaleNominal,
+                            realRevenue: repairRealRevenueInThisSale,
                             repairJob,
                             lastDate: sale.transactionDate,
                             lastSaleId: sale.id!,
                             paymentMethods: new Set([sale.paymentMethod]),
-                            bcvRate: saleBcvRate
+                            bcvRate: saleBcvRate,
+                            parallelRate: saleParallelRate
                         });
                     }
                 }
@@ -157,28 +169,28 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
     // Consolidar líneas de reparación con sus costos prorrateados
     const consolidatedRepairLines = Array.from(repairsActivity.values()).map(entry => {
         const repair = entry.repairJob;
-        // Sumamos piezas reservadas y consumidas para tener el costo total del trabajo
         const totalPartsCost = [...(repair.reservedParts || []), ...(repair.consumedParts || [])]
             .reduce((sum, p) => sum + (p.costPrice * p.quantity), 0);
         
-        // Ratio de costo: qué porcentaje del precio total es inversión
         const costRatio = repair.estimatedCost > 0 ? totalPartsCost / repair.estimatedCost : 0;
         
-        const income = entry.revenue;
-        const proratedCost = income * costRatio;
-        const profit = income - proratedCost;
+        const nominalIncome = entry.revenue;
+        const realIncome = entry.realRevenue;
+        const proratedCost = nominalIncome * costRatio;
+        const realProfit = realIncome - proratedCost;
 
         return {
             'Fecha': format(new Date(entry.lastDate), 'dd/MM/yyyy HH:mm'),
-            'Producto/Servicio': `REPARACIÓN: ${repair.deviceMake} ${repair.deviceModel} (${repair.customerName})`,
+            'Producto/Servicio': `REPARACIÓN: ${repair.deviceMake} ${repair.deviceModel} (${repair.customerName})` + (repair.isPromo ? ' [OFERTA]' : ''),
             'ID Transacción': entry.lastSaleId,
             'Costo Inversión ($)': Number(proratedCost.toFixed(2)),
-            'Precio Venta ($)': Number(income.toFixed(2)),
+            'Precio Venta Nom. ($)': Number(nominalIncome.toFixed(2)),
             'Cantidad': 1,
-            'Ingreso Recibido ($)': Number(income.toFixed(2)),
-            'Ganancia Est. ($)': Number(profit.toFixed(2)),
-            'Total (Bs)': Number((income * entry.bcvRate).toFixed(2)),
-            'Tasa BCV Aplicada': Number(entry.bcvRate.toFixed(2)),
+            'Ingreso Real ($ - Reposición)': Number(realIncome.toFixed(2)),
+            'Ganancia Real ($ - Reposición)': Number(realProfit.toFixed(2)),
+            'Total Recibido (Bs)': Number((nominalIncome * entry.bcvRate).toFixed(2)),
+            'Tasa BCV': Number(entry.bcvRate.toFixed(2)),
+            'Tasa Reposición': Number(entry.parallelRate.toFixed(2)),
             'Método de Pago': Array.from(entry.paymentMethods).join(' + ')
         };
     });
@@ -194,14 +206,16 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
     XLSX.utils.book_append_sheet(workbook, worksheet, "Ventas_PoosMariche");
     
     // Ajustar anchos de columna
-    const cols = Object.keys(dataToExport[0] || {});
-    const colWidths = cols.map(col => ({
-        wch: Math.max(...dataToExport.map(row => (row[col as keyof typeof row] ?? '').toString().length), col.length + 2)
-    }));
-    worksheet["!cols"] = colWidths;
+    if (dataToExport.length > 0) {
+        const cols = Object.keys(dataToExport[0] || {});
+        const colWidths = cols.map(col => ({
+            wch: Math.max(...dataToExport.map(row => (row[col as keyof typeof row] ?? '').toString().length), col.length + 2)
+        }));
+        worksheet["!cols"] = colWidths;
+    }
 
-    XLSX.writeFile(workbook, `Reporte_Ventas_${format(from, "yyyy-MM-dd")}.xlsx`);
-    toast({ title: "Excel generado exitosamente" });
+    XLSX.writeFile(workbook, `Reporte_Ventas_Real_${format(from, "yyyy-MM-dd")}.xlsx`);
+    toast({ title: "Excel de Utilidad Real generado" });
   };
 
   return (
@@ -242,7 +256,7 @@ export function ExportSalesButton({ sales, products, repairJobs, fiados }: Expor
       </Popover>
       <Button onClick={handleExport} disabled={!date?.from}>
         <FileDown className="mr-2 h-4 w-4" />
-        Generar Excel de Periodo
+        Generar Excel de Utilidad Real
       </Button>
     </div>
   );

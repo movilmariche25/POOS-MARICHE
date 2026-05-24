@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo } from "react";
@@ -136,12 +137,20 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                 }
             });
 
-            const totalCollected = s.actualPaidAmount ?? s.totalAmount;
+            const totalCollectedNominal = s.actualPaidAmount ?? s.totalAmount;
             const itemsTotalBillable = s.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-            const paymentRatio = itemsTotalBillable > 0 ? totalCollected / itemsTotalBillable : 1;
+            const paymentRatio = itemsTotalBillable > 0 ? totalCollectedNominal / itemsTotalBillable : 1;
+
+            // AJUSTE DE VALOR REAL (REPOSICIÓN) PARA RENTABILIDAD
+            const saleBcv = s.bcvRateAtTime || settings.bcvRate;
+            const saleParallel = s.parallelRateAtTime || settings.parallelRate;
+            const isSalePromo = s.items.some(i => i.isPromo);
+            const rateFactor = isSalePromo ? 1 : (saleBcv / saleParallel);
 
             s.items.forEach(item => {
-                const itemRevenue = (item.price * item.quantity) * paymentRatio;
+                const nominalItemRevenue = (item.price * item.quantity) * paymentRatio;
+                const itemRevenue = nominalItemRevenue * rateFactor; // RECAUDACIÓN REAL AJUSTADA
+                
                 let totalOriginalCost = 0;
                 let key = item.productId;
                 let name = item.name;
@@ -154,18 +163,15 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                     if (repair) {
                         const totalJobPartsCost = [...(repair.reservedParts || []), ...(repair.consumedParts || [])]
                             .reduce((sum, p) => sum + (p.costPrice * p.quantity), 0);
-                        
-                        // Ratio: qué porcentaje del precio estimado es costo
                         const costRatio = repair.estimatedCost > 0 ? totalJobPartsCost / repair.estimatedCost : 0;
-                        // El costo de esta línea es proporcional a lo que se cobró ahora
-                        totalOriginalCost = itemRevenue * costRatio;
+                        totalOriginalCost = nominalItemRevenue * costRatio;
                     }
                 } else if (s.fiadoId) {
                     key = `fiado-${s.fiadoId}`;
                     const fiado = fiados?.find(f => f.id === s.fiadoId);
                     if (fiado) {
                         const costRatio = fiado.totalAmount > 0 ? (fiado.totalCost || 0) / fiado.totalAmount : 0;
-                        totalOriginalCost = itemRevenue * costRatio;
+                        totalOriginalCost = nominalItemRevenue * costRatio;
                     }
                 } else if (item.isCustom) {
                     key = `custom-${item.name}`;
@@ -210,7 +216,13 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
 
         const totalIncomeFromSales = filteredSales
             .filter(s => s.status === 'completed')
-            .reduce((sum, s) => sum + (s.actualPaidAmount ?? s.totalAmount), 0);
+            .reduce((sum, s) => {
+                const saleBcv = s.bcvRateAtTime || settings.bcvRate;
+                const saleParallel = s.parallelRateAtTime || settings.parallelRate;
+                const isSalePromo = s.items.some(i => i.isPromo);
+                const rateFactor = isSalePromo ? 1 : (saleBcv / saleParallel);
+                return sum + ((s.actualPaidAmount ?? s.totalAmount) * rateFactor);
+            }, 0);
         
         const itemsBreakdown = Array.from(itemsMap.values()).map(item => ({
             ...item,
@@ -251,7 +263,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                         <div>
                             <CardTitle className="text-xl font-black text-primary">REPORTE DE FLUJO POR PERIODO</CardTitle>
-                            <CardDescription className="text-[10px] font-bold uppercase tracking-widest">Movimiento Neto (Ventas - Reembolsos - Cambios)</CardDescription>
+                            <CardDescription className="text-[10px] font-bold uppercase tracking-widest">Valores ajustados a tasa de reposición para proteger inversión</CardDescription>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                             <Popover>
@@ -270,12 +282,12 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                     
                     <div className="space-y-4">
                         <div className="flex items-center gap-2">
-                            <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest">Flujo de Periodo (Entradas - Salidas)</h3>
+                            <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest">Flujo de Periodo (Ajustado a Valor Real)</h3>
                             <TooltipProvider>
                                 <Tooltip>
                                     <TooltipTrigger><Info className="w-3.5 h-3.5 text-muted-foreground" /></TooltipTrigger>
                                     <TooltipContent className="max-w-xs">
-                                        <p className="text-[10px]">Muestra estrictamente cuánto dinero entró y salió en las fechas marcadas, incluyendo el impacto de los reembolsos procesados.</p>
+                                        <p className="text-[10px]">Muestra cuántos dólares REALES tienes tras ajustar los Bolívares cobrados a BCV contra el costo de reposición.</p>
                                     </TooltipContent>
                                 </Tooltip>
                             </TooltipProvider>
@@ -285,11 +297,11 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                             <Card className="bg-slate-900 text-white border-none shadow-xl overflow-hidden relative">
                                 <div className="absolute right-2 top-2 opacity-10"><DollarSign className="w-16 h-16" /></div>
                                 <CardHeader className="pb-2">
-                                    <CardTitle className="text-[10px] uppercase font-black text-slate-400">Flujo Neto Efectivo USD</CardTitle>
+                                    <CardTitle className="text-[10px] uppercase font-black text-slate-400">Ingreso Neto (Real $)</CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="text-3xl font-black">${formatCurrency(stats.usdNet)}</div>
-                                    <p className="text-[9px] text-slate-500 uppercase font-bold mt-1">Ingreso neto generado (Ventas - Vueltos - Reembolsos)</p>
+                                    <div className="text-3xl font-black">${formatCurrency(stats.totalSales)}</div>
+                                    <p className="text-[9px] text-slate-500 uppercase font-bold mt-1">Valor real de caja para pago de mercancía y comisiones</p>
                                 </CardContent>
                             </Card>
 
@@ -328,39 +340,39 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
 
                     <div>
                         <div className="flex items-center gap-2 mb-4">
-                            <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><Sigma className="w-3.5 h-3.5" /> Rendimiento Operativo</h3>
-                            <Badge variant="outline" className="text-[9px] border-primary/20 text-primary uppercase">Sólo Ventas Completadas</Badge>
+                            <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest flex items-center gap-2"><Sigma className="w-3.5 h-3.5" /> Rendimiento Operativo Real</h3>
+                            <Badge variant="outline" className="text-[9px] border-primary/20 text-primary uppercase">Cálculos a Tasa de Reposición</Badge>
                         </div>
                         
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                             <div className="p-4 rounded-xl bg-muted border-l-4 border-l-primary">
-                                <p className="text-[10px] font-bold uppercase text-muted-foreground">Ventas Brutas ($)</p>
+                                <p className="text-[10px] font-bold uppercase text-muted-foreground">Recaudación Real ($)</p>
                                 <p className="text-2xl font-black">{getSymbol()}{formatCurrency(stats.totalSales)}</p>
                                 <p className="text-[9px] text-muted-foreground mt-1">{stats.transactionCount} transacciones</p>
                             </div>
                             <div className="p-4 rounded-xl bg-muted border-l-4 border-l-blue-500">
-                                <p className="text-[10px] font-bold uppercase text-muted-foreground">Monto Invertido ($)</p>
+                                <p className="text-[10px] font-bold uppercase text-muted-foreground">Inversión Costo ($)</p>
                                 <p className="text-2xl font-black text-blue-600">{getSymbol()}{formatCurrency(stats.totalProductCosts)}</p>
                                 <p className="text-[9px] text-muted-foreground mt-1">Costo de mercancía</p>
                             </div>
                             <div className="p-4 rounded-xl bg-muted border-l-4 border-l-green-500">
-                                <p className="text-[10px] font-bold uppercase text-muted-foreground">Utilidad Est. ($)</p>
+                                <p className="text-[10px] font-bold uppercase text-muted-foreground">Utilidad Real ($)</p>
                                 <p className={cn("text-2xl font-black", stats.totalProfit > 0 ? "text-green-600" : "text-destructive")}>
                                     {getSymbol()}{formatCurrency(stats.totalProfit)}
                                 </p>
-                                <p className="text-[9px] text-muted-foreground mt-1">Margen sobre costo</p>
+                                <p className="text-[9px] text-muted-foreground mt-1">Base para comisiones</p>
                             </div>
                             <div className="p-4 rounded-xl bg-muted border-l-4 border-l-amber-500">
                                 <p className="text-[10px] font-bold uppercase text-muted-foreground">Dif. Cierres ($)</p>
                                 <p className={cn("text-2xl font-black", stats.totalReconciliationDifference >= 0 ? "text-green-600" : "text-destructive")}>
                                     {stats.totalReconciliationDifference >= 0 ? '+' : ''}{getSymbol()}{formatCurrency(stats.totalReconciliationDifference)}
                                 </p>
-                                <p className="text-[9px] text-muted-foreground mt-1">Descuadres reportados</p>
+                                <p className="text-[9px] text-muted-foreground mt-1">Faltantes/Sobrantes</p>
                             </div>
                             <div className="p-4 rounded-xl bg-primary text-primary-foreground shadow-lg flex flex-col justify-center border-none">
                                 <p className="text-[10px] font-bold uppercase text-primary-foreground/70 tracking-widest">Balance de Caja</p>
                                 <p className="text-3xl font-black">{getSymbol()}{formatCurrency(stats.adjustedTotalSales)}</p>
-                                <p className="text-[8px] opacity-60 uppercase font-black mt-1">Impacto total en el periodo</p>
+                                <p className="text-[8px] opacity-60 uppercase font-black mt-1">Saldo Neto Proyectado</p>
                             </div>
                         </div>
                     </div>
@@ -372,8 +384,8 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                     <div className="flex items-center gap-2">
                         <ShoppingBag className="w-5 h-5 text-primary" />
                         <div>
-                            <CardTitle className="text-sm font-black uppercase">Desglose de Rentabilidad por Artículo</CardTitle>
-                            <CardDescription className="text-[10px]">Detalle de costos, ingresos y ganancias por cada producto o servicio vendido (Ventas no reembolsadas).</CardDescription>
+                            <CardTitle className="text-sm font-black uppercase">Desglose de Rentabilidad Real por Artículo</CardTitle>
+                            <CardDescription className="text-[10px]">Valores ajustados a tasa de reposición para cálculo exacto de comisiones.</CardDescription>
                         </div>
                     </div>
                 </CardHeader>
@@ -383,9 +395,9 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                             <TableRow className="bg-muted/30">
                                 <TableHead className="text-[10px] font-black uppercase">Producto / Servicio</TableHead>
                                 <TableHead className="text-center text-[10px] font-black uppercase">Cant.</TableHead>
-                                <TableHead className="text-right text-[10px] font-black uppercase">Costo Total ($)</TableHead>
-                                <TableHead className="text-right text-[10px] font-black uppercase">Venta Total ($)</TableHead>
-                                <TableHead className="text-right text-[10px] font-black uppercase">Ganancia ($)</TableHead>
+                                <TableHead className="text-right text-[10px] font-black uppercase">Costo Inversión ($)</TableHead>
+                                <TableHead className="text-right text-[10px] font-black uppercase">Ingreso Real ($)</TableHead>
+                                <TableHead className="text-right text-[10px] font-black uppercase">Ganancia Real ($)</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -423,7 +435,7 @@ export function DateRangeReport({ sales, products, reconciliations, repairJobs, 
                         {stats.itemsBreakdown.length > 0 && (
                             <TableFooter className="bg-primary/5 font-black">
                                 <TableRow>
-                                    <TableCell colSpan={2} className="text-[10px] uppercase text-primary">Totales Operativos:</TableCell>
+                                    <TableCell colSpan={2} className="text-[10px] uppercase text-primary">Totales Realistas:</TableCell>
                                     <TableCell className="text-right text-xs">${formatCurrency(stats.totalProductCosts)}</TableCell>
                                     <TableCell className="text-right text-xs">${formatCurrency(stats.totalSales)}</TableCell>
                                     <TableCell className="text-right">
